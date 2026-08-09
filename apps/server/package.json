@@ -1,12 +1,12 @@
 {
   "name": "vertexade",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "VertexADE server and web UI bundle",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/VertexADE/vertexade"
   },
-  "license": "MIT",
   "bin": {
     "vertexade": "bin/vertexade.mjs"
   },
