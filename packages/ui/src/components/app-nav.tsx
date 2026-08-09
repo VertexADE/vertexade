@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ModuleAccent, ModuleCatalog, ModuleCatalogEntry } from '@vertexade/platform-contracts'
 import {
   Blocks,
@@ -336,8 +336,11 @@ function SidebarNavigationGroup({ group, items, pathname }: { group: NavItem['gr
 
 function MobileSidebarRouteCloser({ pathname }: { pathname: string }) {
   const { isMobile, setOpenMobile } = useSidebar()
+  const previousPathname = useRef(pathname)
   useEffect(() => {
-    if (isMobile) setOpenMobile(false)
+    const routeChanged = previousPathname.current !== pathname
+    previousPathname.current = pathname
+    if (isMobile && routeChanged) setOpenMobile(false)
   }, [isMobile, pathname, setOpenMobile])
   return null
 }
