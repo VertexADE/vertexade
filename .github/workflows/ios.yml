@@ -24,10 +24,10 @@ jobs:
       EXPO_PUBLIC_VERTEXADE_URL: http://localhost:4174
     steps:
       - uses: actions/checkout@v4
-      - name: Select latest stable Xcode
+      - name: Select Expo-compatible Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.0'
       - name: Report Apple toolchain
         run: |
           xcodebuild -version
