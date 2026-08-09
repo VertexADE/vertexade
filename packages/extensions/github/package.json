@@ -1,0 +1,21 @@
+{
+  "name": "@vertexade/extension-github",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/extension.ts",
+    "./server": "./src/server/extension.ts",
+    "./auth": "./src/server/auth.ts",
+    "./host-contract": "./src/server/host-contract.ts"
+  },
+  "scripts": {
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@vertexade/platform-contracts": "workspace:*",
+    "@vertexade/platform-extension-sdk": "workspace:*",
+    "@vertexade/platform-server": "workspace:*"
+  }
+}

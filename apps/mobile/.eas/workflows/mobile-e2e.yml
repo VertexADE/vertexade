@@ -1,0 +1,75 @@
+name: Mobile device smoke
+
+jobs:
+  build_android:
+    name: Build Android smoke APK
+    type: build
+    params:
+      platform: android
+      profile: e2e-test
+
+  build_ios:
+    name: Build iOS simulator app
+    type: build
+    params:
+      platform: ios
+      profile: e2e-test
+
+  test_android:
+    name: Android Work-to-settings journey
+    needs: [build_android]
+    type: maestro
+    environment: preview
+    env:
+      MAESTRO_APP_ID: com.vertexade.mobile
+      MAESTRO_FIXTURE_URL: http://10.0.2.2:4199
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      flow_path: ./.maestro/mobile-smoke.yaml
+      device_identifier: pixel_6
+      record_screen: true
+    hooks:
+      before_maestro_tests:
+        - name: Start deterministic fixture API
+          run: |
+            mkdir -p "$MAESTRO_TESTS_DIR"
+            MOBILE_FIXTURE_HOST=0.0.0.0 MOBILE_FIXTURE_LOG="$MAESTRO_TESTS_DIR/fixture-requests.jsonl" node test/device/fixture-server.mjs > "$MAESTRO_TESTS_DIR/fixture-server.log" 2>&1 &
+            echo $! > "$MAESTRO_TESTS_DIR/fixture-server.pid"
+            node -e "let attempts=0; const timer=setInterval(async()=>{try{const response=await fetch('http://127.0.0.1:4199/health');if(response.ok){clearInterval(timer);process.exit(0)}}catch{}if(++attempts===60){clearInterval(timer);process.exit(1)}},250)"
+            node scripts/device-runtime-probe.mjs android "$MAESTRO_TESTS_DIR/startup-android.json"
+      after_maestro_tests:
+        - name: Stop fixture API
+          run: |
+            probe_status=0
+            node scripts/device-runtime-probe.mjs android "$MAESTRO_TESTS_DIR/crash-android.json" crash-only || probe_status=$?
+            test ! -f "$MAESTRO_TESTS_DIR/fixture-server.pid" || kill "$(cat "$MAESTRO_TESTS_DIR/fixture-server.pid")" || true
+            exit $probe_status
+
+  test_ios:
+    name: iOS Work-to-settings journey
+    needs: [build_ios]
+    type: maestro
+    environment: preview
+    env:
+      MAESTRO_APP_ID: com.vertexade.mobile
+      MAESTRO_FIXTURE_URL: http://127.0.0.1:4199
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      flow_path: ./.maestro/mobile-smoke.yaml
+      record_screen: true
+    hooks:
+      before_maestro_tests:
+        - name: Start deterministic fixture API
+          run: |
+            mkdir -p "$MAESTRO_TESTS_DIR"
+            MOBILE_FIXTURE_HOST=0.0.0.0 MOBILE_FIXTURE_LOG="$MAESTRO_TESTS_DIR/fixture-requests.jsonl" node test/device/fixture-server.mjs > "$MAESTRO_TESTS_DIR/fixture-server.log" 2>&1 &
+            echo $! > "$MAESTRO_TESTS_DIR/fixture-server.pid"
+            node -e "let attempts=0; const timer=setInterval(async()=>{try{const response=await fetch('http://127.0.0.1:4199/health');if(response.ok){clearInterval(timer);process.exit(0)}}catch{}if(++attempts===60){clearInterval(timer);process.exit(1)}},250)"
+            node scripts/device-runtime-probe.mjs ios "$MAESTRO_TESTS_DIR/startup-ios.json"
+      after_maestro_tests:
+        - name: Stop fixture API
+          run: |
+            probe_status=0
+            node scripts/device-runtime-probe.mjs ios "$MAESTRO_TESTS_DIR/crash-ios.json" crash-only || probe_status=$?
+            test ! -f "$MAESTRO_TESTS_DIR/fixture-server.pid" || kill "$(cat "$MAESTRO_TESTS_DIR/fixture-server.pid")" || true
+            exit $probe_status

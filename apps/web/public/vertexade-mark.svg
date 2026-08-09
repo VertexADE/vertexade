@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">VertexADE mark</title>
+  <desc id="desc">Three connected vertices forming a V and converging on one output.</desc>
+  <rect width="64" height="64" rx="16" fill="#07111f"/>
+  <path d="M15 16 32 49" fill="none" stroke="#5ba7ff" stroke-width="6" stroke-linecap="square"/>
+  <path d="m49 16-17 33" fill="none" stroke="#818cf8" stroke-width="6" stroke-linecap="square"/>
+  <path d="m15 10 6 6-6 6-6-6 6-6Z" fill="#5ba7ff"/>
+  <path d="m49 10 6 6-6 6-6-6 6-6Z" fill="#818cf8"/>
+  <path d="m32 42 7 7-7 7-7-7 7-7Z" fill="#2dd4bf"/>
+</svg>

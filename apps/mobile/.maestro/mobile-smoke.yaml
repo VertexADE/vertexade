@@ -1,0 +1,70 @@
+appId: com.vertexade.mobile
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: connection-url
+- eraseText
+- inputText: ${MAESTRO_FIXTURE_URL}
+- hideKeyboard
+- tapOn:
+    id: connection-submit
+- assertVisible:
+    id: extension-work
+- takeScreenshot: ${MAESTRO_TESTS_DIR}/01-connected
+
+- tapOn:
+    id: extension-work
+- assertVisible: Work queue
+- tapOn:
+    id: record-work-1-action-start-thread
+- assertVisible:
+    id: action-modal
+- assertVisible: Agent execution
+- assertVisible: Codex
+- tapOn:
+    id: action-cancel
+- back
+- takeScreenshot: ${MAESTRO_TESTS_DIR}/02-work-agent-options
+
+- tapOn:
+    id: extension-agents
+- assertVisible: Agents
+- assertVisible: Codex
+- back
+
+- tapOn:
+    id: extension-pull-requests
+- assertVisible: Pull requests
+- tapOn:
+    id: record-pr-299-details
+- assertVisible:
+    id: record-details
+- assertVisible: "#299 Improve release quality"
+- tapOn:
+    id: record-details-close
+- back
+- takeScreenshot: ${MAESTRO_TESTS_DIR}/03-pull-request-details
+
+- tapOn:
+    id: extension-settings
+- assertVisible: Extension settings
+- assertVisible:
+    id: settings-settings
+- tapOn:
+    id: settings-field-label
+- eraseText
+- inputText: Device smoke updated
+- hideKeyboard
+- tapOn:
+    id: settings-submit
+- assertVisible: Fixture settings saved.
+- tapOn:
+    id: settings-action-reset
+- assertVisible: Reset fixture settings?
+- tapOn: Reset
+- assertVisible: Fixture settings reset.
+- takeScreenshot: ${MAESTRO_TESTS_DIR}/04-settings-reset
+- back
+- assertVisible:
+    id: extension-work

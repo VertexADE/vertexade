@@ -1,0 +1,53 @@
+{
+  "name": "vertexade-monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "setup:check": "node scripts/setup.mjs --check",
+    "deploy:verified": "node scripts/deploy-verified.mjs",
+    "backup": "node scripts/backup-verified.mjs",
+    "backup:verify": "node scripts/backup-verified.mjs",
+    "backup:restore-drill": "node scripts/backup-verified.mjs",
+    "audit:ui": "node scripts/audit-ui-routes.mjs",
+    "probe:sse": "node --import tsx scripts/sse-load-probe.ts",
+    "dev": "concurrently --kill-others --names api,web \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @vertexade/api dev",
+    "dev:web": "pnpm --filter @vertexade/web dev",
+    "db:generate": "drizzle-kit generate",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio",
+    "dev:mobile": "pnpm --filter @vertexade/mobile start",
+    "dev:desktop": "pnpm --filter @vertexade/desktop dev",
+    "generate-routes": "pnpm --filter @vertexade/web generate-routes",
+    "create:extension": "node scripts/create-extension.mjs",
+    "build": "pnpm --filter @vertexade/web build && pnpm verify:web-build",
+    "build:mobile": "pnpm --filter @vertexade/mobile export",
+    "build:desktop": "pnpm --filter @vertexade/desktop dist",
+    "build:staged": "VERTEXADE_WEB_OUTPUT_DIR=.output-next pnpm --filter @vertexade/web build && VERTEXADE_WEB_OUTPUT_DIR=.output-next pnpm verify:web-build",
+    "verify:web-build": "node scripts/verify-react-compiler.mjs && node scripts/verify-bundle-budgets.mjs",
+    "start": "concurrently --kill-others --names api,web \"pnpm start:api\" \"pnpm start:web\"",
+    "start:api": "pnpm --filter @vertexade/api start",
+    "start:web": "pnpm --filter @vertexade/web start",
+    "check": "vp check",
+    "format": "vp fmt --write",
+    "format:check": "vp fmt --check",
+    "lint:react": "vp lint apps/web/src packages/ui/src packages/extensions/*/src/web",
+    "lint": "vp lint .",
+    "staged": "vp staged --fail-on-changes",
+    "test": "vp test run scripts && vp run --filter='./apps/*' --filter='./packages/*' --filter='./packages/extensions/*' --concurrency-limit=2 --cache test",
+    "test:verified": "vp test run scripts && vp run --filter='./apps/*' --filter='./packages/*' --filter='./packages/extensions/*' --concurrency-limit=1 --no-cache test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "concurrently": "^10.0.3",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "tsx": "^4.23.1",
+    "vite-plus": "0.2.6"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

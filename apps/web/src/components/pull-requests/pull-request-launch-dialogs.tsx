@@ -1,0 +1,374 @@
+import { useEffect, useState } from 'react'
+import { AlertTriangle, GitBranch, GitFork, RefreshCw, Settings2, Tags, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
+import { PromptImageTextarea } from '@vertexade/ui/components/prompt-images'
+import { Badge } from '@vertexade/ui/components/ui/badge'
+import { Button } from '@vertexade/ui/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@vertexade/ui/components/ui/collapsible'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
+import { Input } from '@vertexade/ui/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { api, parseJson } from '@vertexade/ui/lib/dashboard-api'
+import type { DashboardData, GithubLabel, Job, PullRequest } from '@vertexade/ui/lib/dashboard-types'
+import type { PullRequestFlowDecision } from '@vertexade/ui/lib/pull-request-flow'
+import { reconcilePullRequestChange, useSingleSubmission } from '../../lib/use-pull-request-mutation'
+
+function renderPreset(template: string, pr: PullRequest) {
+  const values: Record<string, string> = {
+    repo: pr.full_name,
+    pr_number: String(pr.number),
+    pr_title: pr.title,
+    pr_url: pr.url,
+    author: pr.author || '',
+    base_branch: pr.base_ref || '',
+    head_branch: pr.head_ref || '',
+  }
+  return template.replace(/\{\{([a-z_]+)\}\}/gi, (match, key) => values[key.toLowerCase()] ?? match)
+}
+
+export function LaunchDialog({
+  pr,
+  data,
+  decision,
+  onOpenChange,
+  onStarted,
+}: {
+  pr: PullRequest | null
+  data: DashboardData
+  decision?: PullRequestFlowDecision
+  onOpenChange: (open: boolean) => void
+  onStarted: (id: number) => void
+}) {
+  const [preset, setPreset] = useState('pr')
+  const [prompt, setPrompt] = useState('')
+  const submission = useSingleSubmission()
+  useEffect(() => {
+    if (!pr) return
+    setPreset(defaultLaunchPreset(data))
+    setPrompt(launchDecisionPrompt(decision))
+  }, [decision?.detail, pr?.id])
+  async function submit() {
+    if (!pr) return
+    const job = await submission.run(() =>
+      api<Job>(`/api/pulls/${pr.repo_id}/${pr.number}/launch`, {
+        method: 'POST',
+        body: JSON.stringify({ preset: preset === 'none' ? '' : preset, prompt }),
+      }),
+    )
+    if (!job) return
+    toast.success(`${job.agent_name} started as run #${job.id}`)
+    onStarted(job.id)
+  }
+  const selected = data.presets.find((item) => item.name === preset)
+  return (
+    <Dialog open={Boolean(pr)} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{decision?.label || `Fix with ${data.presentation.defaultAgent.name}`}</DialogTitle>
+          <DialogDescription>
+            #{pr?.number} — {pr?.title}
+            {decision ? ` · ${decision.title}` : ''}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Select value={preset} onValueChange={setPreset}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No preset</SelectItem>
+              {data.presets.map((item) => (
+                <SelectItem key={item.id} value={item.name}>
+                  [{item.name}]
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selected && pr ? (
+            <p className="rounded-md border bg-background p-2 text-xs text-muted-foreground">{renderPreset(selected.prompt, pr)}</p>
+          ) : null}
+          <PromptImageTextarea
+            value={prompt}
+            onValueChange={setPrompt}
+            placeholder="Optional instructions or pasted reference images…"
+            className="min-h-32"
+          />
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
+                <Settings2 />
+                Advanced agent setup
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="rounded-lg border p-3">
+              <AgentOptionsPicker />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={submission.busy} onClick={submit}>
+            <GitBranch />
+            Start work
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function defaultLaunchPreset(data: DashboardData) {
+  return data.presets.some((item) => item.name === 'pr') ? 'pr' : 'none'
+}
+
+function launchDecisionPrompt(decision?: PullRequestFlowDecision) {
+  return decision?.detail || ''
+}
+
+export function ForkPrDialog({
+  pr,
+  presentation,
+  onOpenChange,
+  onStarted,
+}: {
+  pr: PullRequest | null
+  presentation: DashboardData['presentation']
+  onOpenChange: (open: boolean) => void
+  onStarted: (id: number) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [branchType, setBranchType] = useState('feature')
+  const submission = useSingleSubmission()
+  useEffect(() => {
+    if (pr) {
+      setTitle('')
+      setPrompt('')
+      setBranchType('feature')
+    }
+  }, [pr?.id])
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!pr) return
+    const job = await submission.run(() =>
+      api<Job>(`/api/pulls/${pr.repo_id}/${pr.number}/fork`, {
+        method: 'POST',
+        body: JSON.stringify({ title, prompt, branch_type: branchType }),
+      }),
+    )
+    if (!job) return
+    toast.success(`Stacked task started on ${job.branch_name}`)
+    onStarted(job.id)
+  }
+  return (
+    <Dialog open={Boolean(pr)} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Fork {presentation.scm.changeRequestLabel}</DialogTitle>
+            <DialogDescription className="break-words">
+              Create a new branch from <span className="text-blue-400">{pr?.head_ref}</span>. {presentation.defaultAgent.name} will open a
+              draft {presentation.scm.changeRequestLabel} targeting that branch when the work is complete.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)]">
+              <Select value={branchType} onValueChange={setBranchType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="feature">feature/</SelectItem>
+                  <SelectItem value="fix">fix/</SelectItem>
+                  <SelectItem value="chore">chore/</SelectItem>
+                  <SelectItem value="refactor">refactor/</SelectItem>
+                  <SelectItem value="test">test/</SelectItem>
+                  <SelectItem value="docs">docs/</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                required
+                maxLength={100}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Short task title"
+              />
+            </div>
+            <p className="rounded-md border bg-background p-2 text-xs text-muted-foreground">
+              New stack:{' '}
+              <span className="text-blue-400">
+                {branchType}/
+                {title
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, '-')
+                  .replace(/^-|-$/g, '')
+                  .slice(0, 40) || 'task'}
+                -…
+              </span>{' '}
+              → {pr?.head_ref}
+            </p>
+            <PromptImageTextarea
+              required
+              value={prompt}
+              onValueChange={setPrompt}
+              placeholder="Describe the work and paste reference images…"
+              className="min-h-28 sm:min-h-36"
+            />
+            <AgentOptionsPicker />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button disabled={submission.busy || !title.trim() || !prompt.trim()}>
+              <GitFork />
+              Fork and start
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function LabelDialog({
+  pr,
+  onOpenChange,
+  onChanged,
+}: {
+  pr: PullRequest | null
+  onOpenChange: (open: boolean) => void
+  onChanged: () => Promise<void>
+}) {
+  const [available, setAvailable] = useState<GithubLabel[]>([])
+  const [assigned, setAssigned] = useState<GithubLabel[]>([])
+  const [label, setLabel] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!pr) return
+    const current = parseJson<GithubLabel[]>(pr.labels, [])
+    setAssigned(current)
+    setLabel('')
+    setSyncError(null)
+    api<{ labels: GithubLabel[] }>(`/api/repositories/${pr.repo_id}/labels`)
+      .then((result) => setAvailable(result.labels))
+      .catch((error) => toast.error(error.message))
+  }, [pr])
+  const choices = available.filter((item) => !assigned.some((current) => current.name === item.name))
+  async function reconcile() {
+    await reconcilePullRequestChange(onChanged, 'The labels changed', setSyncError)
+  }
+  async function submit() {
+    if (!pr || !label) return
+    setBusy(label)
+    try {
+      const result = await api<{ labels: GithubLabel[] }>(`/api/pulls/${pr.repo_id}/${pr.number}/labels`, {
+        method: 'POST',
+        body: JSON.stringify({ label }),
+      })
+      setAssigned(result.labels)
+      setLabel('')
+      toast.success(`Added ${label}`)
+      await reconcile()
+    } catch (error) {
+      setSyncError((error as Error).message)
+      toast.error((error as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  async function remove(item: GithubLabel) {
+    if (!pr) return
+    setBusy(item.name)
+    try {
+      const result = await api<{ labels: GithubLabel[] }>(`/api/pulls/${pr.repo_id}/${pr.number}/labels`, {
+        method: 'DELETE',
+        body: JSON.stringify({ label: item.name }),
+      })
+      setAssigned(result.labels)
+      toast.success(`Removed ${item.name}`)
+      await reconcile()
+    } catch (error) {
+      setSyncError((error as Error).message)
+      toast.error((error as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Dialog open={Boolean(pr)} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage labels</DialogTitle>
+          <DialogDescription className="line-clamp-2">
+            #{pr?.number} — {pr?.title}
+          </DialogDescription>
+        </DialogHeader>
+        <section>
+          <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Assigned labels</p>
+          <div className="flex max-h-40 min-h-10 flex-wrap gap-1.5 overflow-y-auto rounded-md border p-2">
+            {assigned.map((item) => (
+              <Badge key={item.name} variant="outline" className="max-w-full gap-1 pl-2 text-xs">
+                <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: `#${item.color}` }} />
+                <span className="truncate">{item.name}</span>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => remove(item)}
+                  className="ml-0.5 rounded p-0.5 hover:bg-destructive/15 hover:text-red-400"
+                  aria-label={`Remove ${item.name}`}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+            {!assigned.length && <span className="self-center text-xs text-muted-foreground">No labels assigned.</span>}
+          </div>
+        </section>
+        <section>
+          <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Add a label</p>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Select value={label} onValueChange={setLabel}>
+              <SelectTrigger className="min-w-0 w-full">
+                <SelectValue placeholder="Choose a repository label" />
+              </SelectTrigger>
+              <SelectContent>
+                {choices.map((item) => (
+                  <SelectItem key={item.name} value={item.name}>
+                    <span className="flex items-center gap-2">
+                      <span className="size-2 rounded-full" style={{ backgroundColor: `#${item.color}` }} />
+                      {item.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button disabled={!label || busy !== null} onClick={submit}>
+              <Tags />
+              Add
+            </Button>
+          </div>
+        </section>
+        {syncError ? (
+          <div role="alert" className="flex items-center gap-2 rounded-md border border-red-500/25 bg-red-500/8 p-2 text-xs text-red-300">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1">{syncError}</span>
+            <Button variant="ghost" size="xs" onClick={() => void reconcile()}>
+              <RefreshCw />
+              Retry
+            </Button>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -1,0 +1,168 @@
+import { useEffect, useState } from 'react'
+import { MessageSquareText, SlidersHorizontal } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from './ui/button'
+import { Card, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Textarea } from './ui/textarea'
+import { api } from '../lib/dashboard-api'
+
+export type SystemConfigurationValue = {
+  prompts: { work: string; review: string; planning: string; followUp: string; scheduled: string }
+  runtime: {
+    capabilityTimeoutMs: number
+    retryAttempts: number
+    retryDelayMs: number
+    automationMaxSteps: number
+    automationMaxConcurrentRuns: number
+  }
+}
+
+export const emptySystemConfiguration: SystemConfigurationValue = {
+  prompts: { work: '', review: '', planning: '', followUp: '', scheduled: '' },
+  runtime: {
+    capabilityTimeoutMs: 30_000,
+    retryAttempts: 1,
+    retryDelayMs: 250,
+    automationMaxSteps: 20,
+    automationMaxConcurrentRuns: 4,
+  },
+}
+
+const promptFields = [
+  ['work', 'Work runs', 'Applied to new implementation and investigation runs.'],
+  ['review', 'Review runs', 'Adds workspace-specific checks without replacing the locked review and security contract.'],
+  ['planning', 'Planning runs', 'Applied to extension-provided planning, decomposition, and refinement turns.'],
+  ['followUp', 'Follow-up turns', 'Applied when continuing a non-review agent run.'],
+  ['scheduled', 'Recurring automations', 'Applied to recurring automation runs after the locked safety boundary.'],
+] as const
+
+export function PromptPolicySettings({
+  value,
+  onSaved,
+}: {
+  value: SystemConfigurationValue
+  onSaved(value: SystemConfigurationValue): void
+}) {
+  const [prompts, setPrompts] = useState(value.prompts)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setPrompts(value.prompts), [value.prompts])
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        method: 'POST',
+        body: JSON.stringify({ ...value, prompts }),
+      })
+      onSaved(saved)
+      toast.success('Prompt policies saved')
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardHeader className="border-b p-4">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <MessageSquareText className="size-4" />
+          Workspace prompt policies
+        </CardTitle>
+        <CardDescription>
+          Append trusted workspace instructions to each workflow. Core safety, scope, and review requirements remain locked and cannot be
+          removed here.
+        </CardDescription>
+      </CardHeader>
+      <form onSubmit={save} className="space-y-2 p-3 sm:space-y-4 sm:p-4">
+        {promptFields.map(([key, label, description]) => (
+          <details key={key} className="group rounded-lg border bg-background/25">
+            <summary data-audit-action={`settings.prompt.${key}.edit`} className="cursor-pointer list-none px-3 py-2.5 marker:hidden">
+              <span className="flex items-center justify-between gap-3 text-xs font-medium">
+                {label}
+                <span className="text-[11px] font-normal text-primary group-open:hidden">Edit</span>
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{description}</span>
+            </summary>
+            <Label className="flex-col items-stretch gap-1.5 border-t p-3">
+              <span className="sr-only">{label}</span>
+              <Textarea
+                maxLength={20_000}
+                value={prompts[key]}
+                onChange={(event) => setPrompts((current) => ({ ...current, [key]: event.target.value }))}
+                placeholder="No additional workspace instructions"
+                className="min-h-28 text-xs"
+              />
+            </Label>
+          </details>
+        ))}
+        <div className="flex justify-end pt-1">
+          <Button className="w-full sm:w-auto" disabled={busy}>
+            {busy ? 'Saving…' : 'Save prompt policies'}
+          </Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+export function RuntimeSettings({ value, onSaved }: { value: SystemConfigurationValue; onSaved(value: SystemConfigurationValue): void }) {
+  const [runtime, setRuntime] = useState(value.runtime)
+  const [busy, setBusy] = useState('')
+  useEffect(() => setRuntime(value.runtime), [value.runtime])
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy('runtime')
+    try {
+      const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        method: 'POST',
+        body: JSON.stringify({ ...value, runtime }),
+      })
+      onSaved(saved)
+      toast.success('Runtime defaults saved')
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
+  const numberField = (key: keyof SystemConfigurationValue['runtime'], label: string, minimum: number, maximum: number, hint: string) => (
+    <Label className="flex-col items-stretch gap-1.5">
+      <span className="text-xs font-medium">{label}</span>
+      <Input
+        type="number"
+        min={minimum}
+        max={maximum}
+        value={runtime[key]}
+        onChange={(event) => setRuntime((current) => ({ ...current, [key]: Number(event.target.value) }))}
+      />
+      <small className="text-[10px] text-muted-foreground">{hint}</small>
+    </Label>
+  )
+  return (
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardHeader className="border-b p-4">
+        <CardTitle className="flex items-center gap-2 font-mono text-sm">
+          <SlidersHorizontal className="size-4" />
+          Extension runtime defaults
+        </CardTitle>
+        <CardDescription>
+          Guarded fallbacks used when an extension capability or automation recipe does not declare a stricter value. Provider aspects are
+          declared by extensions and resolved automatically per operation.
+        </CardDescription>
+      </CardHeader>
+      <form onSubmit={save} className="grid gap-4 p-4 sm:grid-cols-2">
+        {numberField('capabilityTimeoutMs', 'Capability timeout (ms)', 100, 3_600_000, '100 ms to 60 minutes.')}
+        {numberField('retryAttempts', 'Default attempts', 1, 10, 'Includes the first attempt.')}
+        {numberField('retryDelayMs', 'Retry delay (ms)', 0, 60_000, 'Delay between failed attempts.')}
+        {numberField('automationMaxSteps', 'Maximum recipe steps', 1, 100, 'Applied when recipes are created or edited.')}
+        {numberField('automationMaxConcurrentRuns', 'Concurrent automation flows', 1, 32, 'Hard ceiling for active flows.')}
+        <div className="flex justify-end sm:col-span-2">
+          <Button disabled={Boolean(busy)}>{busy === 'runtime' ? 'Saving…' : 'Save runtime defaults'}</Button>
+        </div>
+      </form>
+    </Card>
+  )
+}

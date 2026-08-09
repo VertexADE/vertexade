@@ -1,0 +1,26 @@
+{
+  "name": "@vertexade/platform-client",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts",
+    "./reactive": "./src/reactive.ts"
+  },
+  "scripts": {
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@vertexade/platform-contracts": "workspace:*",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "react": "19.2.3"
+  },
+  "peerDependencies": {
+    "react": "19.2.3"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "name": "@vertexade/mobile",
+  "version": "0.0.1",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "export": "node scripts/hermes-release.mjs --platform all",
+    "export:analysis": "expo export --platform all --no-bytecode --source-maps",
+    "export:compare": "node scripts/compare-exports.mjs",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --runInBand",
+    "test:ci": "jest --ci --runInBand --coverage --reporters=default --reporters=jest-junit",
+    "fixture:device": "node test/device/fixture-server.mjs"
+  },
+  "dependencies": {
+    "@vertexade/platform-client": "workspace:*",
+    "@vertexade/platform-contracts": "workspace:*",
+    "expo": "^57.0.11",
+    "expo-constants": "~57.0.9",
+    "expo-linking": "~57.0.5",
+    "expo-router": "^57.0.11",
+    "expo-status-bar": "^57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "^4.26.2"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.17",
+    "hermes-compiler": "250829098.0.16",
+    "jest": "^29.7.0",
+    "jest-expo": "^57.0.3",
+    "jest-junit": "^17.0.0",
+    "react-test-renderer": "19.2.3",
+    "typescript": "~6.0.3",
+    "yaml": "^2.9.0"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/setup.ts"
+    ],
+    "testMatch": [
+      "<rootDir>/**/*.(test|spec).(ts|tsx)"
+    ],
+    "collectCoverageFrom": [
+      "app/**/*.{ts,tsx}",
+      "src/**/*.{ts,tsx}",
+      "!**/*.{test,spec}.{ts,tsx}",
+      "!**/*-styles.ts",
+      "!**/theme.ts"
+    ],
+    "coverageDirectory": "../../artifacts/mobile-tests/coverage",
+    "coverageThreshold": {
+      "global": {
+        "branches": 30,
+        "functions": 30,
+        "lines": 45,
+        "statements": 40
+      }
+    }
+  },
+  "jest-junit": {
+    "outputDirectory": "../../artifacts/mobile-tests",
+    "outputName": "junit.xml",
+    "uniqueOutputName": "false"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true
+  },
+  "include": [
+    "src/encrypted-settings.ts",
+    "src/server/database/**/*.ts",
+    "src/server/events/**/*.ts",
+    "src/server/notifications/**/*.ts",
+    "src/server/settings/**/*.ts",
+    "src/server/work/http.ts",
+    "src/server/workflows/**/*.ts"
+  ]
+}

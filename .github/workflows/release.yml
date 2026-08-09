@@ -1,0 +1,100 @@
+name: Build and publish
+
+on:
+  pull_request:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  electron:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: --linux
+          - os: macos-latest
+            target: --mac
+          - os: windows-latest
+            target: --win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.20.0 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @vertexade/web build
+      - run: pnpm --filter @vertexade/desktop build:main
+      - run: pnpm --filter @vertexade/desktop exec electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+          if-no-files-found: error
+
+  npm-bundles:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.20.0 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter ./apps/server build
+      - name: Set release versions
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          pnpm --dir apps/server pkg set version="$VERSION"
+          pnpm --dir apps/desktop pkg set version="$VERSION"
+      - run: mkdir -p artifacts
+      - run: pnpm --filter ./apps/server pack --pack-destination artifacts
+      - run: pnpm --filter @vertexade/desktop pack --pack-destination artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: artifacts/*.tgz
+      - name: Publish npm packages
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          pnpm dlx npm@11.5.1 publish ./apps/server --access public
+          pnpm dlx npm@11.5.1 publish ./apps/desktop --access public
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [electron, npm-bundles]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: electron-*
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

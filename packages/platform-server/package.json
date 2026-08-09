@@ -1,0 +1,32 @@
+{
+  "name": "@vertexade/platform-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./http": "./src/http.ts",
+    "./outbound-policy": "./src/outbound-policy.ts",
+    "./bounded-cache": "./src/bounded-cache.ts",
+    "./configuration": "./src/configuration.ts",
+    "./effect": "./src/effect/index.ts",
+    "./provider-data": "./src/provider-data.ts",
+    "./findings-api": "./src/findings-api.ts",
+    "./cache-trigger": "./src/cache-trigger.ts",
+    "./extension-data": "./src/extension-data.ts",
+    "./agents": "./src/agents.ts",
+    "./prompts": "./src/prompts.ts",
+    "./route-pattern": "./src/route-pattern.ts",
+    "./router": "./src/router.ts",
+    "./webhooks": "./src/webhooks.ts"
+  },
+  "scripts": {
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@vertexade/platform-contracts": "workspace:*",
+    "@vertexade/platform-extension-sdk": "workspace:*",
+    "effect": "^3.22.0",
+    "undici": "8.10.0"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "radix-nova",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "rtl": false,
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "aliases": {
+    "components": "@vertexade/ui/components",
+    "utils": "@vertexade/ui/lib/utils",
+    "ui": "@vertexade/ui/components/ui",
+    "lib": "@vertexade/ui/lib",
+    "hooks": "@vertexade/ui/hooks"
+  },
+  "registries": {
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
+    "@agentcn": "https://www.agentcn.run/r/{name}.json"
+  }
+}

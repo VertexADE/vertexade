@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "VertexADE",
+    "slug": "vertexade",
+    "scheme": "vertexade",
+    "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vertexade.mobile"
+    },
+    "android": {
+      "package": "com.vertexade.mobile"
+    }
+  }
+}

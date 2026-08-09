@@ -1,0 +1,95 @@
+{
+  "name": "@vertexade/desktop",
+  "version": "0.0.1",
+  "private": false,
+  "description": "VertexADE desktop application with bundled API and web UI",
+  "homepage": "https://github.com/VertexADE/vertexade",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VertexADE/vertexade"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "VertexADE contributors",
+    "email": "dominic@vonk.io"
+  },
+  "bin": {
+    "vertexade-desktop": "bin/vertexade-desktop.mjs"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "type": "module",
+  "main": "dist/main.mjs",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "dev": "pnpm --filter @vertexade/web build && pnpm build:main && electron .",
+    "build:main": "node scripts/build.mjs",
+    "build": "pnpm --filter @vertexade/web build && pnpm build:main && electron-builder --dir",
+    "dist": "pnpm --filter @vertexade/web build && pnpm build:main && electron-builder",
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2 --passWithNoTests"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1",
+    "tsx": "^4.23.1"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.28.1",
+    "vite-plus": "0.2.6"
+  },
+  "build": {
+    "appId": "dev.vertexade.desktop",
+    "productName": "VertexADE",
+    "executableName": "vertexade",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/main.mjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/web",
+        "to": "web"
+      },
+      {
+        "from": "dist/api.mjs",
+        "to": "api.mjs"
+      },
+      {
+        "from": "dist/runtime",
+        "to": "runtime"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    }
+  }
+}

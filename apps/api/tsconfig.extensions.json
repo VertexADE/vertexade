@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noUncheckedIndexedAccess": true },
+  "include": ["src/server/agents/**/*.ts", "src/server/extensions/**/*.ts", "src/server/platform/**/*.ts"],
+  "exclude": ["src/server/**/*.test.ts"]
+}

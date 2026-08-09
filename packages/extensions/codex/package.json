@@ -1,0 +1,25 @@
+{
+  "name": "@vertexade/extension-codex",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/extension.ts",
+    "./server": "./src/server/extension.ts"
+  },
+  "scripts": {
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@vertexade/platform-contracts": "workspace:*",
+    "@vertexade/platform-extension-sdk": "workspace:*",
+    "@vertexade/platform-server": "workspace:*",
+    "tsx": "^4.23.1",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.1"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "entry": ["apps/mobile/test/setup.ts", "apps/mobile/scripts/device-runtime-probe.mjs"],
+  "ignoreDependencies": ["jest-junit", "react", "vite-plus"],
+  "duplicates": {
+    "ignore": ["**/*.gen.ts"]
+  }
+}

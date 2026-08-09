@@ -1,0 +1,16 @@
+{
+  "name": "@vertexade/platform-extension-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "vp check --no-fmt",
+    "test": "vp test run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@vertexade/platform-contracts": "workspace:*"
+  }
+}
