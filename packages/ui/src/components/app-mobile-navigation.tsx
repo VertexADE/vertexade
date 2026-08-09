@@ -19,16 +19,24 @@ function isActive(item: MobileNavigationItem, pathname: string) {
 }
 
 export function MobileMenuButton({ className }: { className?: string }) {
-  const { toggleSidebar } = useSidebar()
+  const { openMobile, setOpenMobile } = useSidebar()
   return (
-    <Button type="button" variant="ghost" size="icon-sm" className={className} onClick={toggleSidebar} aria-label="Open workspace menu">
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className={className}
+      onClick={() => setOpenMobile(true)}
+      aria-label="Open workspace menu"
+      aria-expanded={openMobile}
+    >
       <Menu />
     </Button>
   )
 }
 
 export function MobileActionDock({ pathname, items }: { pathname: string; items: MobileNavigationItem[] }) {
-  const { toggleSidebar } = useSidebar()
+  const { openMobile, setOpenMobile } = useSidebar()
   const mobileItems = (['/', '/work', '/threads', '/pull-requests'] as const)
     .map((path) => items.find((item) => item.to === path))
     .filter((item): item is MobileNavigationItem => Boolean(item))
@@ -56,7 +64,9 @@ export function MobileActionDock({ pathname, items }: { pathname: string; items:
         type="button"
         className={cn(itemClass, menuIsActive && 'text-primary after:opacity-100')}
         aria-current={menuIsActive ? 'page' : undefined}
-        onClick={toggleSidebar}
+        aria-label="Open workspace menu"
+        aria-expanded={openMobile}
+        onClick={() => setOpenMobile(true)}
       >
         <Menu className="size-4" />
         <span>Menu</span>
