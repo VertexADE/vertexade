@@ -7,7 +7,7 @@ import { acpAgentId, type AcpHarnessConfiguration } from './config.ts'
 
 export function createAcpAgent({ harnessId, configuration }: { harnessId: string; configuration: () => AcpHarnessConfiguration }): Agent {
   const bridge = fileURLToPath(new URL('./bridge.ts', import.meta.url))
-  const tsxLoader = import.meta.resolve('tsx')
+  const scriptArguments = () => (process.env.VERTEXADE_BUNDLED_RUNTIME === '1' ? [] : ['--import', import.meta.resolve('tsx')])
   const initial = configuration()
   return {
     id: acpAgentId(harnessId),
@@ -24,8 +24,7 @@ export function createAcpAgent({ harnessId, configuration }: { harnessId: string
       const config = configuration()
       if (!config.command) throw new Error(`Configure the ${config.name} harness in Settings before launching it`)
       const args = [
-        '--import',
-        tsxLoader,
+        ...scriptArguments(),
         bridge,
         '--command',
         config.command,

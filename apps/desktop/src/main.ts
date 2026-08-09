@@ -70,6 +70,7 @@ async function createDesktopWindow() {
     APP_ROOT: resourcePath('runtime'),
     API_HOST: '127.0.0.1',
     API_PORT: String(apiPort),
+    VERTEXADE_BUNDLED_RUNTIME: '1',
     VERTEXADE_DATA_DIR: vertexHome,
     VERTEXADE_WORKTREE_ROOT: process.env.VERTEXADE_WORKTREE_ROOT || join(vertexHome, 'worktrees'),
   })

@@ -112,7 +112,7 @@ export function createOpenCodeAgent({
   const databasePath = openCodeDatabasePath(env)
   const skillPath = fileURLToPath(new URL('./skills', import.meta.url))
   const bridge = fileURLToPath(new URL('./bridge.ts', import.meta.url))
-  const tsxLoader = import.meta.resolve('tsx')
+  const scriptArguments = () => (process.env.VERTEXADE_BUNDLED_RUNTIME === '1' ? [] : ['--import', import.meta.resolve('tsx')])
   let modelCache: { expiresAt: number; models: Record<string, unknown>[] } | null = null
   let toolingCheck: Promise<void> | null = null
 
@@ -223,7 +223,7 @@ export function createOpenCodeAgent({
         '*': readOnly ? 'deny' : 'allow',
         task: readOnly || !allowSubagents ? 'deny' : 'allow',
       }
-      const args = appendAgentThreadArguments(['--import', tsxLoader, bridge, '--cwd', String(cwd)], {
+      const args = appendAgentThreadArguments([...scriptArguments(), bridge, '--cwd', String(cwd)], {
         prompt,
         resume,
         fork,

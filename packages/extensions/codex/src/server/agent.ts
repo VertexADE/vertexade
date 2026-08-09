@@ -33,7 +33,7 @@ export function createCodexAgent({
   const launcher = fileURLToPath(new URL('./start-thread.ts', import.meta.url))
   // Child processes run inside target repositories, so a bare `tsx` import
   // would be resolved from that repository instead of this application.
-  const tsxLoader = import.meta.resolve('tsx')
+  const scriptArguments = () => (process.env.VERTEXADE_BUNDLED_RUNTIME === '1' ? [] : ['--import', import.meta.resolve('tsx')])
   const rolloutPaths = new Map<string, string>()
   return {
     id: 'codex',
@@ -165,7 +165,7 @@ export function createCodexAgent({
       const servers = mcpServers as AgentMcpServer[]
       return {
         command: process.execPath,
-        args: ['--import', tsxLoader, ...args],
+        args: [...scriptArguments(), ...args],
         env: { VERTEXADE_MCP_SERVERS: JSON.stringify(servers) },
       }
     },

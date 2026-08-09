@@ -343,7 +343,7 @@ export function createClaudeCodeAgent({
   const home = env.HOME || homedir()
   const configDirectory = join(home, '.claude')
   const bridge = fileURLToPath(new URL('./bridge.ts', import.meta.url))
-  const tsxLoader = import.meta.resolve('tsx')
+  const scriptArguments = () => (process.env.VERTEXADE_BUNDLED_RUNTIME === '1' ? [] : ['--import', import.meta.resolve('tsx')])
 
   async function ensureToolingAccess() {
     const toolingEnvironment = agentProcessEnvironment(env)
@@ -380,7 +380,7 @@ export function createClaudeCodeAgent({
     },
     normalizeEvent: normalizeClaudeEvent,
     launch({ prompt, resume, fork, model, reasoningEffort, permissionMode, ephemeral = false, allowSubagents = false, mcpServers = [] }) {
-      const args = appendAgentThreadArguments(['--import', tsxLoader, bridge], {
+      const args = appendAgentThreadArguments([...scriptArguments(), bridge], {
         prompt,
         resume,
         fork,
