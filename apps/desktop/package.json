@@ -1,6 +1,6 @@
 {
   "name": "@vertexade/desktop",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": false,
   "description": "VertexADE desktop application with bundled API and web UI",
   "homepage": "https://github.com/VertexADE/vertexade",
@@ -65,6 +65,10 @@
       {
         "from": "dist/api.mjs",
         "to": "api.mjs"
+      },
+      {
+        "from": "dist/subagent-mcp.mjs",
+        "to": "subagent-mcp.mjs"
       },
       {
         "from": "dist/runtime",

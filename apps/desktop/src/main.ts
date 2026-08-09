@@ -71,6 +71,7 @@ async function createDesktopWindow() {
     API_HOST: '127.0.0.1',
     API_PORT: String(apiPort),
     VERTEXADE_BUNDLED_RUNTIME: '1',
+    VERTEXADE_SUBAGENT_MCP_SCRIPT: resourcePath('subagent-mcp.mjs'),
     VERTEXADE_DATA_DIR: vertexHome,
     VERTEXADE_WORKTREE_ROOT: process.env.VERTEXADE_WORKTREE_ROOT || join(vertexHome, 'worktrees'),
   })

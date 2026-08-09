@@ -44,6 +44,18 @@ await Promise.all([
       js: "import { createRequire as __vertexadeCreateRequire } from 'node:module'; const require = __vertexadeCreateRequire(import.meta.url);",
     },
   }),
+  build({
+    entryPoints: [resolve(repositoryRoot, 'apps/api/src/server/agents/subagent-mcp.ts')],
+    outfile: resolve(output, 'subagent-mcp.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node22',
+    sourcemap: true,
+    banner: {
+      js: "import { createRequire as __vertexadeCreateRequire } from 'node:module'; const require = __vertexadeCreateRequire(import.meta.url);",
+    },
+  }),
 ])
 
 await Promise.all(

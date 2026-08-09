@@ -182,8 +182,7 @@ export class SubagentHarness {
   readonly #startChild: Dependencies['startChild']
   readonly #pendingByParent = new Map<number, number>()
   #pendingTotal = 0
-  readonly #mcpScript = fileURLToPath(new URL('./subagent-mcp.ts', import.meta.url))
-  readonly #tsxLoader = import.meta.resolve('tsx')
+  readonly #mcpScript = process.env.VERTEXADE_SUBAGENT_MCP_SCRIPT || fileURLToPath(new URL('./subagent-mcp.ts', import.meta.url))
 
   constructor(dependencies: Dependencies) {
     this.#database = dependencies.database
@@ -225,7 +224,7 @@ export class SubagentHarness {
       name: toolServerName,
       transport: 'stdio',
       command: process.execPath,
-      args: ['--import', this.#tsxLoader, this.#mcpScript],
+      args: [...(process.env.VERTEXADE_BUNDLED_RUNTIME === '1' ? [] : ['--import', import.meta.resolve('tsx')]), this.#mcpScript],
       env: {
         VERTEXADE_SUBAGENT_API_URL: this.#apiUrl,
         VERTEXADE_SUBAGENT_TOKEN: token,
