@@ -32,6 +32,11 @@ Expo's packaged Linux compiler is x64; on ARM64 Linux the release wrapper uses
 message when emulation is unavailable. Native x64 and macOS hosts stay on
 Expo's direct compiler path.
 
+The `Build unsigned iOS app` GitHub Actions workflow generates the native Expo
+project on a macOS runner and uploads `VertexADE-ios-simulator.zip`. This is an
+unsigned simulator `.app` for development and testing; it is not an App Store
+archive and cannot be installed on a physical iPhone.
+
 For source inspection only, `pnpm --filter @vertexade/mobile export:analysis`
 emits plain JavaScript plus source maps. That output is not a
 release artifact. `export:compare` cold-exports both forms, validates their

@@ -10,9 +10,15 @@ const outputDirectory = process.env.VERTEXADE_WEB_OUTPUT_DIR
 export default defineConfig({
   build: {
     rolldownOptions: {
-      external: ['env', 'tslib', 'wasi_snapshot_preview1'],
+      // `tslib` is used by browser dependencies such as Radix and RxJS. It must
+      // stay inside the client bundle: a bare `from "tslib"` import cannot be
+      // resolved by a browser and prevents the application from hydrating.
+      external: ['env', 'wasi_snapshot_preview1'],
     },
   },
+  // The Node build resolves tslib from the packaged server dependencies. Keeping
+  // it external here also preserves its CommonJS default-export interoperability.
+  ssr: { external: ['tslib'] },
   resolve: {
     tsconfigPaths: true,
   },

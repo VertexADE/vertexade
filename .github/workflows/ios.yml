@@ -1,0 +1,65 @@
+name: Build unsigned iOS app
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ios.yml'
+      - 'apps/mobile/**'
+      - 'packages/platform-client/**'
+      - 'packages/platform-contracts/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  ios-simulator:
+    name: Unsigned iOS simulator app
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_VERTEXADE_URL: http://localhost:4174
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate mobile app
+        run: |
+          pnpm --filter @vertexade/mobile check
+          pnpm --filter @vertexade/mobile test:ci
+      - name: Generate iOS native project
+        run: pnpm --filter @vertexade/mobile exec expo prebuild --platform ios --no-install --clean
+      - name: Install CocoaPods dependencies
+        working-directory: apps/mobile/ios
+        run: pod install
+      - name: Build unsigned simulator app
+        working-directory: apps/mobile/ios
+        run: |
+          xcodebuild \
+            -workspace VertexADE.xcworkspace \
+            -scheme VertexADE \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/vertexade-derived-data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+      - name: Package app bundle
+        run: |
+          APP_PATH="$RUNNER_TEMP/vertexade-derived-data/Build/Products/Release-iphonesimulator/VertexADE.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/VertexADE-ios-simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VertexADE-ios-simulator
+          path: ${{ runner.temp }}/VertexADE-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14

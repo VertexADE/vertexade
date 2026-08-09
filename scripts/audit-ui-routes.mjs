@@ -36,6 +36,18 @@ const viewports = values.viewport.length
 
 const coreRoutes = [
   { id: 'focus', path: '/' },
+  {
+    id: 'mobile-menu',
+    path: '/',
+    actionSelectors: ['[data-audit-action="navigation.mobile-menu.header"]'],
+    interactionReadySelector: '[data-slot="sidebar"][data-mobile="true"]',
+  },
+  {
+    id: 'mobile-menu-dock',
+    path: '/',
+    actionSelectors: ['[data-audit-action="navigation.mobile-menu.dock"]'],
+    interactionReadySelector: '[data-slot="sidebar"][data-mobile="true"]',
+  },
   { id: 'work', path: '/work' },
   { id: 'work-board', path: '/work?view=board' },
   { id: 'work-list', path: '/work?view=list' },

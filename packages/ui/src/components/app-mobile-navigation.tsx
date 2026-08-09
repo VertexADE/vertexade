@@ -29,6 +29,7 @@ export function MobileMenuButton({ className }: { className?: string }) {
       onClick={() => setOpenMobile(true)}
       aria-label="Open workspace menu"
       aria-expanded={openMobile}
+      data-audit-action="navigation.mobile-menu.header"
     >
       <Menu />
     </Button>
@@ -66,6 +67,7 @@ export function MobileActionDock({ pathname, items }: { pathname: string; items:
         aria-current={menuIsActive ? 'page' : undefined}
         aria-label="Open workspace menu"
         aria-expanded={openMobile}
+        data-audit-action="navigation.mobile-menu.dock"
         onClick={() => setOpenMobile(true)}
       >
         <Menu className="size-4" />
