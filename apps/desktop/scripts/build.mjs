@@ -1,10 +1,12 @@
 import { build } from 'esbuild'
 import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 
 const desktopRoot = resolve(import.meta.dirname, '..')
 const repositoryRoot = resolve(desktopRoot, '../..')
 const output = resolve(desktopRoot, 'dist')
+const require = createRequire(import.meta.url)
 
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
@@ -101,3 +103,7 @@ await Promise.all(
 )
 
 await cp(resolve(repositoryRoot, 'apps/web/.output'), resolve(output, 'web'), { recursive: true, force: true })
+await cp(dirname(require.resolve('tslib/package.json')), resolve(output, 'web/server/node_modules/tslib'), {
+  recursive: true,
+  force: true,
+})
