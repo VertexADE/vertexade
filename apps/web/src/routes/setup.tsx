@@ -258,8 +258,23 @@ function SetupPage() {
                 <div className="space-y-4 border-t p-3 sm:p-4">
                   <GuideCard
                     number="1"
+                    icon={Wrench}
+                    title="Install pinned tools with mise (recommended)"
+                    description="mise installs the Node.js and pnpm versions declared by this repository and keeps upgrades reproducible. You can still install them manually."
+                    ready={Boolean(status.tools.find((tool) => tool.id === 'mise')?.ready)}
+                  >
+                    <Command value="mise trust && mise install" />
+                    <StatusList items={status.tools.filter((tool) => tool.id === 'mise')} />
+                    <p className="text-xs text-muted-foreground">
+                      Install mise from <code className="text-foreground">https://mise.jdx.dev/getting-started.html</code>, reopen your
+                      shell, then run the command above from the VertexADE checkout.
+                    </p>
+                  </GuideCard>
+
+                  <GuideCard
+                    number="2"
                     icon={TerminalSquare}
-                    title="Install from a clone"
+                    title="Prepare the cloned repository"
                     description="The interactive command checks prerequisites, installs exact dependencies, and runs the quality gates."
                   >
                     <Command value="pnpm setup" />
@@ -270,17 +285,17 @@ function SetupPage() {
                   </GuideCard>
 
                   <GuideCard
-                    number="2"
+                    number="3"
                     icon={Wrench}
                     title="Confirm core tools"
-                    description={`The running server uses ${status.runtime.nodeVersion}. Node.js 22.13+, pnpm, and Git are required.`}
+                    description={`The running server uses ${status.runtime.nodeVersion}. Node.js 22.13+, pnpm, and Git are required; mise is the recommended version manager.`}
                     ready={status.tools.filter((tool) => tool.required).every((tool) => tool.ready)}
                   >
                     <StatusList items={status.tools.filter((tool) => tool.required)} />
                   </GuideCard>
 
                   <GuideCard
-                    number="3"
+                    number="4"
                     icon={GitFork}
                     title={`Connect ${status.scm.name}`}
                     description="Repository discovery, pull requests, checks, and deployment data need an authenticated source-control provider."
@@ -309,7 +324,7 @@ function SetupPage() {
                   </GuideCard>
 
                   <GuideCard
-                    number="4"
+                    number="5"
                     icon={Bot}
                     title="Choose an execution agent"
                     description="Only one agent is required. Install and authenticate the provider you want to launch."
@@ -334,7 +349,7 @@ function SetupPage() {
                   </GuideCard>
 
                   <GuideCard
-                    number="5"
+                    number="6"
                     icon={PackageCheck}
                     title="Configure extensions"
                     description="Bundled extensions are already installed. Enable only what belongs in this workspace and finish each connection there."

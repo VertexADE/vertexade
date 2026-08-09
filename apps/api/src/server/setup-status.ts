@@ -13,12 +13,19 @@ export type ToolSpec = {
 
 const coreToolSpecs: ToolSpec[] = [
   {
+    id: 'mise',
+    name: 'mise',
+    command: 'mise',
+    args: ['--version'],
+    install: 'Recommended: install mise, then run mise trust && mise install in the VertexADE checkout',
+  },
+  {
     id: 'pnpm',
     name: 'pnpm',
     command: 'pnpm',
     args: ['--version'],
     required: true,
-    install: 'Install Node.js 22.13 or newer and run corepack enable pnpm',
+    install: 'Recommended: run mise trust && mise install; or install Node.js 22.13+ and enable pnpm manually',
   },
   {
     id: 'git',

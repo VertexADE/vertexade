@@ -2,7 +2,7 @@ import type { JsonSettingsStore } from './settings-store.ts'
 
 const promptPolicyKinds = ['work', 'review', 'planning', 'followUp', 'scheduled'] as const
 export type PromptPolicyKind = (typeof promptPolicyKinds)[number]
-export const toolNames = ['git', 'gh', 'codex', 'claude', 'opencode', 'pnpm', 'pm2', 'docker', 'fallow'] as const
+export const toolNames = ['git', 'gh', 'codex', 'claude', 'opencode', 'pnpm', 'mise', 'pm2', 'docker', 'fallow'] as const
 export type ToolName = (typeof toolNames)[number]
 
 export type SystemConfigurationValue = {
@@ -19,7 +19,7 @@ export type SystemConfigurationValue = {
 
 export const defaultSystemConfiguration: SystemConfigurationValue = {
   prompts: { work: '', review: '', planning: '', followUp: '', scheduled: '' },
-  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', pm2: '', docker: '', fallow: '' },
+  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', mise: '', pm2: '', docker: '', fallow: '' },
   runtime: {
     capabilityTimeoutMs: 30_000,
     retryAttempts: 1,

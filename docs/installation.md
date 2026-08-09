@@ -5,10 +5,25 @@ VertexADE is a self-hosted Node.js application. The guided path has two parts:
 1. `pnpm setup` prepares and validates the cloned repository.
 2. `/setup` validates the running application and guides connection setup.
 
+## Recommended tool bootstrap with mise
+
+[mise](https://mise.jdx.dev/getting-started.html) is the recommended version manager. The checked-in `mise.toml` pins compatible Node.js and pnpm versions, so a new workstation can reproduce the same toolchain:
+
+```bash
+git clone git@github.com:VertexADE/vertexade.git
+cd vertexade
+mise trust
+mise install
+pnpm setup
+```
+
+`mise trust` is intentionally explicit because repository configuration can affect the local shell. Manual installation remains fully supported.
+
 ## Prerequisites
 
 | Requirement                     | Why it is needed                                            |
 | ------------------------------- | ----------------------------------------------------------- |
+| mise (recommended)              | Install the repository-pinned Node.js and pnpm versions     |
 | Node.js 22.13 or newer and pnpm | Run the server, frontend, ESLint 10, installer, and build   |
 | Git                             | Clone repositories and create isolated worktrees            |
 | GitHub CLI or a GitHub App      | Read repositories, pull requests, checks, and deployments   |

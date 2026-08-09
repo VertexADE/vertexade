@@ -38,6 +38,7 @@ function command(commandName, args, runner = spawnSync) {
 export function collectChecks(runner = spawnSync) {
   const nodeVersion = parseVersion(process.version)
   const tools = {
+    mise: command('mise', ['--version'], runner),
     pnpm: command('pnpm', ['--version'], runner),
     git: command('git', ['--version'], runner),
     githubCli: command('gh', ['--version'], runner),
@@ -48,6 +49,13 @@ export function collectChecks(runner = spawnSync) {
     pm2: command('pm2', ['--version'], runner),
   }
   const checks = [
+    {
+      id: 'mise',
+      label: 'mise tool manager (recommended)',
+      state: tools.mise.available ? 'pass' : 'warn',
+      required: false,
+      detail: tools.mise.output || 'Recommended for installing the pinned Node.js and pnpm versions',
+    },
     {
       id: 'node',
       label: 'Node.js 22.13 or newer',
@@ -135,20 +143,32 @@ async function confirm(question, defaultValue, rl) {
 
 async function guidedInstall({ yes = false } = {}) {
   console.log(`\n${paint('1;36', 'VertexADE setup')}\n`)
-  console.log(
-    'This guide checks the workstation, installs project dependencies, validates the app, and leaves authentication choices explicit.\n',
-  )
+  console.log('This guide takes you from a fresh clone to a verified, running workspace. Authentication remains explicit.\n')
+  console.log(`${paint('1', 'Step 1 of 4 · Check the workstation')}`)
   const result = collectChecks()
   printChecks(result.checks)
   const summary = summarizeChecks(result.checks)
   if (!summary.ready) {
-    console.error(`\n${paint('31', 'Fix the required checks above, then run this command again.')}`)
+    console.error(`\n${paint('31', 'Required tools are missing.')}`)
+    console.error(`  ${paint('1', 'Recommended:')} install mise from ${paint('4;36', 'https://mise.jdx.dev/getting-started.html')}`)
+    console.error(`  Then run: ${paint('36', 'mise trust && mise install && pnpm setup')}`)
+    console.error(`  Or install Node.js 22.13+, pnpm 11, and Git manually, then rerun ${paint('36', 'pnpm setup')}.`)
     process.exitCode = 1
     return
   }
 
   const rl = yes ? null : createInterface({ input: stdin, output: stdout })
   try {
+    console.log(`\n${paint('1', 'Step 2 of 4 · Align tool versions')}`)
+    if (result.tools.mise.available) {
+      const align = yes || (await confirm('Use mise to install the versions pinned by this repository?', true, rl))
+      if (align) execute('mise', ['install'])
+    } else {
+      console.log(
+        `${paint('33', 'mise is not installed.')} Continuing with the current Node.js and pnpm. For reproducible versions, install mise later and run ${paint('36', 'mise trust && mise install')}.`,
+      )
+    }
+
     if (summary.advisories.some((check) => check.id === 'github-auth')) {
       console.log(
         `\n${paint('33', 'GitHub is not authenticated yet.')} Repository sync requires either \`gh auth login\` or a GitHub App configured after startup.`,
@@ -157,6 +177,7 @@ async function guidedInstall({ yes = false } = {}) {
         execute('gh', ['auth', 'login'])
     }
 
+    console.log(`\n${paint('1', 'Step 3 of 4 · Install and verify VertexADE')}`)
     const install = yes || (await confirm('Install exact project dependencies with pnpm?', true, rl))
     if (install) execute('pnpm', ['install', '--frozen-lockfile'])
 
@@ -167,7 +188,8 @@ async function guidedInstall({ yes = false } = {}) {
       execute('pnpm', ['build'])
     }
 
-    console.log(`\n${paint('32;1', 'Setup complete.')} Choose how to start:`)
+    console.log(`\n${paint('1', 'Step 4 of 4 · Start and finish in the UI')}`)
+    console.log(`${paint('32;1', 'Setup complete.')} Choose how to start:`)
     console.log(`  Development: ${paint('36', 'pnpm dev')}`)
     console.log(`  Production:  ${paint('36', 'pnpm start')}`)
     console.log(

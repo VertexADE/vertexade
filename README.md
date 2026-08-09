@@ -33,6 +33,18 @@ Requirements:
 - GitHub CLI when using GitHub features
 - At least one supported agent CLI for agent execution
 
+The recommended bootstrap uses [mise](https://mise.jdx.dev/getting-started.html) to install the repository-pinned Node.js and pnpm versions:
+
+```bash
+git clone git@github.com:VertexADE/vertexade.git
+cd vertexade
+mise trust
+mise install
+pnpm setup
+```
+
+Manual Node.js and pnpm installation remains supported. If they are already installed, use the shorter flow:
+
 ```bash
 git clone git@github.com:VertexADE/vertexade.git
 cd vertexade
@@ -129,7 +141,7 @@ Supported built-in execution extensions include ACP, Claude Code, Codex, and Ope
 
 ### Tool executable overrides
 
-VertexADE normally discovers command-line tools through the server process `PATH`. To use tools installed elsewhere, open **Settings → Agent execution → Tool executable paths** and enter an executable name or path for Git, GitHub CLI, Codex, Claude Code, OpenCode, pnpm, PM2, Docker, or Fallow. Empty fields continue to use `PATH`.
+VertexADE normally discovers command-line tools through the server process `PATH`. To use tools installed elsewhere, open **Settings → Agent execution → Tool executable paths** and enter an executable name or path for Git, GitHub CLI, Codex, Claude Code, OpenCode, pnpm, mise, PM2, Docker, or Fallow. Empty fields continue to use `PATH`.
 
 Overrides are stored in the backend configuration and apply immediately to setup checks, repository and GitHub operations, preview infrastructure, and agent launches. They also propagate into nested agent bridges, so desktop and npm installations can select host-installed tools without environment-based server-origin configuration.
 

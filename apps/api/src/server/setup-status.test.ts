@@ -37,6 +37,7 @@ describe('setup status', () => {
     const tools = await Effect.runPromise(inspectSetupToolsEffect(async (command) => `${command} 1.0.0`))
 
     expect(tools.map(({ id, ready }) => ({ id, ready }))).toEqual([
+      { id: 'mise', ready: true },
       { id: 'pnpm', ready: true },
       { id: 'git', ready: true },
       { id: 'pm2', ready: true },

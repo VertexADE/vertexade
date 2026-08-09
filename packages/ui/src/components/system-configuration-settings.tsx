@@ -10,7 +10,7 @@ import { api } from '../lib/dashboard-api'
 
 export type SystemConfigurationValue = {
   prompts: { work: string; review: string; planning: string; followUp: string; scheduled: string }
-  tools: Record<'git' | 'gh' | 'codex' | 'claude' | 'opencode' | 'pnpm' | 'pm2' | 'docker' | 'fallow', string>
+  tools: Record<'git' | 'gh' | 'codex' | 'claude' | 'opencode' | 'pnpm' | 'mise' | 'pm2' | 'docker' | 'fallow', string>
   runtime: {
     capabilityTimeoutMs: number
     retryAttempts: number
@@ -22,7 +22,7 @@ export type SystemConfigurationValue = {
 
 export const emptySystemConfiguration: SystemConfigurationValue = {
   prompts: { work: '', review: '', planning: '', followUp: '', scheduled: '' },
-  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', pm2: '', docker: '', fallow: '' },
+  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', mise: '', pm2: '', docker: '', fallow: '' },
   runtime: {
     capabilityTimeoutMs: 30_000,
     retryAttempts: 1,
@@ -117,6 +117,7 @@ const toolFields = [
   ['claude', 'Claude Code'],
   ['opencode', 'OpenCode'],
   ['pnpm', 'pnpm'],
+  ['mise', 'mise'],
   ['pm2', 'PM2'],
   ['docker', 'Docker'],
   ['fallow', 'Fallow'],
