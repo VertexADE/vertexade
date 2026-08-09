@@ -127,6 +127,12 @@ Agent launches default to a combined Work directory. Repository worktrees are is
 
 Supported built-in execution extensions include ACP, Claude Code, Codex, and OpenCode. Each extension owns launch and continuation behavior, event normalization, permissions, settings, and portable UI declarations.
 
+### Tool executable overrides
+
+VertexADE normally discovers command-line tools through the server process `PATH`. To use tools installed elsewhere, open **Settings → Agent execution → Tool executable paths** and enter an executable name or path for Git, GitHub CLI, Codex, Claude Code, OpenCode, pnpm, PM2, Docker, or Fallow. Empty fields continue to use `PATH`.
+
+Overrides are stored in the backend configuration and apply immediately to setup checks, repository and GitHub operations, preview infrastructure, and agent launches. They also propagate into nested agent bridges, so desktop and npm installations can select host-installed tools without environment-based server-origin configuration.
+
 ## Extensions and plugins
 
 Extensions are workspace packages under `packages/extensions/<id>`. They can contribute execution agents, source-control providers, work management, records, findings, deployments, settings, portable UI surfaces, automation primitives, actions, triggers, gates, and evidence collectors.

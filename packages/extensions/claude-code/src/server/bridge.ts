@@ -6,6 +6,15 @@ type Options = AgentThreadOptions
 
 type ControlCommand = { type?: unknown; command_id?: unknown; prompt?: unknown }
 
+function toolCommand(name: string) {
+  try {
+    const paths = JSON.parse(process.env.VERTEXADE_TOOL_PATHS || '{}') as Record<string, unknown>
+    return typeof paths[name] === 'string' && paths[name].trim() ? paths[name].trim() : name
+  } catch {
+    return name
+  }
+}
+
 function mcpConfiguration() {
   let values: any[] = []
   try {
@@ -72,7 +81,7 @@ async function run(configuration: Options) {
     args.push('--dangerously-skip-permissions')
   }
 
-  const child = spawn('claude', args, {
+  const child = spawn(toolCommand('claude'), args, {
     env: process.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false,

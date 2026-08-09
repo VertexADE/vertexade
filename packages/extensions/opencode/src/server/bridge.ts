@@ -12,6 +12,15 @@ type Options = AgentThreadOptions & { cwd: string }
 
 type ControlCommand = { type?: unknown; command_id?: unknown; prompt?: unknown }
 
+function toolCommand(name: string) {
+  try {
+    const paths = JSON.parse(process.env.VERTEXADE_TOOL_PATHS || '{}') as Record<string, unknown>
+    return typeof paths[name] === 'string' && paths[name].trim() ? paths[name].trim() : name
+  } catch {
+    return name
+  }
+}
+
 function emit(event: Record<string, unknown>) {
   process.stdout.write(`${JSON.stringify(event)}\n`)
 }
@@ -92,7 +101,7 @@ async function run(configuration: Options) {
   if (!configuration.cwd || !configuration.prompt) throw new Error('OpenCode bridge requires --cwd and --prompt')
   const port = await availablePort()
   const baseUrl = `http://127.0.0.1:${port}`
-  const server = spawn('opencode', ['serve', '--hostname', '127.0.0.1', '--port', String(port)], {
+  const server = spawn(toolCommand('opencode'), ['serve', '--hostname', '127.0.0.1', '--port', String(port)], {
     cwd: configuration.cwd,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -118,7 +127,7 @@ async function run(configuration: Options) {
     if (configuration.reasoningEffort) args.push('--variant', configuration.reasoningEffort)
     args.push(configuration.prompt)
 
-    runner = spawn('opencode', args, {
+    runner = spawn(toolCommand('opencode'), args, {
       cwd: configuration.cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],

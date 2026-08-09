@@ -30,6 +30,7 @@ import {
   emptySystemConfiguration,
   PromptPolicySettings,
   RuntimeSettings,
+  ToolPathSettings,
   type SystemConfigurationValue,
 } from '@vertexade/ui/components/system-configuration-settings'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
@@ -516,6 +517,7 @@ function SettingsPage() {
                     value={threadDefaults}
                     onSaved={setThreadDefaults}
                   />
+                  <ToolPathSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
                   <RuntimeSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
                 </section>
               </TabsContent>

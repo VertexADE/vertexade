@@ -68,7 +68,7 @@ import {
   worktreePreviewSettings as readWorktreePreviewSettings,
 } from './server/dashboard/runtime-settings.ts'
 import { backfillJobActivity, createJobDiffStore } from './server/dashboard/job-state.ts'
-import { agentLogPath as createAgentLogPath, body, json, run } from './server/dashboard/server-utils.ts'
+import { agentLogPath as createAgentLogPath, body, configureCommandResolver, json, run } from './server/dashboard/server-utils.ts'
 import { createProviderSelectionRuntime } from './server/dashboard/provider-selection-runtime.ts'
 import { createJobLogQuery } from './server/dashboard/job-log-query.ts'
 import { createExtensionMigrationStore } from './server/dashboard/extension-migration-store.ts'
@@ -241,6 +241,7 @@ const encryptedSettings = new EncryptedSettingsStore(db, SETTINGS_KEY)
 const appSettings = new JsonSettingsStore(db)
 const worktreePreviewSettings = () => readWorktreePreviewSettings(appSettings)
 const systemConfiguration = new SystemConfiguration(appSettings)
+configureCommandResolver((command) => systemConfiguration.tool(command))
 const repositoryEnvironments = new RepositoryEnvironmentProfileService(db, encryptedSettings, run)
 worktreePreviews = new WorktreePreviewRuntime({
   db,
@@ -644,9 +645,11 @@ function spawnAgentThread(options: any, spawnOptions: any, runtimeAgent = reques
   const decorated = localized.jobId ? subagentHarness.decorateLaunch(Number(localized.jobId), localized) : localized
   const { jobId: _jobId, ...agentOptions } = decorated
   const launch = runtimeAgent.launch(agentOptions)
-  const child: any = spawn(launch.command, launch.args, {
+  const child: any = spawn(systemConfiguration.tool(launch.command), launch.args, {
     ...spawnOptions,
-    env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env),
+    env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env, {
+      VERTEXADE_TOOL_PATHS: JSON.stringify(systemConfiguration.read().tools),
+    }),
   })
   child.runtimeAgent = runtimeAgent
   if (runtimeAgent.closeStdinAfterLaunch) child.stdin?.end()

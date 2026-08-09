@@ -2,9 +2,12 @@ import type { JsonSettingsStore } from './settings-store.ts'
 
 const promptPolicyKinds = ['work', 'review', 'planning', 'followUp', 'scheduled'] as const
 export type PromptPolicyKind = (typeof promptPolicyKinds)[number]
+export const toolNames = ['git', 'gh', 'codex', 'claude', 'opencode', 'pnpm', 'pm2', 'docker', 'fallow'] as const
+export type ToolName = (typeof toolNames)[number]
 
 export type SystemConfigurationValue = {
   prompts: Record<PromptPolicyKind, string>
+  tools: Record<ToolName, string>
   runtime: {
     capabilityTimeoutMs: number
     retryAttempts: number
@@ -16,6 +19,7 @@ export type SystemConfigurationValue = {
 
 export const defaultSystemConfiguration: SystemConfigurationValue = {
   prompts: { work: '', review: '', planning: '', followUp: '', scheduled: '' },
+  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', pm2: '', docker: '', fallow: '' },
   runtime: {
     capabilityTimeoutMs: 30_000,
     retryAttempts: 1,
@@ -37,7 +41,7 @@ function record(value: unknown): value is Record<string, unknown> {
 function checkedUpdate(input: unknown, current: SystemConfigurationValue): SystemConfigurationValue {
   if (!record(input)) throw new Error('System configuration must be an object')
   for (const key of Object.keys(input))
-    if (!['prompts', 'runtime'].includes(key)) throw new Error(`Unknown system configuration section: ${key}`)
+    if (!['prompts', 'tools', 'runtime'].includes(key)) throw new Error(`Unknown system configuration section: ${key}`)
   const prompts = { ...current.prompts }
   if (input.prompts !== undefined) {
     if (!record(input.prompts)) throw new Error('Prompt policies must be an object')
@@ -48,6 +52,19 @@ function checkedUpdate(input: unknown, current: SystemConfigurationValue): Syste
       if (value.length > 20_000) throw new Error(`${key} prompt policy exceeds 20,000 characters`)
       if (value.includes('</workspace_admin_instructions>')) throw new Error(`${key} prompt policy contains a reserved closing tag`)
       prompts[key as PromptPolicyKind] = value.trim()
+    }
+  }
+  const tools = { ...current.tools }
+  if (input.tools !== undefined) {
+    if (!record(input.tools)) throw new Error('Tool paths must be an object')
+    const knownTools = new Set<string>(toolNames)
+    for (const [key, value] of Object.entries(input.tools)) {
+      if (!knownTools.has(key)) throw new Error(`Unknown tool: ${key}`)
+      if (typeof value !== 'string') throw new Error(`${key} tool path must be text`)
+      const path = value.trim()
+      if (path.length > 4096) throw new Error(`${key} tool path exceeds 4,096 characters`)
+      if (path.includes('\0')) throw new Error(`${key} tool path contains an invalid character`)
+      tools[key as ToolName] = path
     }
   }
   const runtime = { ...current.runtime }
@@ -68,13 +85,14 @@ function checkedUpdate(input: unknown, current: SystemConfigurationValue): Syste
       runtime[key as keyof typeof runtime] = Number(value)
     }
   }
-  return { prompts, runtime }
+  return { prompts, tools, runtime }
 }
 
 export function normalizeSystemConfiguration(input: unknown): SystemConfigurationValue {
   const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
   const promptInput = value.prompts && typeof value.prompts === 'object' ? (value.prompts as Record<string, unknown>) : {}
   const runtimeInput = value.runtime && typeof value.runtime === 'object' ? (value.runtime as Record<string, unknown>) : {}
+  const toolInput = value.tools && typeof value.tools === 'object' ? (value.tools as Record<string, unknown>) : {}
   const prompts = Object.fromEntries(
     promptPolicyKinds.map((kind) => [
       kind,
@@ -85,6 +103,9 @@ export function normalizeSystemConfiguration(input: unknown): SystemConfiguratio
   ) as Record<PromptPolicyKind, string>
   return {
     prompts,
+    tools: Object.fromEntries(
+      toolNames.map((name) => [name, typeof toolInput[name] === 'string' ? toolInput[name].trim().slice(0, 4096) : '']),
+    ) as Record<ToolName, string>,
     runtime: {
       capabilityTimeoutMs: integer(
         runtimeInput.capabilityTimeoutMs,
@@ -122,5 +143,9 @@ export class SystemConfiguration {
     const instructions = this.read().prompts[kind]
     if (!instructions) return base
     return `${base.trim()}\n\n<workspace_admin_instructions purpose="${kind}">\n${instructions}\n</workspace_admin_instructions>`
+  }
+
+  tool(command: string) {
+    return toolNames.includes(command as ToolName) ? this.read().tools[command as ToolName] || command : command
   }
 }

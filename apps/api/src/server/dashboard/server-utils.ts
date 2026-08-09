@@ -2,6 +2,12 @@ import { join } from 'node:path'
 import { readRequestBody } from '@vertexade/platform-server/http'
 import { runCommand } from '../process.ts'
 
+let resolveCommand = (command: string) => command
+
+export function configureCommandResolver(resolver: (command: string) => string) {
+  resolveCommand = resolver
+}
+
 function logSegment(value: string, fallback: string) {
   return (
     value
@@ -37,5 +43,5 @@ export async function body(request: Request, maxBytes = 100_000): Promise<any> {
 }
 
 export function run(command: string, args: string[], options: any = {}) {
-  return runCommand(command, args, options)
+  return runCommand(resolveCommand(command), args, options)
 }

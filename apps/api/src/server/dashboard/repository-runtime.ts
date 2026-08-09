@@ -108,6 +108,7 @@ import {
   runtimeRun as run,
   runtimeRunReadOnlyContentGeneration as runReadOnlyContentGeneration,
   runtimeScmProvider as scmProvider,
+  runtimeSystemConfiguration as systemConfiguration,
   runtimeWork as work,
   runtimeWorkCleanup as workCleanup,
   runtimeWorktreePreviews as worktreePreviews,
@@ -156,7 +157,9 @@ function runAgentThread(options: any, runOptions: any, runtimeAgent = requestedA
   const launch = runtimeAgent.launch(localizeAgentPrompt({ ...agentLaunchContext.getStore(), ...options }))
   return run(launch.command, launch.args, {
     ...runOptions,
-    env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env),
+    env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env, {
+      VERTEXADE_TOOL_PATHS: JSON.stringify(systemConfiguration.read().tools),
+    }),
   })
 }
 

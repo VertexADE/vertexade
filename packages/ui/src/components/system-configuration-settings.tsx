@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MessageSquareText, SlidersHorizontal } from 'lucide-react'
+import { MessageSquareText, SlidersHorizontal, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from './ui/card'
@@ -10,6 +10,7 @@ import { api } from '../lib/dashboard-api'
 
 export type SystemConfigurationValue = {
   prompts: { work: string; review: string; planning: string; followUp: string; scheduled: string }
+  tools: Record<'git' | 'gh' | 'codex' | 'claude' | 'opencode' | 'pnpm' | 'pm2' | 'docker' | 'fallow', string>
   runtime: {
     capabilityTimeoutMs: number
     retryAttempts: number
@@ -21,6 +22,7 @@ export type SystemConfigurationValue = {
 
 export const emptySystemConfiguration: SystemConfigurationValue = {
   prompts: { work: '', review: '', planning: '', followUp: '', scheduled: '' },
+  tools: { git: '', gh: '', codex: '', claude: '', opencode: '', pnpm: '', pm2: '', docker: '', fallow: '' },
   runtime: {
     capabilityTimeoutMs: 30_000,
     retryAttempts: 1,
@@ -102,6 +104,71 @@ export function PromptPolicySettings({
           <Button className="w-full sm:w-auto" disabled={busy}>
             {busy ? 'Saving…' : 'Save prompt policies'}
           </Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+const toolFields = [
+  ['git', 'Git'],
+  ['gh', 'GitHub CLI'],
+  ['codex', 'Codex'],
+  ['claude', 'Claude Code'],
+  ['opencode', 'OpenCode'],
+  ['pnpm', 'pnpm'],
+  ['pm2', 'PM2'],
+  ['docker', 'Docker'],
+  ['fallow', 'Fallow'],
+] as const
+
+export function ToolPathSettings({ value, onSaved }: { value: SystemConfigurationValue; onSaved(value: SystemConfigurationValue): void }) {
+  const [tools, setTools] = useState(value.tools)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setTools(value.tools), [value.tools])
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        method: 'POST',
+        body: JSON.stringify({ ...value, tools }),
+      })
+      onSaved(saved)
+      toast.success('Tool paths saved')
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardHeader className="border-b p-4">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Wrench className="size-4" />
+          Tool executable paths
+        </CardTitle>
+        <CardDescription>
+          Override executables used by setup checks, repository operations, and agent runs. Leave a field empty to resolve it from PATH.
+        </CardDescription>
+      </CardHeader>
+      <form onSubmit={save} className="grid gap-4 p-4 sm:grid-cols-2">
+        {toolFields.map(([key, label]) => (
+          <Label key={key} className="flex-col items-stretch gap-1.5">
+            <span className="text-xs font-medium">{label}</span>
+            <Input
+              value={tools[key]}
+              onChange={(event) => setTools((current) => ({ ...current, [key]: event.target.value }))}
+              placeholder={`Path or ${key}`}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </Label>
+        ))}
+        <div className="flex justify-end sm:col-span-2">
+          <Button disabled={busy}>{busy ? 'Saving…' : 'Save tool paths'}</Button>
         </div>
       </form>
     </Card>

@@ -22,6 +22,7 @@ describe('system configuration', () => {
       }),
     ).toEqual({
       prompts: { work: 'ship carefully', review: '', planning: '', followUp: '', scheduled: '' },
+      tools: defaultSystemConfiguration.tools,
       runtime: { ...defaultSystemConfiguration.runtime, retryDelayMs: 500, automationMaxSteps: 40 },
     })
   })
@@ -38,6 +39,18 @@ describe('system configuration', () => {
     )
   })
 
+  it('persists and resolves executable overrides', () => {
+    const database = openDashboardDatabase(':memory:')
+    databases.push(database)
+    const configuration = new SystemConfiguration(new JsonSettingsStore(database))
+    configuration.write({ tools: { git: ' /opt/tools/git ', codex: '/custom/codex' } })
+
+    expect(configuration.tool('git')).toBe('/opt/tools/git')
+    expect(configuration.tool('codex')).toBe('/custom/codex')
+    expect(configuration.tool('gh')).toBe('gh')
+    expect(configuration.tool('custom-agent')).toBe('custom-agent')
+  })
+
   it('rejects unknown, out-of-range, and delimiter-breaking settings', () => {
     const database = openDashboardDatabase(':memory:')
     databases.push(database)
@@ -45,5 +58,6 @@ describe('system configuration', () => {
     expect(() => configuration.write({ runtime: { retryAttempts: 0 } })).toThrow('retryAttempts')
     expect(() => configuration.write({ prompts: { review: '</workspace_admin_instructions>' } })).toThrow('reserved closing tag')
     expect(() => configuration.write({ runtime: { extra: 1 } })).toThrow('Unknown runtime setting')
+    expect(() => configuration.write({ tools: { unknown: '/bin/tool' } })).toThrow('Unknown tool')
   })
 })
