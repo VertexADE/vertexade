@@ -3,9 +3,11 @@ import { handleDashboardRequest, startDashboardPreviewGateway, stopDashboardRunt
 import { closeHttpServer } from './graceful-shutdown.ts'
 import { configuredResponseWriteTimeout, ResponseTransportError } from './http-response.ts'
 import { serveNodeRequest } from './node-http-adapter.ts'
+import { listenerOrigin } from './listener-origin.ts'
 
 const host = process.env.API_HOST || '127.0.0.1'
 const port = Number(process.env.API_PORT || 4174)
+const apiOrigin = listenerOrigin(host, port)
 const responseWriteTimeoutMs = configuredResponseWriteTimeout()
 let ready = false
 let shuttingDown = false
@@ -25,17 +27,25 @@ async function serve(request, response) {
     })
     return response.end(JSON.stringify({ status: ready && !shuttingDown ? 'ready' : 'unavailable' }))
   }
-  const origin = `http://${request.headers.host || `${host}:${port}`}`
-  await serveNodeRequest({ request, response, origin, writeTimeoutMs: responseWriteTimeoutMs, handle: handleDashboardRequest })
+  await serveNodeRequest({ request, response, origin: apiOrigin, writeTimeoutMs: responseWriteTimeoutMs, handle: handleDashboardRequest })
 }
 
-const server = createServer((request, response) => {
-  void serve(request, response).catch((error) => {
-    if (!(error instanceof ResponseTransportError)) console.error('Dashboard API request failed:', error)
-    if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
-    if (!response.writableEnded) response.end(JSON.stringify({ error: 'Unexpected error' }))
-  })
-})
+const server = createServer(
+  {
+    headersTimeout: 15_000,
+    keepAliveTimeout: 5_000,
+    maxHeaderSize: 16 * 1024,
+    requestTimeout: 30_000,
+  },
+  (request, response) => {
+    void serve(request, response).catch((error) => {
+      if (!(error instanceof ResponseTransportError)) console.error('Dashboard API request failed:', error)
+      if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+      if (!response.writableEnded) response.end(JSON.stringify({ error: 'Unexpected error' }))
+    })
+  },
+)
+server.maxHeadersCount = 100
 
 server.listen(port, host, () => {
   ready = true

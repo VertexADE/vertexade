@@ -1,4 +1,4 @@
-import { HttpError } from '@vertexade/platform-server/http'
+import { HttpError, readResponseBody } from '@vertexade/platform-server/http'
 import { resilientFetch } from '@vertexade/platform-server/effect'
 import type { AzureConfig } from './client.ts'
 
@@ -31,9 +31,22 @@ export async function proxyAzureAvatar(request: Request, config: AzureConfig) {
   if (!response.ok) {
     throw new HttpError('Azure avatar could not be loaded', response.status)
   }
-  return new Response(await response.arrayBuffer(), {
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() || ''
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+    throw new HttpError('Azure avatar returned an unsupported content type', 502)
+  }
+  let body: Buffer
+  try {
+    body = await readResponseBody(response, 2 * 1024 * 1024)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Response body is too large') {
+      throw new HttpError('Azure avatar is too large', 502)
+    }
+    throw error
+  }
+  return new Response(Uint8Array.from(body), {
     headers: {
-      'content-type': response.headers.get('content-type') || 'image/png',
+      'content-type': contentType,
       'cache-control': 'private, max-age=3600',
     },
   })

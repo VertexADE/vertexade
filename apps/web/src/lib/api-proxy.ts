@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { HttpError, readRequestBody, readResponseBody } from '@vertexade/platform-server/http'
 import { OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
 import { apiBackends as configuredBackends, resolveApiBackendInputs, type ApiBackend, type BackendInput } from './api-backend'
 import {
@@ -17,6 +18,12 @@ import { dashboardCollections, type DashboardCollection, type ReadModelEntry, ty
 type BackendRuntime = BackendStatus & {
   snapshot: ReadModelResponse | null
 }
+
+const MAX_PROXY_JSON_REQUEST_BYTES = 100_000
+const MAX_PROMPT_IMAGE_REQUEST_BYTES = 28 * 1024 * 1024
+const MAX_LINKED_SERVERS_RESPONSE_BYTES = 256 * 1024
+const MAX_FEDERATED_READ_MODEL_RESPONSE_BYTES = 32 * 1024 * 1024
+const MAX_NORMALIZED_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
 
 let activeBackends = configuredBackends
 let linkedOutboundPolicy = new OutboundRequestPolicy()
@@ -71,7 +78,7 @@ async function refreshLinkedServers(request: Request, source: URL, force = false
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(5_000)]),
     })
     if (!response.ok) return
-    const payload = (await response.json()) as {
+    const payload = (await boundedJsonResponse(response, 'Linked-server discovery', MAX_LINKED_SERVERS_RESPONSE_BYTES, request.signal)) as {
       servers?: Array<{ id?: unknown; label?: unknown; url?: unknown; namespace?: unknown; enabled?: boolean }>
     }
     const linked = (payload.servers || []).filter((server) => server.enabled !== false)
@@ -102,7 +109,9 @@ async function refreshLinkedServers(request: Request, source: URL, force = false
   }
 }
 
-function proxyHeaders(source: URL, requestHeaders: Headers) {
+const crossBackendCredentialHeaders = ['authorization', 'cookie', 'proxy-authorization'] as const
+
+function proxyHeaders(source: URL, requestHeaders: Headers, forwardCredentials = true) {
   const headers = new Headers(requestHeaders)
   const requestOrigin = headers.get('origin')
   if (requestOrigin) {
@@ -118,6 +127,9 @@ function proxyHeaders(source: URL, requestHeaders: Headers) {
   headers.delete('host')
   headers.delete('content-length')
   headers.delete('x-vertexade-backend')
+  if (!forwardCredentials) {
+    for (const name of crossBackendCredentialHeaders) headers.delete(name)
+  }
   return headers
 }
 
@@ -216,10 +228,11 @@ function selectedBackend(source: URL, request: Request) {
   return { backend, pathname: source.pathname }
 }
 
-async function proxyBody(request: Request, backend: ApiBackend) {
+async function proxyBody(request: Request, backend: ApiBackend, pathname: string) {
   if (['GET', 'HEAD'].includes(request.method) || request.body === null) return undefined
   if (!request.headers.get('content-type')?.includes('application/json')) return request.body
-  const raw = await request.clone().text()
+  const maxBytes = pathname === '/api/prompt-images' ? MAX_PROMPT_IMAGE_REQUEST_BYTES : MAX_PROXY_JSON_REQUEST_BYTES
+  const raw = (await readRequestBody(request.clone(), maxBytes)).toString('utf8')
   try {
     return JSON.stringify(denormalizePayload(JSON.parse(raw), backend))
   } catch {
@@ -230,10 +243,10 @@ async function proxyBody(request: Request, backend: ApiBackend) {
 async function fetchBackend(request: Request, source: URL, backend: ApiBackend, pathname: string) {
   const target = new URL(rewritePath(pathname, backend), backend.url)
   target.search = rewriteSearch(new URLSearchParams(source.search)).toString()
-  const body = await proxyBody(request, backend)
+  const body = await proxyBody(request, backend, target.pathname)
   const init: RequestInit & { duplex?: 'half' } = {
     method: request.method,
-    headers: proxyHeaders(source, request.headers),
+    headers: proxyHeaders(source, request.headers, backend.isDefault),
     body,
     signal: request.signal,
   }
@@ -263,11 +276,16 @@ async function readBackendModel(request: Request, source: URL, backend: ApiBacke
     const target = new URL('/api/read-model?since=0', backend.url)
     const backendFetch = linkedBackendIds.has(backend.id) ? linkedOutboundPolicy.fetch : fetch
     const response = await backendFetch(target, {
-      headers: proxyHeaders(source, request.headers),
+      headers: proxyHeaders(source, request.headers, backend.isDefault),
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const payload = (await response.json()) as ReadModelResponse
+    const payload = (await boundedJsonResponse(
+      response,
+      'Federated read model',
+      MAX_FEDERATED_READ_MODEL_RESPONSE_BYTES,
+      request.signal,
+    )) as ReadModelResponse
     if (!payload.instanceId || !payload.updates) throw new Error('Invalid read-model response')
     runtime.connected = true
     runtime.lastConnectedAt = new Date().toISOString()
@@ -333,10 +351,19 @@ async function federatedReadModel(request: Request, source: URL) {
   return Response.json(payload)
 }
 
-async function normalizeResponse(response: Response, backend: ApiBackend) {
+async function boundedJsonResponse(response: Response, service: string, maxBytes: number, signal?: AbortSignal | null) {
+  const raw = (await readResponseBody(response, maxBytes, signal)).toString('utf8')
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    throw new Error(`${service} returned invalid JSON`)
+  }
+}
+
+async function normalizeResponse(response: Response, backend: ApiBackend, signal: AbortSignal) {
   if (activeBackends.length === 1 || !response.headers.get('content-type')?.includes('application/json')) return response
   const runtime = runtimeById.get(backend.id)!
-  const body = normalizeEntity(await response.json(), runtime)
+  const body = normalizeEntity(await boundedJsonResponse(response, 'Backend API', MAX_NORMALIZED_JSON_RESPONSE_BYTES, signal), runtime)
   const headers = new Headers(response.headers)
   headers.delete('content-length')
   return Response.json(body, { status: response.status, statusText: response.statusText, headers })
@@ -354,7 +381,13 @@ export async function proxyApiRequest({ request }: { request: Request }) {
   if (selected.backend.namespace * federatedIdSpan > Number.MAX_SAFE_INTEGER) {
     return Response.json({ error: 'Backend namespace exceeds the supported federation range' }, { status: 500 })
   }
-  const response = await fetchBackend(request, source, selected.backend, selected.pathname)
+  let response: Response
+  try {
+    response = await fetchBackend(request, source, selected.backend, selected.pathname)
+  } catch (error) {
+    if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status })
+    throw error
+  }
   if (source.pathname.startsWith('/api/settings/linked-servers') && request.method !== 'GET') linkedServersCheckedAt = 0
-  return normalizeResponse(response, selected.backend)
+  return normalizeResponse(response, selected.backend, request.signal)
 }

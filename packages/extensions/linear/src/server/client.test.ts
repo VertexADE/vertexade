@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 import { LinearClient, normalizeLinearConfig } from './client.ts'
 
 describe('LinearClient', () => {
+  it('rejects an oversized response before buffering its body', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('{}', {
+          headers: { 'content-length': String(8 * 1024 * 1024 + 1), 'content-type': 'application/json' },
+        }),
+    )
+
+    await expect(new LinearClient({ apiKey: 'key', teamIds: [] }, fetchMock).teams()).rejects.toThrow('Linear response is too large')
+  })
+
   it('preserves a stored API key while replacing selected teams', () => {
     expect(
       normalizeLinearConfig({ team_ids: ['team-2', 'team-2'] }, { apiKey: 'secret', teamIds: ['team-1'], webhookSecret: 'webhook-secret' }),

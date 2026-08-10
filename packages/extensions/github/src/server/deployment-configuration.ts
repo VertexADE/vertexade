@@ -54,13 +54,16 @@ function repository(value: unknown) {
   return candidate
 }
 
+function placeholderCount(value: string, placeholder: string): number {
+  return value.split(placeholder).length - 1
+}
+
 function template(value: unknown) {
   const candidate = text(value || defaultJobNameTemplate, 'Deployment job name template', 500)
-  const serviceTokens = candidate.match(/\{service\}/g)?.length || 0
-  const environmentTokens = candidate.match(/\{environment\}/g)?.length || 0
-  if (serviceTokens !== 1 || environmentTokens !== 1) {
+  if (placeholderCount(candidate, '{service}') !== 1 || placeholderCount(candidate, '{environment}') !== 1) {
     throw new Error('Deployment job name template must contain exactly one {service} and one {environment} placeholder')
   }
+  if (placeholderCount(candidate, '{*}') > 1) throw new Error('Deployment job name template supports at most one {*} placeholder')
   compileDeploymentJobMatcher(candidate)
   return candidate
 }
@@ -178,6 +181,7 @@ export function matchDeploymentJob(
   target: GitHubDeploymentTargetConfiguration,
   matcher: RegExp = compileDeploymentJobMatcher(target.jobNameTemplate),
 ): GitHubDeploymentJob | null {
+  if (name.length > 500) return null
   const match = matcher.exec(name)
   const service = match?.groups?.service?.trim()
   const environment = match?.groups?.environment?.trim().toLowerCase()

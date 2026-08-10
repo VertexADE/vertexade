@@ -11,6 +11,7 @@ import { Label } from '@vertexade/ui/components/ui/label'
 import { Skeleton } from '@vertexade/ui/components/ui/skeleton'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
+import { externalHttpUrl } from '@vertexade/ui/lib/external-http-url'
 
 type PullRequestEvidencePanelProps = {
   repositoryId: number
@@ -62,6 +63,7 @@ function EvidenceEntry({
   onWaive(entry: PullRequestEvidenceEntry): void
   onAction(entry: PullRequestEvidenceEntry): void
 }) {
+  const sourceUrl = externalHttpUrl(entry.sourceUrl)
   return (
     <div className="flex min-w-0 flex-col gap-2 border-b p-3 last:border-b-0 sm:flex-row sm:items-start">
       <EvidenceStatusIcon entry={entry} />
@@ -79,9 +81,9 @@ function EvidenceEntry({
         {entry.waiver && <p className="mt-1 text-xs text-muted-foreground">Waiver: {entry.waiver.reason}</p>}
       </div>
       <div className="flex shrink-0 gap-2">
-        {entry.sourceUrl && (
+        {sourceUrl && (
           <Button asChild variant="outline" size="sm">
-            <a href={entry.sourceUrl} target="_blank" rel="noreferrer">
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
               Source <ExternalLink data-icon="inline-end" />
             </a>
           </Button>
@@ -237,8 +239,11 @@ export function PullRequestEvidencePanel({
     (entry: PullRequestEvidenceEntry) => {
       if (['refresh_impact', 'build_architecture', 'run_validation'].includes(String(entry.action))) onOpenImpact?.()
       else if (entry.action === 'request_review') onOpenDiscussion?.()
-      else if (entry.sourceUrl) window.open(entry.sourceUrl, '_blank', 'noopener,noreferrer')
-      else void collect()
+      else {
+        const sourceUrl = externalHttpUrl(entry.sourceUrl)
+        if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener,noreferrer')
+        else void collect()
+      }
     },
     [collect, onOpenDiscussion, onOpenImpact],
   )

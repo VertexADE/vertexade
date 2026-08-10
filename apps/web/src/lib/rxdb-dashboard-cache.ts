@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { auditTime, BehaviorSubject, filter } from 'rxjs'
-import { platformConnectionState, platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
+import { platformClient, platformConnectionState, platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
 import {
   dashboardCollections,
   normalizeDashboardCollectionValues,
@@ -52,11 +52,9 @@ async function syncOnce() {
   try {
     const search = new URLSearchParams({ since: String(since) })
     if (syncState?.instanceId) search.set('instance', syncState.instanceId)
-    const response = await fetch(`/api/read-model?${search}`, {
+    const payload = await platformClient.request<ReadModelResponse>(`/api/read-model?${search}`, {
       headers: { accept: 'application/json' },
     })
-    if (!response.ok) throw new Error(`Dashboard sync failed with HTTP ${response.status}`)
-    const payload = (await response.json()) as ReadModelResponse
     const syncedAt = new Date().toISOString()
     const updatedCollections: Partial<Record<DashboardCollection, Record<string, unknown>[]>> = {}
     for (const collection of dashboardCollections) {

@@ -111,6 +111,21 @@ describe('platform client', () => {
     await expect(offline.request('/api/test')).rejects.toBeInstanceOf(PlatformNetworkError)
   })
 
+  it('rejects oversized JSON responses before buffering their bodies', async () => {
+    const client = createPlatformClient({
+      maxJsonResponseBytes: 100,
+      fetch: async () =>
+        new Response('{}', {
+          headers: { 'content-length': '101', 'content-type': 'application/json' },
+        }),
+    })
+
+    await expect(client.request('/api/test')).rejects.toMatchObject({
+      name: 'PlatformDecodeError',
+      message: 'Server response is too large',
+    })
+  })
+
   it('loads and mutates portable surfaces through one scoped extension client', async () => {
     const fetch = vi.fn<PlatformFetch>(async () => json({ ok: true }))
     const extension = createPlatformClient({ baseUrl: 'https://vertexade.test', fetch }).extension('airtable')

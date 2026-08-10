@@ -24,13 +24,14 @@ function fetchRequest(request: IncomingMessage, origin: string, signal: AbortSig
   const body = ['GET', 'HEAD'].includes(request.method || 'GET') ? undefined : Readable.toWeb(request)
   const headers = new Headers(request.headers as HeadersInit)
   headers.set(TRANSPORT_CLIENT_IP_HEADER, request.socket.remoteAddress || 'unknown')
-  return new Request(new URL(request.url || '/', origin), {
+  const init: RequestInit & { duplex?: 'half' } = {
     method: request.method,
     headers,
     body,
     duplex: body ? 'half' : undefined,
     signal,
-  } as any)
+  }
+  return new Request(new URL(request.url || '/', origin), init)
 }
 
 async function writeResponse(response: ServerResponse, source: Response, signal: AbortSignal, writeTimeoutMs: number) {

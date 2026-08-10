@@ -5,7 +5,7 @@ import {
   type ExtensionHostServices,
   type ScopedAgentRegistry,
 } from '@vertexade/platform-contracts'
-import { readJsonObject } from '@vertexade/platform-server/http'
+import { parseJsonResponse, readJsonObject } from '@vertexade/platform-server/http'
 import { resilientFetch } from '@vertexade/platform-server/effect'
 import { createAcpAgent } from './agent.ts'
 import {
@@ -34,8 +34,7 @@ async function registry() {
     url: registryUrl,
     timeoutMs: 15_000,
   })
-  if (!response.ok) throw new Error(`ACP registry returned HTTP ${response.status}`)
-  const value = (await response.json()) as { version?: unknown; agents?: unknown }
+  const value = (await parseJsonResponse(response, 'ACP registry', 4 * 1024 * 1024)) as { version?: unknown; agents?: unknown }
   return {
     version: String(value.version || ''),
     agents: Array.isArray(value.agents) ? value.agents : [],

@@ -1,9 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import {
-  NON_PUBLIC_OUTBOUND_REASON,
-  OutboundPolicyError,
-  OutboundRequestPolicy,
-} from '@vertexade/platform-server/outbound-policy'
+import { NON_PUBLIC_OUTBOUND_REASON, OutboundPolicyError, OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
+import { readResponseBody } from '@vertexade/platform-server/http'
 
 export type LinkedServer = {
   id: string
@@ -69,8 +66,15 @@ export async function verifyLinkedServer(url: string, request: VerifyRequest) {
     signal: AbortSignal.timeout(8_000),
   })
   if (!response.ok) throw new Error(`Server verification failed with HTTP ${response.status}`)
-  const raw = await response.text()
-  if (raw.length > 64 * 1024) throw new Error('Server verification response is too large')
+  let raw: string
+  try {
+    raw = (await readResponseBody(response, 64 * 1024)).toString('utf8')
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Response body is too large') {
+      throw new Error('Server verification response is too large')
+    }
+    throw error
+  }
   let payload: Record<string, unknown>
   try {
     payload = JSON.parse(raw) as Record<string, unknown>

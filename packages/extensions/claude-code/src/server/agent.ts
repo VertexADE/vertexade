@@ -14,6 +14,7 @@ import {
   type AgentRunner,
 } from '@vertexade/platform-server/agents'
 import { resilientFetch } from '@vertexade/platform-server/effect'
+import { readResponseBody } from '@vertexade/platform-server/http'
 
 const reasoningEfforts = ['low', 'medium', 'high', 'xhigh', 'max'].map((id) => ({
   id,
@@ -249,11 +250,7 @@ async function customClaudeLaunchOptions(environment: Record<string, string>) {
         failure = `failed with HTTP ${response.status}`
         continue
       }
-      const text = await response.text()
-      if (text.length > 1_000_000) {
-        failure = 'returned too much data'
-        continue
-      }
+      const text = (await readResponseBody(response, 1_000_000)).toString('utf8')
       const models = discoveredModels(JSON.parse(text), endpoint.detailed)
       if (models.length) return { models }
     } catch (error) {

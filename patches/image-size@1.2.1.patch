@@ -1,0 +1,14 @@
+diff --git a/dist/types/icns.js b/dist/types/icns.js
+index 998bcbbc30b9b49bc82bca7fc45916937370f2da..0088c1e9a99d75179dc2a67900ca59a40806610a 100644
+--- a/dist/types/icns.js
++++ b/dist/types/icns.js
+@@ -92,6 +92,9 @@ exports.ICNS = {
+         };
+         while (imageOffset < fileLength && imageOffset < inputLength) {
+             imageHeader = readImageHeader(input, imageOffset);
++            if (imageHeader[1] < SIZE_HEADER || imageOffset + imageHeader[1] > fileLength) {
++                throw new TypeError('Invalid ICNS entry length');
++            }
+             imageSize = getImageSize(imageHeader[0]);
+             imageOffset += imageHeader[1];
+             result.images.push(imageSize);

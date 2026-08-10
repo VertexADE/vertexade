@@ -136,6 +136,7 @@ import {
   runtimeFindOrAddRepository as findOrAddRepository,
   runtimeDeploymentOverview as deploymentOverview,
 } from './runtime-context.ts'
+export { linkImplementationBranch } from './implementation-branch.ts'
 
 export function extractReviewSuggestions(jobId) {
   const job = db.select({ kind: jobs.kind, result_text: jobs.resultText }).from(jobs).where(eq(jobs.id, jobId)).get()
@@ -406,20 +407,6 @@ export async function launchWorktreeReview(sourceJobId: number, options: any = {
     work.launchFailed(workItem.id, `${repo.full_name} · thread #${source.id}: ${launchErrorMessage(error)}`)
     throw error
   }
-}
-
-export function linkImplementationBranch(workItemId: number, repo, branchName: string) {
-  work.linkResource(workItemId, {
-    provider: 'git',
-    kind: 'branch',
-    externalId: `${repo.full_name}:${branchName}`.toLowerCase(),
-    role: 'implementation',
-    label: branchName,
-    url: scmProvider(repo.full_name).branchUrl?.(repo.full_name, branchName) || null,
-    repositoryId: repo.id,
-    state: 'local',
-    metadata: { repository: repo.full_name, branch: branchName },
-  })
 }
 
 async function prepareRepositoryWorktree(repo, worktree: string, runtimeAgent) {

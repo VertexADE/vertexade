@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { resilientFetch } from '@vertexade/platform-server/effect'
+import { readResponseBody } from '@vertexade/platform-server/http'
 
 type JsonObject = Record<string, unknown>
 type JsonRpcRequest = {
@@ -37,7 +38,7 @@ async function api(path: string, options: RequestInit = {}) {
     timeoutMs: 65_000,
     attempts: 1,
   })
-  const text = (await response.text()).slice(0, maximumResponseBytes)
+  const text = (await readResponseBody(response, maximumResponseBytes)).toString('utf8')
   let value: unknown = {}
   try {
     value = JSON.parse(text)
