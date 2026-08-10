@@ -493,7 +493,17 @@ export async function handlePullRequestApi(request: Request, url: URL): Promise<
     const input = await body(request)
     const resolved = resolvePrompt(input, repo, pr)
     if ('error' in resolved) return json(resolved.status, { error: resolved.error })
-    return json(202, await launchJob(repo, pr, resolved.prompt))
+    const job = await launchJob(repo, pr, resolved.prompt)
+    if (resolved.architectureContext && job.work_item_id) {
+      work.event(
+        job.work_item_id,
+        'architecture_context_attached',
+        `Attached architecture context ${String(resolved.architectureContext.digest).slice(0, 12)}`,
+        'user',
+        resolved.architectureContext,
+      )
+    }
+    return json(202, job)
   }
   return null
 }

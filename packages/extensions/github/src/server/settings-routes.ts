@@ -3,8 +3,23 @@ import { readJsonObject } from '@vertexade/platform-server/http'
 import { createGitHubInstallationToken, type GitHubAppCredentials, type GitHubInstallationToken } from './auth.ts'
 import type { GitHubAuthenticationLifecycle } from './authentication-lifecycle.ts'
 import type { GitHubContext } from './types.ts'
+import {
+  normalizeGitHubDeploymentTargets,
+  publicDeploymentTargetConfiguration,
+  type GitHubDeploymentTargetConfiguration,
+} from './deployment-configuration.ts'
 
-type GitHubAppConfig = GitHubAppCredentials & { active: boolean }
+type GitHubAppConfig = GitHubAppCredentials & {
+  active: boolean
+  deploymentTargets: GitHubDeploymentTargetConfiguration[]
+}
+
+const emptyCredentials: GitHubAppCredentials & { active: boolean } = {
+  active: false,
+  appId: '',
+  installationId: '',
+  privateKey: '',
+}
 
 export function registerGitHubSettingsRoutes(
   routes: ExtensionRegistrationContext['routes'],
@@ -15,7 +30,7 @@ export function registerGitHubSettingsRoutes(
     method: 'GET',
     path: '/settings',
     availability: 'installed',
-    handler: () => Response.json(settingsResponse(authentication.config(), authentication)),
+    handler: () => Response.json(settingsResponse(readGitHubConfig(context, authentication.config()), authentication)),
   })
   routes.register({
     method: 'POST',
@@ -33,7 +48,7 @@ export function registerGitHubSettingsRoutes(
 
 async function saveGitHubSettings(request: Request, authentication: GitHubAuthenticationLifecycle, context: GitHubContext) {
   const input = await readJsonObject(request)
-  const value = settingsInput(input, authentication.config())
+  const value = settingsInput(input, readGitHubConfig(context, authentication.config()))
   const invalid = invalidActiveCredentials(value)
   if (invalid) return Response.json({ error: invalid }, { status: 400 })
   const exchange = await exchangeInstallationToken(value, context.fetch)
@@ -48,11 +63,13 @@ async function saveGitHubSettings(request: Request, authentication: GitHubAuthen
 }
 
 function deleteGitHubSettings(authentication: GitHubAuthenticationLifecycle, context: GitHubContext) {
-  context.host.settings.delete('config')
+  const current = readGitHubConfig(context, authentication.config())
+  const value: GitHubAppConfig = { ...emptyCredentials, deploymentTargets: current.deploymentTargets }
+  context.host.settings.write('config', value)
   context.host.cache?.invalidate()
   authentication.restore()
   context.host.events.emit('scm_auth_deleted')
-  return Response.json({ active: false, ...authentication.state() })
+  return Response.json(settingsResponse(value, authentication))
 }
 
 function settingsInput(input: Record<string, unknown>, current: GitHubAppConfig): GitHubAppConfig {
@@ -61,6 +78,18 @@ function settingsInput(input: Record<string, unknown>, current: GitHubAppConfig)
     appId: String(input.app_id || '').trim(),
     installationId: String(input.installation_id || '').trim(),
     privateKey: String(input.private_key || '').trim() || current.privateKey,
+    deploymentTargets: normalizeGitHubDeploymentTargets(input.deployment_targets ?? current.deploymentTargets),
+  }
+}
+
+function readGitHubConfig(context: GitHubContext, credentials: GitHubAppCredentials & { active: boolean }): GitHubAppConfig {
+  const stored = context.host.settings.read<Partial<GitHubAppConfig>>('config', credentials)
+  return {
+    active: stored.active === true,
+    appId: String(stored.appId || ''),
+    installationId: String(stored.installationId || ''),
+    privateKey: String(stored.privateKey || ''),
+    deploymentTargets: normalizeGitHubDeploymentTargets(stored.deploymentTargets),
   }
 }
 
@@ -101,6 +130,7 @@ function settingsResponse(value: GitHubAppConfig, authentication: GitHubAuthenti
     app_id: value.appId || '',
     installation_id: value.installationId || '',
     has_private_key: Boolean(value.privateKey),
+    deployment_targets: value.deploymentTargets.map(publicDeploymentTargetConfiguration),
     ...authentication.state(),
   }
 }

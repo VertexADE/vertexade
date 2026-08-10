@@ -41,7 +41,9 @@ export function RepositoryMultiSelect({
         ))}
         {!repositories.length && <p className="col-span-full p-3 text-center text-xs text-muted-foreground">{emptyMessage}</p>}
       </div>
-      <small className="text-xs text-muted-foreground">Each repository gets its own agent thread, branch, and isolated worktree.</small>
+      <small className="text-xs text-muted-foreground">
+        Each repository gets one reusable Work-item worktree shared by its sequential agent threads.
+      </small>
     </fieldset>
   )
 }

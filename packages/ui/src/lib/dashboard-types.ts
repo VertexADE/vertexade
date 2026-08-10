@@ -1,4 +1,4 @@
-import type { ModuleCatalogEntry, WorkItemWorkspaceMode } from '@vertexade/platform-contracts'
+import type { ModuleCatalogEntry, PullRequestReadiness, WorkItemWorkspaceMode } from '@vertexade/platform-contracts'
 import type { BackendAttributed, BackendDescriptor } from './backend-registry'
 
 export type Repository = BackendAttributed & {
@@ -42,6 +42,8 @@ export type PullRequest = BackendAttributed & {
   latest_agent_review_automatic: number | null
   work_item_id?: number | null
   work_item_key?: string | null
+  evidence_readiness?: PullRequestReadiness | null
+  evidence_captured_at?: string | null
 }
 
 export type PullRequestDialogItem = Pick<PullRequest, 'repo_id' | 'full_name' | 'number' | 'title' | 'url' | 'head_sha'> &
@@ -426,4 +428,10 @@ export type InputQuestion = {
   options?: { label: string; description: string }[] | null
 }
 
-export type { DeploymentCommit, DeploymentOverview, DeploymentService, DeploymentStage } from '@vertexade/platform-contracts'
+export type {
+  DeploymentCommit,
+  DeploymentOverview,
+  DeploymentService,
+  DeploymentStage,
+  DeploymentTarget,
+} from '@vertexade/platform-contracts'

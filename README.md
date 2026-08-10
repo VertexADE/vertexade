@@ -108,7 +108,7 @@ Packaged installations keep VertexADE-owned state below:
 1. `$XDG_DATA_HOME/vertex-ade` when `XDG_DATA_HOME` is set.
 2. `~/.vertex-ade` otherwise.
 
-This location holds application data and can also hold managed repositories and worktrees. The desktop settings UI exposes workspace and worktree placement so desktop users can keep those resources inside the VertexADE data directory. `VERTEXADE_WORKTREE_ROOT` remains available as an explicit host-level override.
+This location holds application data and managed Work-item workspaces. Every Work item uses `work-items/<work-item-key>` regardless of which agent runs it, with exactly one reusable worktree per repository shared by that Work item's sequential threads. Agent-specific directories such as `.codex` are never used for Work-item files. Provider-owned state remains in the provider's own directory. The desktop settings UI exposes workspace and legacy agent-worktree placement; `VERTEXADE_WORKTREE_ROOT` remains available as an explicit host-level override for non-Work-item agent worktrees.
 
 Back up the data directory before upgrades or migrations. Source deployments can use the verified helpers:
 
@@ -119,6 +119,7 @@ pnpm backup:restore-drill
 ```
 
 See [docs/installation.md](docs/installation.md) for production operation, backup details, and troubleshooting.
+See [docs/development-intelligence.md](docs/development-intelligence.md) for impact analysis, architecture context, validation and repair, PR evidence, and migration campaigns.
 
 ## Multiple servers
 
@@ -127,15 +128,19 @@ Server federation is configured in the application, not baked into a frontend bu
 1. Open **Settings → Servers**.
 2. Add the public URL of another VertexADE backend.
 3. Let the current backend verify the remote identity and network destination.
-4. Select that server when creating Work or browsing server-owned resources.
+4. Select the active server from the application header.
 
-The UI shows ownership badges and sends later operations back to the correct backend. A remote Work item can use that server's repositories, agents, models, skills, MCP resources, references, threads, and extension actions. Server validation rejects unsafe private-network destinations when adding public remotes.
+The selected server owns non-entity screens such as Delivery, System health, Extensions, Automations, and Settings. Every server keeps its own repositories, runtime defaults, credentials, extension configuration, deployment targets, and listener settings. The federated Work and pull-request projections remain unified, and ownership badges plus namespaced identifiers ensure later entity operations return to the server that owns them even when another server is selected. A remote Work item can use that server's repositories, agents, models, skills, MCP resources, references, threads, and extension actions. Server validation rejects unsafe private-network destinations when adding public remotes.
+
+Use **Settings → Servers → Network listeners** to configure the web and API bind hosts and ports for the selected server. Saved listener changes are applied by the bundled `vertexade` launcher on its next restart; explicit `HOST`, `PORT`, `API_HOST`, and `API_PORT` environment values remain authoritative. Keep the API on loopback when browsers use the same-origin web proxy. Exposing either listener beyond loopback requires authentication, firewall policy, TLS termination, and exact CORS configuration appropriate to the deployment.
+
+GitHub Actions delivery targets are configured independently per server under **Extensions → GitHub**. A target defines its repository, workflow, branch, triggering event, seed services, ordered environments, comparison and production environments, and a safe job-name template. Multiple enabled targets are shown together on Delivery and can be filtered or rerun without losing their repository ownership. The previous `DEPLOYMENT_*` environment variables remain the fallback for servers without saved targets.
 
 ## Work and agent threads
 
 A Work item is independent of the process that created it. It may start from the VertexADE UI, an imported pull request or external record, an automation, or a supported external work thread. From the UI you can continue execution, inspect its event timeline, provide requested input, interrupt or fork it, review diffs, connect resources, and follow delivery state.
 
-Agent launches default to a combined Work directory. Repository worktrees are isolated children, while sessions can start from their shared parent when cross-repository context is required. Repository-folder mode remains available for compatibility. Shared Markdown memory follows the Work item across agent providers and worktrees.
+Agent launches default to a combined Work directory. Each repository has one Work-item-owned worktree reused by sequential threads, while sessions start from their shared parent when cross-repository context is required. Historical repository-folder worktrees remain readable for compatibility, but new launches always use the combined layout. Shared Markdown memory follows the Work item across agent providers and worktrees.
 
 Supported built-in execution extensions include ACP, Claude Code, Codex, and OpenCode. Each extension owns launch and continuation behavior, event normalization, permissions, settings, and portable UI declarations.
 

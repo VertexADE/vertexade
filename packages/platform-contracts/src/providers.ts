@@ -312,11 +312,25 @@ export type DeploymentCommit = {
   stages: Record<string, DeploymentStage>
 }
 
+export type DeploymentTarget = {
+  id: string
+  label: string
+  repository: string
+  workflow: string
+  branch: string
+  event: string
+  environments: string[]
+  production_environment: string
+  comparison_environment: string
+}
+
 export type DeploymentService = {
+  key: string
   name: string
+  target: DeploymentTarget
   state: 'deployed' | 'deploying' | 'waiting' | 'failed' | 'pending' | 'outdated' | 'unknown'
   latest: DeploymentCommit | null
-  environments: Record<'dev' | 'acc' | 'prd', DeploymentStage | null>
+  environments: Record<string, DeploymentStage | null>
   production_outdated: boolean
   deployment_delta: {
     from_sha: string
@@ -331,6 +345,7 @@ export type DeploymentOverview = {
   repository: string
   workflow: string
   refreshed_at: string
+  targets: DeploymentTarget[]
   services: DeploymentService[]
   summary: { deployed: number; attention: number; active: number; pending_commits: number }
 }
@@ -343,7 +358,7 @@ export type DeploymentProvider = {
   id: string
   name: string
   overview(refresh?: boolean, context?: ProviderContext): Promise<DeploymentSnapshot>
-  rerun(runId: number, mode: 'all' | 'failed', context?: ProviderContext): Promise<void>
+  rerun(runId: number, mode: 'all' | 'failed', targetId?: string, context?: ProviderContext): Promise<void>
 }
 
 export type ScopedProviderRegistries = {

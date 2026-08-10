@@ -164,7 +164,9 @@ export function ReviewDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button disabled={submission.busy || target?.access !== 'allowed' || !options.agentId || (mode === 'aggregate' && !selected.length)}>
+            <Button
+              disabled={submission.busy || target?.access !== 'allowed' || !options.agentId || (mode === 'aggregate' && !selected.length)}
+            >
               <FileSearch />
               {submission.busy ? 'Starting…' : mode === 'aggregate' ? `Run ${selected.length} reviews` : 'Start review'}
             </Button>

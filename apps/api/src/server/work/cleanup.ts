@@ -8,11 +8,13 @@ import type { WorkMemoryService } from './memory.ts'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { jobs as jobsTable, repositories } from '../database/schema/tables.ts'
 import type { WorkDeletionError, WorkDeletionPreview, WorkDeletionResult } from '@vertexade/platform-contracts'
+import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 import { withWorktreeOwnershipRepair } from './worktree-ownership.ts'
 import { createMergedWorktreeCleanup } from './merged-worktree-cleanup.ts'
 import { isPathInside, pathExists as defaultPathExists } from './worktree-filesystem.ts'
 import { removeProviderThread as removeAgentProviderThread } from './provider-thread-cleanup.ts'
 import { CleanupTombstoneStore, type CleanupArtifactInput } from './cleanup-tombstones.ts'
+import { isManagedJobWorkspacePath } from './workspace-layout.ts'
 
 type RuntimeAgent = {
   name: string
@@ -28,6 +30,7 @@ type Dependencies = {
   defaultAgentId: string
   activeJobs: Map<number, any>
   logsRoot: string
+  workItemWorkspaceRoot?: string
   legacyLogsRoots?: string[]
   run(command: string, args: string[]): Promise<string>
   stopProcess?: (job: any, child: any) => Promise<void>
@@ -101,9 +104,10 @@ function missingWorktreeRegistration(error: unknown) {
   return /is not a working tree|not a working tree|not registered as a worktree/i.test(message(error))
 }
 
-function assertSafeWorktree(job: any, runtimeAgent: RuntimeAgent) {
-  if (!isPathInside(runtimeAgent.workspaceRoot, job.worktree_path))
-    throw new Error(`Refusing to remove a worktree outside the ${runtimeAgent.name} workspace directory`)
+function assertSafeWorktree(job: any, runtimeAgent: RuntimeAgent, workItemWorkspaceRoot: string) {
+  if (!isManagedJobWorkspacePath(job, job.worktree_path, runtimeAgent.workspaceRoot, workItemWorkspaceRoot)) {
+    throw new Error(`Refusing to remove a worktree outside VertexADE-managed workspace storage for ${runtimeAgent.name}`)
+  }
   if (resolve(job.base_repo_path) !== resolve(job.repository_path)) throw new Error('Refusing to use an unexpected base repository path')
 }
 
@@ -113,6 +117,7 @@ export function createWorkCleanup(dependencies: Dependencies) {
   const pathExists = dependencies.pathExists || defaultPathExists
   const stopProcess = dependencies.stopProcess || stopChildProcess
   const tombstones = new CleanupTombstoneStore(dependencies.db)
+  const workItemWorkspaceRoot = dependencies.workItemWorkspaceRoot || vertexWorkItemDirectory()
   const legacyLogsRoots = (dependencies.legacyLogsRoots || []).map((path) => resolve(path))
   let recoveryTimer: ReturnType<typeof setInterval> | undefined
 
@@ -175,12 +180,13 @@ export function createWorkCleanup(dependencies: Dependencies) {
         const runtimeAgent = dependencies.agents.require(job.agent_id || dependencies.defaultAgentId)
         const shared = sharedWorktreeCount(workItemId, job.worktree_path) > 0
         const safe =
-          isPathInside(runtimeAgent.workspaceRoot, job.worktree_path) && resolve(job.base_repo_path) === resolve(job.repository_path)
+          isManagedJobWorkspacePath(job, job.worktree_path, runtimeAgent.workspaceRoot, workItemWorkspaceRoot) &&
+          resolve(job.base_repo_path) === resolve(job.repository_path)
         return {
           path: job.worktree_path,
           repository: job.full_name,
           removable: !shared && safe,
-          reason: shared ? 'Used by another Work item' : safe ? null : 'Outside the managed agent workspace',
+          reason: shared ? 'Used by another Work item' : safe ? null : 'Outside VertexADE-managed workspace storage',
         }
       },
     )
@@ -307,7 +313,7 @@ export function createWorkCleanup(dependencies: Dependencies) {
 
   async function removeWorktree(job: any) {
     const runtimeAgent = dependencies.agents.require(job.agent_id || dependencies.defaultAgentId)
-    assertSafeWorktree(job, runtimeAgent)
+    assertSafeWorktree(job, runtimeAgent, workItemWorkspaceRoot)
     if (!(await pathExists(job.worktree_path))) return
     if (!(await pathExists(job.base_repo_path))) return removeDirectory(job.worktree_path)
     await removeRegisteredWorktree(job)
@@ -336,6 +342,17 @@ export function createWorkCleanup(dependencies: Dependencies) {
     if (!isPathInside(rootPath, sourcePath) || !sourceStats.isFile() || sourceStats.isSymbolicLink())
       throw new BlockedCleanupError(errorMessage)
     return sourcePath
+  }
+
+  async function matchingLegacyRoot(storedPath: string) {
+    for (const root of legacyLogsRoots) {
+      try {
+        if (isPathInside(await realpath(root), storedPath)) return root
+      } catch {
+        // An unavailable historical root cannot own the stored source.
+      }
+    }
+    return null
   }
 
   async function copyLegacyLog(sourcePath: string, target: string) {
@@ -388,7 +405,7 @@ export function createWorkCleanup(dependencies: Dependencies) {
           continue
         }
         const storedPath = resolve(artifact.target)
-        const configuredRoot = legacyLogsRoots.find((root) => isPathInside(root, storedPath))
+        const configuredRoot = await matchingLegacyRoot(storedPath)
         if (!configuredRoot) throw new BlockedCleanupError('Legacy log source is outside every allowlisted historical logs directory')
         const sourcePath = await regularLegacyFile(
           configuredRoot,
@@ -499,8 +516,9 @@ export function createWorkCleanup(dependencies: Dependencies) {
       try {
         for (const job of related) {
           const runtimeAgent = dependencies.agents.require(job.agent_id || dependencies.defaultAgentId)
-          if (!isPathInside(runtimeAgent.workspaceRoot, root))
-            throw new Error(`Refusing to remove a combined workspace outside the ${runtimeAgent.name} workspace directory`)
+          if (!isManagedJobWorkspacePath(job, root, runtimeAgent.workspaceRoot, workItemWorkspaceRoot)) {
+            throw new Error(`Refusing to remove a combined workspace outside VertexADE-managed storage for ${runtimeAgent.name}`)
+          }
           if (!isPathInside(root, job.worktree_path))
             throw new Error('Refusing to remove a combined workspace that does not contain its recorded worktree')
         }

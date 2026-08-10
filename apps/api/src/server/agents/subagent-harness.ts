@@ -48,7 +48,7 @@ type ChildWorkspace = {
   sessionCwd: string
   baseGitDir: string
   baselineSha: string
-  branchName: string
+  branchName: string | null
 }
 
 type Dependencies = {
@@ -85,7 +85,7 @@ const activeStatuses = ['starting', 'running']
 const terminalStatuses = ['completed', 'failed', 'cancelled', 'resumable']
 const toolServerName = 'vertexade-subagents'
 const maximumChildrenPerParent = 16
-const maximumActiveChildrenPerParent = 4
+const maximumActiveChildrenPerParent = 1
 const maximumActiveChildren = 12
 
 function text(value: unknown, maximum: number, name: string) {
@@ -139,9 +139,9 @@ Bounded task:
 ${selection.task}
 
 Repository: ${parent.full_name}
-Your isolated writable workspace contains a snapshot of the parent repository.
+You share the parent Work item's existing writable repository worktree.
 
-Complete the bounded task in your isolated worktree. You may edit files, run relevant checks, and create local commits. Do not publish, mutate external systems, launch more agents, or ask the user questions. Return a concise summary of the changes and validation for the parent. VertexADE will integrate accepted changes into the parent workspace.
+Complete the bounded task directly in the shared worktree. The parent must wait while you work, and VertexADE permits only one active child for this parent. You may edit files and run relevant checks, but do not publish, mutate external systems, launch more agents, or ask the user questions. Return a concise summary of the changes and validation; the parent will validate the changes already present in its worktree.
 </vertexade_subagent>`
 }
 

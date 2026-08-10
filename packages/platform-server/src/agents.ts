@@ -94,7 +94,7 @@ export function applySubagentInstructions(prompt: string, allowSubagents: unknow
   return `${prompt.trim()}
 
 <subagent_orchestration>
-Sub-agent delegation is enabled for this run. VertexADE provides a sub-agent MCP tool that can launch bounded child runs using any enabled agent and model; use its list tool before selecting a different runtime. Native provider sub-agents may also be available. VertexADE children work in isolated writable worktrees: wait for their result, validate it, then explicitly integrate useful changes with the integration tool. Delegate only concrete, independent work when it materially improves speed or quality. Keep ownership of the overall result, give every child a narrow task and expected output, and do not delegate unresolved user decisions. VertexADE child runs cannot recursively delegate.
+Sub-agent delegation is enabled for this run. VertexADE provides a sub-agent MCP tool that can launch one bounded child at a time using any enabled agent and model; use its list tool before selecting a different runtime. Native provider sub-agents may also be available. A VertexADE child edits this Work item's existing repository worktree directly, so wait for it to finish before doing more work, validate its result and the shared diff, then explicitly accept the changes with the integration tool. Delegate only concrete work when it materially improves quality. Keep ownership of the overall result, give every child a narrow task and expected output, and do not delegate unresolved user decisions. VertexADE child runs cannot recursively delegate.
 </subagent_orchestration>`
 }
 

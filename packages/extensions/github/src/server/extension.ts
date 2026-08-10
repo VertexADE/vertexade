@@ -6,6 +6,7 @@ import { createGitHubManifest } from './manifest.ts'
 import { createGitHubScmProvider } from './provider.ts'
 import { registerGitHubReviewActions } from './review-actions.ts'
 import { registerGitHubSettingsRoutes } from './settings-routes.ts'
+import { normalizeGitHubDeploymentTargets } from './deployment-configuration.ts'
 import type { GitHubContext } from './types.ts'
 
 export function createExtension(context: GitHubContext): DashboardExtension {
@@ -20,7 +21,12 @@ export function createExtension(context: GitHubContext): DashboardExtension {
     dispose: authentication.dispose,
     register({ providers, routes, triggers, actions }) {
       providers.scm.register(scm)
-      providers.deployment.register(createGitHubDeploymentProvider(context.run, context.host.cache, refreshTrigger))
+      providers.deployment.register(
+        createGitHubDeploymentProvider(context.run, context.host.cache, refreshTrigger, () => {
+          const stored = context.host.settings.read<{ deploymentTargets?: unknown }>('config', {})
+          return normalizeGitHubDeploymentTargets(stored.deploymentTargets)
+        }),
+      )
       triggers.register(refreshTrigger.capability)
       registerGitHubReviewActions(actions, scm, context)
       registerGitHubSettingsRoutes(routes, authentication, context)

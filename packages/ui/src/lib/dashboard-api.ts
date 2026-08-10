@@ -1,15 +1,18 @@
 import { createPlatformClient, type ApiClient } from '@vertexade/platform-client'
 import { parsePlatformEvent, type PlatformConnectionState, type PlatformEventMessage } from '@vertexade/platform-client/reactive'
 import { BehaviorSubject, debounceTime, filter, Subject } from 'rxjs'
-import { backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
+import { activeBackendId, backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
 
 export type { ApiClient } from '@vertexade/platform-client'
+export { isPlatformApiError } from '@vertexade/platform-client'
 export type { PlatformEvent, PlatformEventMessage } from '@vertexade/platform-client/reactive'
 
 export const platformClient = createPlatformClient({
   headers: () => {
     const agent = agentLaunchOptions()
+    const backendId = activeBackendId()
     return {
+      ...(backendId ? { 'x-vertexade-backend': backendId } : {}),
       ...(agent.agentId ? { 'x-agent-provider': agent.agentId } : {}),
       ...(agent.model ? { 'x-agent-model': agent.model } : {}),
       ...(agent.reasoningEffort ? { 'x-agent-reasoning-effort': agent.reasoningEffort } : {}),

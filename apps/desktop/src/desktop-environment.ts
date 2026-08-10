@@ -9,11 +9,7 @@ const macOsCommandDirectories = (home: string): string[] => [
   '/run/current-system/sw/bin',
 ]
 
-export function desktopServiceEnvironment(
-  environment: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-  home: string,
-): NodeJS.ProcessEnv {
+export function desktopServiceEnvironment(environment: NodeJS.ProcessEnv, platform: NodeJS.Platform, home: string): NodeJS.ProcessEnv {
   if (platform !== 'darwin') return { ...environment }
 
   const inheritedDirectories = (environment.PATH || '').split(delimiter).filter(Boolean)

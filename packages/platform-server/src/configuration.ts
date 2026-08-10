@@ -13,6 +13,10 @@ export function vertexDataDirectory(environment: NodeJS.ProcessEnv = process.env
   return environment.XDG_DATA_HOME ? join(resolve(environment.XDG_DATA_HOME), 'vertex-ade') : join(homedir(), '.vertex-ade')
 }
 
+export function vertexWorkItemDirectory(environment: NodeJS.ProcessEnv = process.env): string {
+  return join(vertexDataDirectory(environment), 'work-items')
+}
+
 export function vertexWorktreeDirectory(agentId: string, fallback: string, environment: NodeJS.ProcessEnv = process.env) {
   const root = environment.VERTEXADE_WORKTREE_ROOT
   return root ? join(resolve(root), agentId) : fallback

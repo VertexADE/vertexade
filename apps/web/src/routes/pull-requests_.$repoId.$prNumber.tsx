@@ -20,7 +20,9 @@ type PullRequestDetailSearch = { tab?: PrDetailsTab; thread?: number }
 export const Route = createFileRoute('/pull-requests_/$repoId/$prNumber')({
   ssr: false,
   validateSearch: (search: Record<string, unknown>): PullRequestDetailSearch => ({
-    tab: ['conversation', 'changes', 'checks', 'commits'].includes(String(search.tab)) ? (search.tab as PrDetailsTab) : undefined,
+    tab: ['conversation', 'changes', 'impact', 'evidence', 'checks', 'commits'].includes(String(search.tab))
+      ? (search.tab as PrDetailsTab)
+      : undefined,
     thread: Number.isInteger(Number(search.thread)) && Number(search.thread) > 0 ? Number(search.thread) : undefined,
   }),
   component: PullRequestDetailPage,

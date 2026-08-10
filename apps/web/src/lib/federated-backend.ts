@@ -37,7 +37,7 @@ export function namespaceFromId(value: unknown) {
   return namespaced === null ? null : Math.floor(namespaced / federatedIdSpan)
 }
 
-export function federatedWorkKey(backend: Pick<ApiBackend, 'id' | 'namespace'>, value: unknown) {
+function federatedWorkKey(backend: Pick<ApiBackend, 'id' | 'namespace'>, value: unknown) {
   const local = String(value || '')
   return backend.namespace ? `${backend.id}~${local}` : local
 }
@@ -177,6 +177,51 @@ export function normalizeEntity(value: unknown, backend: BackendStatus): unknown
   if ('full_name' in entity && 'local_path' in entity && 'id' in entity) return normalizeRepository(entity, backend)
   const normalized = Object.fromEntries(Object.entries(entity).map(([key, candidate]) => [key, normalizeEntity(candidate, backend)]))
   if (typeof normalized.destinationJobId === 'number') normalized.destinationJobId = federatedId(backend, normalized.destinationJobId)
+  for (const key of [
+    'repositoryId',
+    'impactAnalysisId',
+    'analysisId',
+    'indexId',
+    'executionId',
+    'runId',
+    'workItemId',
+    'jobId',
+    'repairWorkItemId',
+    'repairJobId',
+    'parentRunId',
+    'rootRunId',
+    'currentRunId',
+    'currentJobId',
+    'evidenceSnapshotId',
+    'campaignId',
+    'targetId',
+    'recipeId',
+  ]) {
+    if (typeof normalized[key] === 'number') normalized[key] = federatedId(backend, normalized[key])
+  }
+  if (Array.isArray(normalized.validationRunIds)) {
+    normalized.validationRunIds = normalized.validationRunIds.map((value) =>
+      typeof value === 'number' ? federatedId(backend, value) : value,
+    )
+  }
+  const nestedSubject = record(normalized.subject)
+  if (
+    (typeof normalized.repositoryId === 'number' || typeof nestedSubject?.repositoryId === 'number') &&
+    typeof normalized.id === 'number'
+  ) {
+    const local = normalized.id
+    normalized.id = federatedId(backend, local)
+    Object.assign(normalized, sourceFields(backend, local))
+  }
+  if (
+    typeof normalized.id === 'number' &&
+    (typeof normalized.federationGroupId === 'string' ||
+      (typeof normalized.key === 'string' && typeof normalized.version === 'number' && normalized.configuration))
+  ) {
+    const local = normalized.id
+    normalized.id = federatedId(backend, local)
+    Object.assign(normalized, sourceFields(backend, local))
+  }
   return normalized
 }
 
@@ -236,6 +281,19 @@ const idBodyFields = new Set([
   'work_item_id',
   'source_work_item_id',
   'destination_work_item_id',
+  'repositoryId',
+  'impactAnalysisId',
+  'analysisId',
+  'indexId',
+  'executionId',
+  'runId',
+  'workItemId',
+  'jobId',
+  'repairWorkItemId',
+  'repairJobId',
+  'campaignId',
+  'targetId',
+  'recipeId',
 ])
 
 export function denormalizePayload(value: unknown, backend: ApiBackend): unknown {
@@ -246,6 +304,7 @@ export function denormalizePayload(value: unknown, backend: ApiBackend): unknown
     Object.entries(candidate).map(([key, item]) => {
       if (idBodyFields.has(key)) return [key, item == null ? item : localId(item)]
       if (key === 'repository_ids' && Array.isArray(item)) return [key, item.map(localId)]
+      if (key === 'repositoryIds' && Array.isArray(item)) return [key, item.map(localId)]
       if (key === 'work_item_key') return [key, localWorkKey(backend, item)]
       return [key, denormalizePayload(item, backend)]
     }),

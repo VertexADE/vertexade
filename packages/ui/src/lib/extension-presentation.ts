@@ -1,16 +1,21 @@
 import type { ModuleAccent, ModuleCatalogEntry, ModuleCatalogIcon } from '@vertexade/platform-contracts'
 import { createElement, forwardRef } from 'react'
 import { Blocks, type LucideProps, type LucideIcon } from 'lucide-react'
+import { activeBackendId, backendApiPath } from './backend-registry'
 
 const iconComponents = new Map<string, LucideIcon>()
 
-export function extensionIconSource(moduleId: string, asset: string) {
-  void asset
-  return `/api/extensions/${encodeURIComponent(moduleId)}/catalog-icon`
+export function extensionBrowserAssetSource(source: string, backendId = activeBackendId()) {
+  return source.startsWith('/api/extensions/') ? backendApiPath(source, backendId) : source
 }
 
-function brandLogo(icon: ModuleCatalogIcon, moduleId: string): LucideIcon {
-  const source = extensionIconSource(moduleId, icon.asset)
+export function extensionIconSource(moduleId: string, asset: string, backendId = activeBackendId()) {
+  void asset
+  return extensionBrowserAssetSource(`/api/extensions/${encodeURIComponent(moduleId)}/catalog-icon`, backendId)
+}
+
+function brandLogo(icon: ModuleCatalogIcon, moduleId: string, backendId?: string): LucideIcon {
+  const source = extensionIconSource(moduleId, icon.asset, backendId)
   const cached = iconComponents.get(source)
   if (cached) return cached
   const Logo = forwardRef<SVGSVGElement, LucideProps>(
@@ -82,17 +87,17 @@ const accentClasses: Record<ModuleAccent, { panel: string; icon: string; glow: s
   },
 }
 
-export function extensionIcon(icon?: ModuleCatalogIcon, moduleId?: string) {
-  return icon && moduleId ? brandLogo(icon, moduleId) : Blocks
+export function extensionIcon(icon?: ModuleCatalogIcon, moduleId?: string, backendId?: string) {
+  return icon && moduleId ? brandLogo(icon, moduleId, backendId) : Blocks
 }
 
 export function extensionAccent(accent?: ModuleAccent) {
   return accentClasses[accent || 'slate']
 }
 
-export function extensionPresentation(module: Pick<ModuleCatalogEntry, 'id' | 'catalog'>) {
+export function extensionPresentation(module: Pick<ModuleCatalogEntry, 'id' | 'catalog'>, backendId?: string) {
   return {
-    Icon: extensionIcon(module.catalog?.icon, module.id),
+    Icon: extensionIcon(module.catalog?.icon, module.id, backendId),
     accent: extensionAccent(module.catalog?.accent),
   }
 }

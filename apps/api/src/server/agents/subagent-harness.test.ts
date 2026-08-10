@@ -61,11 +61,11 @@ function fixture() {
     notify: vi.fn(),
     resolveLaunch: async (_workItemId, prompt) => ({ prompt }),
     createWorkspace: async () => ({
-      worktree: '/child',
+      worktree: '/parent',
       sessionCwd: '/work-item-run',
       baseGitDir: '/repo/.git',
       baselineSha: 'baseline',
-      branchName: 'subagent/10-cache',
+      branchName: 'feature/shared-work',
     }),
     discardWorkspace: vi.fn(async () => undefined),
     integrateWorkspace,
@@ -105,7 +105,7 @@ describe('VertexADE sub-agent harness', () => {
     expect(stored.subagent_token_hash).not.toBe(launch.mcpServers[0]!.env.VERTEXADE_SUBAGENT_TOKEN)
   })
 
-  it('discovers models and launches a non-recursive writable child in its own worktree', async () => {
+  it('discovers models and launches one non-recursive child in the shared worktree', async () => {
     const { harness, request, startChild } = fixture()
     const agents = await harness.dispatch(request('/api/internal/subagents/agents'))
     expect(await agents?.json()).toMatchObject({
@@ -132,8 +132,8 @@ describe('VertexADE sub-agent harness', () => {
       status: 'starting',
       agent_id: 'codex',
       model: 'gpt-test',
-      branch: 'subagent/10-cache',
-      workspace: '/child',
+      branch: 'feature/shared-work',
+      workspace: '/parent',
     })
     expect(startChild).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -146,6 +146,26 @@ describe('VertexADE sub-agent harness', () => {
       }),
     )
     expect(startChild.mock.calls[0]![0].launch).not.toHaveProperty('permissionMode')
+  })
+
+  it('rejects a second child while the shared worktree already has an active child', async () => {
+    const { harness, request } = fixture()
+    const first = await harness.dispatch(
+      request('/api/internal/subagents/runs', {
+        method: 'POST',
+        body: JSON.stringify({ task: 'First shared task', model: 'gpt-test' }),
+      }),
+    )
+    expect(first?.status).toBe(202)
+
+    const second = await harness.dispatch(
+      request('/api/internal/subagents/runs', {
+        method: 'POST',
+        body: JSON.stringify({ task: 'Second shared task', model: 'gpt-test' }),
+      }),
+    )
+    expect(second?.status).toBe(409)
+    expect(await second?.json()).toEqual({ error: 'Wait for one of the 1 active child agents to finish' })
   })
 
   it('integrates only a completed child owned by the requesting parent', async () => {

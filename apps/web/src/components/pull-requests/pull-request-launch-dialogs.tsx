@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, GitBranch, GitFork, RefreshCw, Settings2, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
+import type { ArchitectureContextPacket } from '@vertexade/platform-contracts'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { PromptImageTextarea } from '@vertexade/ui/components/prompt-images'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@vertexade/ui/components/ui/collapsible'
+import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Input } from '@vertexade/ui/components/ui/input'
+import { Label } from '@vertexade/ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { api, backendApi, parseJson } from '@vertexade/ui/lib/dashboard-api'
 import type { DashboardData, GithubLabel, Job, PullRequest } from '@vertexade/ui/lib/dashboard-types'
@@ -48,6 +51,9 @@ export function LaunchDialog({
   const [preset, setPreset] = useState('pr')
   const [prompt, setPrompt] = useState('')
   const [backendId, setBackendId] = useState('')
+  const [architecturePacket, setArchitecturePacket] = useState<ArchitectureContextPacket | null>(null)
+  const [architectureLoading, setArchitectureLoading] = useState(false)
+  const [selectedArchitectureFacts, setSelectedArchitectureFacts] = useState<Set<string>>(new Set())
   const targets = useVerifiedPullRequestExecutionTargets(pr, data)
   const submission = useSingleSubmission()
   useEffect(() => {
@@ -61,6 +67,35 @@ export function LaunchDialog({
     if (!allowed.some((target) => target.backend.id === backendId))
       setBackendId(defaultPullRequestExecutionTarget(pr, allowed)?.backend.id || '')
   }, [backendId, pr?.id, targets])
+  useEffect(() => {
+    setArchitecturePacket(null)
+    setSelectedArchitectureFacts(new Set())
+    if (!pr) return
+    setArchitectureLoading(true)
+    api<{ packet: ArchitectureContextPacket | null }>(`/api/pulls/${pr.repo_id}/${pr.number}/architecture-context`)
+      .then((result) => {
+        setArchitecturePacket(result.packet)
+        setSelectedArchitectureFacts(new Set(result.packet?.facts.map((fact) => fact.node.key) || []))
+      })
+      .catch((error) => toast.error((error as Error).message))
+      .finally(() => setArchitectureLoading(false))
+  }, [pr?.id, pr?.number, pr?.repo_id])
+  async function buildArchitectureContext() {
+    if (!pr) return
+    setArchitectureLoading(true)
+    try {
+      const packet = await api<ArchitectureContextPacket>(`/api/pulls/${pr.repo_id}/${pr.number}/architecture-context`, {
+        method: 'POST',
+        body: JSON.stringify({ byteBudget: 32_000 }),
+      })
+      setArchitecturePacket(packet)
+      setSelectedArchitectureFacts(new Set(packet.facts.map((fact) => fact.node.key)))
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setArchitectureLoading(false)
+    }
+  }
   async function submit() {
     if (!pr) return
     const target = targets.find((candidate) => candidate.backend.id === backendId)
@@ -68,7 +103,28 @@ export function LaunchDialog({
     const job = await submission.run(() =>
       backendApi<Job>(target.backend.id, `/api/pulls/${target.repositoryId}/${pr.number}/launch`, {
         method: 'POST',
-        body: JSON.stringify({ preset: preset === 'none' ? '' : preset, prompt }),
+        body: JSON.stringify({
+          preset: preset === 'none' ? '' : preset,
+          prompt,
+          architecture_context:
+            architecturePacket?.freshness === 'current'
+              ? {
+                  packetId: architecturePacket.id,
+                  digest: architecturePacket.digest,
+                  revision: architecturePacket.revision,
+                  facts: architecturePacket.facts
+                    .filter((fact) => selectedArchitectureFacts.has(fact.node.key))
+                    .map((fact) => ({
+                      key: fact.node.key,
+                      label: fact.node.label,
+                      summary: fact.node.summary,
+                      path: fact.node.path,
+                      reason: fact.reason,
+                      citations: fact.node.citations,
+                    })),
+                }
+              : null,
+        }),
       }),
     )
     if (!job) return
@@ -118,6 +174,68 @@ export function LaunchDialog({
             className="min-h-32"
           />
           <Collapsible>
+            <div className="flex items-center gap-2 rounded-lg border p-2">
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="min-w-0 flex-1 justify-start">
+                  <GitFork />
+                  Architecture context
+                  {architecturePacket && (
+                    <Badge variant={architecturePacket.freshness === 'stale' ? 'destructive' : 'outline'}>
+                      {selectedArchitectureFacts.size}/{architecturePacket.facts.length} facts
+                    </Badge>
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={architectureLoading}
+                onClick={() => void buildArchitectureContext()}
+              >
+                <RefreshCw data-icon="inline-start" />
+                {architectureLoading ? 'Building…' : architecturePacket ? 'Rebuild' : 'Build'}
+              </Button>
+            </div>
+            <CollapsibleContent className="mt-2 max-h-64 space-y-2 overflow-y-auto rounded-lg border p-3">
+              {!architecturePacket && !architectureLoading && (
+                <p className="text-xs text-muted-foreground">
+                  Build a revision-bound packet to preview source-cited architecture before launch.
+                </p>
+              )}
+              {architecturePacket?.freshness === 'stale' && (
+                <p className="text-xs text-destructive">This packet is stale and will not be attached. Rebuild it for the current head.</p>
+              )}
+              {architecturePacket?.facts.map((fact) => (
+                <Label key={fact.node.key} className="flex items-start gap-2 rounded-md border p-2 text-xs">
+                  <Checkbox
+                    checked={selectedArchitectureFacts.has(fact.node.key)}
+                    onCheckedChange={(checked) =>
+                      setSelectedArchitectureFacts((current) => {
+                        const next = new Set(current)
+                        if (checked === true) next.add(fact.node.key)
+                        else next.delete(fact.node.key)
+                        return next
+                      })
+                    }
+                  />
+                  <span className="min-w-0">
+                    <strong className="block truncate">{fact.node.label}</strong>
+                    <span className="block text-muted-foreground">{fact.reason}</span>
+                    <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                      {fact.node.citations.map((citation) => citation.path).join(', ') || fact.node.path || 'No source citation'}
+                    </span>
+                  </span>
+                </Label>
+              ))}
+              {architecturePacket && (
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {architecturePacket.digest.slice(0, 12)} · {architecturePacket.estimatedBytes}/{architecturePacket.byteBudget} bytes
+                </p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+          <Collapsible>
             <CollapsibleTrigger asChild>
               <Button type="button" variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
                 <Settings2 />
@@ -165,19 +283,27 @@ export function ExecutionServerPicker({
         </Badge>
       </div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full"><SelectValue placeholder="Choose a server" /></SelectTrigger>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Choose a server" />
+        </SelectTrigger>
         <SelectContent>
           {targets.map((target) => (
             <SelectItem key={target.backend.id} value={target.backend.id} disabled={target.access !== 'allowed'}>
-              {target.backend.label} · {target.access === 'allowed' ? `access as ${target.scmLogin}` : target.access === 'checking' ? 'checking access…' : 'no SCM access'}
+              {target.backend.label} ·{' '}
+              {target.access === 'allowed'
+                ? `access as ${target.scmLogin}`
+                : target.access === 'checking'
+                  ? 'checking access…'
+                  : 'no SCM access'}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         The PR stays on <strong className="text-foreground/80">{sourceName || 'its source server'}</strong>. The agent process, worktree,
-        logs, and run history are executed and stored on <strong className="text-foreground/80">{selectedName || 'the selected server'}</strong>.
-        A destination is enabled only after its SCM identity successfully reads the repository.
+        logs, and run history are executed and stored on{' '}
+        <strong className="text-foreground/80">{selectedName || 'the selected server'}</strong>. A destination is enabled only after its SCM
+        identity successfully reads the repository.
       </p>
     </section>
   )

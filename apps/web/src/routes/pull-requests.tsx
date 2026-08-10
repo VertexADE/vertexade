@@ -43,7 +43,7 @@ export const Route = createFileRoute('/pull-requests')({
     backend: optionalString(search.backend),
     pr: positiveInteger(search.pr),
     thread: positiveInteger(search.thread),
-    tab: optionalEnum(search.tab, ['conversation', 'changes', 'checks', 'commits']),
+    tab: optionalEnum(search.tab, ['conversation', 'changes', 'impact', 'evidence', 'checks', 'commits']),
     view: optionalEnum(search.view, ['for-you', 'action', 'ready', 'all', 'stacks', 'attention', 'mine']),
     q: optionalString(search.q, 100),
     repos: optionalString(search.repos, 500),

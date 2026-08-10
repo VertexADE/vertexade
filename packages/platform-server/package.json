@@ -8,6 +8,7 @@
     "./outbound-policy": "./src/outbound-policy.ts",
     "./bounded-cache": "./src/bounded-cache.ts",
     "./configuration": "./src/configuration.ts",
+    "./listener-configuration": "./src/listener-configuration.ts",
     "./effect": "./src/effect/index.ts",
     "./provider-data": "./src/provider-data.ts",
     "./findings-api": "./src/findings-api.ts",

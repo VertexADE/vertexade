@@ -71,7 +71,7 @@ export const subagentTools = [
     name: 'spawn_agent',
     title: 'Spawn a VertexADE child agent',
     description:
-      'Start one bounded child agent in an isolated writable worktree supervised by VertexADE. Choose any listed agent and model. The child cannot delegate again. Returns immediately with a durable run ID.',
+      'Start one bounded child agent in the parent Work item’s shared repository worktree. Choose any listed agent and model. Only one child may run at a time, and the parent must wait. The child cannot delegate again. Returns immediately with a durable run ID.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -139,9 +139,9 @@ export const subagentTools = [
   },
   {
     name: 'integrate_agent',
-    title: 'Integrate VertexADE child changes',
+    title: 'Accept VertexADE child changes',
     description:
-      'Apply a completed child agent’s isolated changes to the parent workspace with a checked three-way Git patch. Call after validating the child result.',
+      'Record acceptance of a completed child agent’s changes, which are already present in the shared Work item worktree. Call after validating the child result.',
     inputSchema: {
       type: 'object',
       properties: { run_id: { type: 'integer', minimum: 1 } },

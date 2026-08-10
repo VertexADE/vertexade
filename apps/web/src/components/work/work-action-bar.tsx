@@ -222,7 +222,7 @@ function mobileWorkSections({
                 id: 'review',
                 label: 'New review thread',
                 auditAction: 'work.thread.new-review',
-                description: 'Inspect the current implementation in an isolated review.',
+                description: 'Inspect the current shared implementation in a read-only review.',
                 icon: FileSearch,
                 onSelect: onStartReview,
               },

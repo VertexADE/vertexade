@@ -9,6 +9,17 @@ export type CombinedWorktreeAllocation = {
   headSha: string | null
 }
 
+export function assertCombinedWorktreeIdle(db: DrizzleDashboardDatabase, worktree: string, repositoryName: string): void {
+  const active = db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.worktreePath, worktree), inArray(jobs.status, ['starting', 'running'])))
+    .orderBy(desc(jobs.id))
+    .limit(1)
+    .get()
+  if (active?.id) throw new Error(`${repositoryName} already has an active thread #${active.id} in its combined worktree`)
+}
+
 export function reusedCombinedWorktree(
   db: DrizzleDashboardDatabase,
   allocation: CombinedWorktreeAllocation,
@@ -19,16 +30,7 @@ export function reusedCombinedWorktree(
     fallbackHeadSha: string
   },
 ) {
-  const active = db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(eq(jobs.worktreePath, allocation.worktree), inArray(jobs.status, ['starting', 'running'])))
-    .orderBy(desc(jobs.id))
-    .limit(1)
-    .get()
-  if (active?.id) {
-    throw new Error(`${input.repositoryName} already has an active thread #${active.id} in its combined worktree`)
-  }
+  assertCombinedWorktreeIdle(db, allocation.worktree, input.repositoryName)
   const firstRun = db
     .select({ headSha: jobs.headSha })
     .from(jobs)

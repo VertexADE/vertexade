@@ -54,8 +54,15 @@ import {
 } from '@vertexade/ui/components/ui/status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
-import { age, api, isNotificationEvent, subscribeToDashboardEvents, type AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
-import type { HighlightRule, Repository } from '@vertexade/ui/lib/dashboard-types'
+import {
+  age,
+  api,
+  isNotificationEvent,
+  isPlatformApiError,
+  subscribeToDashboardEvents,
+  type AgentLaunchOptions,
+} from '@vertexade/ui/lib/dashboard-api'
+import type { DashboardData, Repository } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 import {
   ContentGenerationDefaults,
@@ -68,11 +75,13 @@ import {
 import type { ContentGenerationSettings, PreviewSettings, ThreadRuntimeDefaults } from '../components/settings/settings-types'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
 import { ThreadRuntimeDefaultSettings } from '../components/settings/settings-thread-runtime-defaults'
-import { useDashboardMeta } from '../lib/dashboard-cache'
-import { useRxDashboardCollection } from '../lib/rxdb-dashboard-cache'
+import { ServerRuntimeSettings } from '../components/settings/server-runtime-settings'
+import { TestTargetSettings } from '../components/settings/test-target-settings'
+import { EvidencePolicySettings } from '../components/settings/evidence-policy-settings'
 
 type SettingsSection = 'general' | 'servers' | 'prompts' | 'runtime' | 'capabilities' | 'appearance'
 const settingsSectionIds = new Set<SettingsSection>(['general', 'servers', 'prompts', 'runtime', 'capabilities', 'appearance'])
+type WorkspaceSettingsOverview = Pick<DashboardData, 'repositories' | 'presets' | 'highlights'>
 type SettingsSearch = { section?: SettingsSection; q?: string }
 
 export const Route = createFileRoute('/settings')({
@@ -274,20 +283,24 @@ function LinkedServersSettings() {
   )
 }
 
+async function workspaceSettingsOverview(): Promise<WorkspaceSettingsOverview> {
+  try {
+    return await api<WorkspaceSettingsOverview>('/api/settings/workspace-overview')
+  } catch (error) {
+    if (!isPlatformApiError(error) || error.status !== 404) throw error
+    const dashboard = await api<DashboardData>('/api/dashboard')
+    return { repositories: dashboard.repositories, presets: dashboard.presets, highlights: dashboard.highlights }
+  }
+}
+
 function SettingsPage() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
-  const repositories = useRxDashboardCollection<Repository>('repositories')
-  const meta = useDashboardMeta()
-  const data = useMemo(
-    () => ({
-      ...meta.value,
-      repositories: repositories.values,
-      prs: [],
-      agentThreads: [],
-    }),
-    [meta.value, repositories.values],
-  )
+  const [workspace, setWorkspace] = useState<WorkspaceSettingsOverview>({
+    repositories: [],
+    presets: [],
+    highlights: [],
+  })
   const [previewSettings, setPreviewSettings] = useState<PreviewSettings>({
     domain: '',
     gatewayPort: 4180,
@@ -320,16 +333,18 @@ function SettingsPage() {
   const load = useCallback(async () => {
     setLoadError('')
     try {
-      const [previews, generation, system, threads] = await Promise.all([
+      const [previews, generation, system, threads, overview] = await Promise.all([
         api<PreviewSettings>('/api/settings/worktree-previews'),
         api<ContentGenerationSettings>('/api/settings/content-generation'),
         api<SystemConfigurationValue>('/api/settings/system-configuration'),
         api<ThreadRuntimeDefaults>('/api/settings/thread-runtime-defaults'),
+        workspaceSettingsOverview(),
       ])
       setPreviewSettings(previews)
       setContentGeneration(generation)
       setSystemConfiguration(system)
       setThreadDefaults(threads)
+      setWorkspace(overview)
     } catch (error) {
       const message = (error as Error).message
       setLoadError(message)
@@ -360,6 +375,7 @@ function SettingsPage() {
         body: JSON.stringify({ repository: form.get('repository') }),
       })
       target.reset()
+      await load()
       toast.success(`Added ${result.repo.full_name} · ${result.open_prs} open PRs`)
     } catch (error) {
       toast.error((error as Error).message)
@@ -379,7 +395,7 @@ function SettingsPage() {
   }, [section, updateSearch, visibleSections])
   return (
     <>
-      <GlobalHighlights rules={data.highlights} />
+      <GlobalHighlights rules={workspace.highlights} />
       <WorkspacePage className="max-w-[90rem] xl:px-5 xl:py-3">
         <WorkspaceHeader
           icon={Settings2}
@@ -482,7 +498,9 @@ function SettingsPage() {
                     Repositories and isolated preview infrastructure available to pull-request and task workflows.
                   </SectionIntro>
                   <WorktreePreviewSettings settings={previewSettings} onSaved={setPreviewSettings} />
-                  <Repositories repositories={data.repositories} onAdd={addRepository} />
+                  <Repositories repositories={workspace.repositories} onAdd={addRepository} />
+                  <TestTargetSettings repositories={workspace.repositories} />
+                  <EvidencePolicySettings repositories={workspace.repositories} />
                 </section>
               </TabsContent>
               <TabsContent value="prompts">
@@ -491,14 +509,15 @@ function SettingsPage() {
                     Workspace-level policies and reusable instructions for consistent work.
                   </SectionIntro>
                   <PromptPolicySettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                  <Presets data={data} />
+                  <Presets presets={workspace.presets} />
                 </section>
               </TabsContent>
               <TabsContent value="servers">
                 <section data-slot="settings-section" aria-labelledby="server-settings" className={settingsSectionClass}>
-                  <SectionIntro id="server-settings" title="Linked servers" icon={Network}>
-                    Combine approved VertexADE backends in this frontend and route actions to the server that owns each item.
+                  <SectionIntro id="server-settings" title="Server management" icon={Network}>
+                    Manage this selected server's listeners and links. Entity actions continue to route to the server that owns the item.
                   </SectionIntro>
+                  <ServerRuntimeSettings />
                   <LinkedServersSettings />
                 </section>
               </TabsContent>
@@ -535,7 +554,7 @@ function SettingsPage() {
                     Personalize color, typography, and global visual rules in this browser.
                   </SectionIntro>
                   <AppearanceSettings />
-                  <Highlights rules={data.highlights} />
+                  <Highlights rules={workspace.highlights} />
                 </section>
               </TabsContent>
             </>

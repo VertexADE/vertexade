@@ -222,7 +222,7 @@ function SetupPage() {
             )}
             {status.operations?.deployment?.status !== 'verified' && (
               <Button asChild variant="outline" size="sm">
-                <Link to="/deployments" search={{ status: undefined, q: undefined }}>
+                <Link to="/deployments" search={{ status: undefined, q: undefined, target: undefined }}>
                   <Rocket />
                   Review delivery
                 </Link>

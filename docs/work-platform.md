@@ -21,25 +21,26 @@ For multi-repository delivery, each repository is attached as a `repository` res
 
 ## Agent workspace layouts
 
-Implementation threads started from a Work item use one workspace layout. The
-host groups the Work item's repository worktrees below one agent-managed parent
-and starts every agent session with that parent as its current directory.
+Implementation threads started from a Work item use one provider-independent workspace layout. The host groups the Work item's repository worktrees below a VertexADE-managed parent and starts every agent session with that parent as its current directory.
 
-The combined layout is provider-specific because every agent owns its managed workspace root:
+The combined layout is owned by VertexADE rather than Codex, Claude Code, OpenCode, or another agent:
 
 ```text
-<agent-workspace-root>/
+~/.vertex-ade/
   work-items/
     W-0042/
       organization--api/
       organization--web/
 ```
 
-The parent directory is coordination context, not one merged Git checkout. Every child remains an independent Git worktree with its own branch and shared metadata from its canonical repository. Repository paths are stable within the Work item and do not include a run identifier. Starting another independent thread for the same Work item and repository is rejected while that worktree exists; resume or follow up on its existing thread instead. The agent prompt identifies both paths and permits reading sibling worktrees for cross-repository context, but limits writes to the session's assigned repository worktree. This keeps concurrently running repository threads isolated while giving them the same filesystem perspective and shared Work memory.
+`VERTEXADE_DATA_DIR` or `XDG_DATA_HOME` relocates the `.vertex-ade` data directory for a separately managed server while preserving `work-items/<work-item-key>`. Historical combined workspaces below provider directories remain readable and removable, but new Work-item launches never write there.
+
+The parent directory is coordination context, not one merged Git checkout. Each repository child is one independent Git worktree with its own branch and shared metadata from its canonical repository. Its path is stable for the lifetime of the Work item and never includes an agent, thread, review, or run identifier. Every later planning, implementation, review, retry, follow-up, or delegated-child thread for that Work item and repository reuses the same worktree. A second ordinary thread is rejected while another thread is active there; after the active thread stops, the next thread can reuse it. Reviews are read-only. A delegated child edits the same worktree directly, the parent must wait, and only one delegated child may run for a parent at a time. The agent prompt permits reading sibling repository worktrees for cross-repository context but limits writes to the assigned repository worktree.
 
 `workspace_mode` records `combined` on every new thread; `session_cwd` records
 the directory used to launch, resume, retry, and reconcile the provider
-session. `worktree_path` continues to identify the assigned Git checkout for
+session. Every job for the same Work item and repository records the same
+`worktree_path`, which continues to identify the assigned Git checkout for
 diffs, environment snapshots, branch operations, previews, and cleanup. Forked
 threads receive a new Work-key parent and worktree. Runtime readers can still
 locate historical recorded worktrees, but no launch API creates or accepts the

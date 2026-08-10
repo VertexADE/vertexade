@@ -1,11 +1,12 @@
 import { stat, unlink } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { jobs } from '../../database/schema/tables.ts'
 import { jobRecord } from '../../database/contract-records.ts'
 import { invalidateLogEventContext } from '../../log-files.ts'
 import { removeProviderThread } from '../../work/provider-thread-cleanup.ts'
 import { withWorktreeOwnershipRepair } from '../../work/worktree-ownership.ts'
+import { isManagedJobWorkspacePath } from '../../work/workspace-layout.ts'
 import {
   runtimeAgentProvider as agentProvider,
   runtimeAgents as agents,
@@ -87,7 +88,7 @@ async function cleanupWorktree(request: Request, _url: URL, match: RegExpMatchAr
   const input = await body(request)
   const removeThreadHistory = input.remove_thread_history === true
   const runtimeAgent = agents.require(job.agent_id || agentProvider)
-  assertOwnedWorktree(job.worktree_path, runtimeAgent.name, runtimeAgent.workspaceRoot)
+  assertOwnedWorktree(job, runtimeAgent.name, runtimeAgent.workspaceRoot)
   assertNoActiveRun(job.worktree_path)
   const relatedJobs = jobsInWorktree(job.worktree_path)
   await stopPreviews(relatedJobs)
@@ -109,9 +110,9 @@ function cleanupCandidate(match: RegExpMatchArray) {
   return job
 }
 
-function assertOwnedWorktree(path: string, agentName: string, workspaceRoot: string) {
-  if (resolve(path).startsWith(`${resolve(workspaceRoot)}${sep}`)) return
-  rejectThreadRoute(409, `Refusing to remove a worktree outside the ${agentName} workspace directory`)
+function assertOwnedWorktree(job: ReturnType<typeof cleanupCandidate>, agentName: string, workspaceRoot: string) {
+  if (isManagedJobWorkspacePath(job, job.worktree_path, workspaceRoot)) return
+  rejectThreadRoute(409, `Refusing to remove a worktree outside VertexADE-managed workspace storage for ${agentName}`)
 }
 
 function assertNoActiveRun(worktreePath: string) {

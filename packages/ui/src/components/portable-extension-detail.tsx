@@ -29,6 +29,7 @@ import { Label } from '@vertexade/ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { age } from '@vertexade/ui/lib/dashboard-api'
+import { extensionBrowserAssetSource } from '@vertexade/ui/lib/extension-presentation'
 import { cn } from '@vertexade/ui/lib/utils'
 export { PortableActionDialog, type PortableSourceData } from '@vertexade/ui/components/portable-action-dialog'
 
@@ -82,7 +83,7 @@ function portableInitials(value: string) {
 function PortablePersonAvatar({ person, size = 'sm' }: { person: PortablePerson; size?: 'sm' | 'default' | 'lg' }) {
   return (
     <Avatar size={size} title={person.title}>
-      {person.imageUrl && <AvatarImage src={person.imageUrl} alt="" />}
+      {person.imageUrl && <AvatarImage src={extensionBrowserAssetSource(person.imageUrl)} alt="" />}
       <AvatarFallback className="bg-blue-500/10 font-mono text-[11px] text-blue-300">{portableInitials(person.title)}</AvatarFallback>
     </Avatar>
   )

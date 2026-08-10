@@ -6,13 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vert
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
-import type { DashboardData, HighlightRule } from '@vertexade/ui/lib/dashboard-types'
+import type { HighlightRule, Preset } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
 const placeholders = ['repo', 'pr_number', 'pr_title', 'pr_url', 'author', 'base_branch', 'head_branch']
 const highlightColors = ['#f59e0b', '#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#ec4899']
 
-export function Presets({ data }: { data: DashboardData }) {
+export function Presets({ presets }: { presets: Preset[] }) {
   const [name, setName] = useState('')
   const [prompt, setPrompt] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -21,7 +21,7 @@ export function Presets({ data }: { data: DashboardData }) {
     setName('')
     setPrompt('')
   }
-  function edit(preset: DashboardData['presets'][number]) {
+  function edit(preset: Preset) {
     setEditingId(preset.id)
     setName(preset.name)
     setPrompt(preset.prompt)
@@ -87,7 +87,7 @@ export function Presets({ data }: { data: DashboardData }) {
           <Button size="sm">{editingId ? 'Update preset' : 'Save preset'}</Button>
         </form>
         <CardContent className="max-h-80 overflow-y-auto p-0">
-          {data.presets.map((preset) => (
+          {presets.map((preset) => (
             <div key={preset.id} className={cn('border-b p-3 last:border-0', editingId === preset.id && 'bg-blue-500/5')}>
               <div className="flex justify-between gap-2">
                 <strong className="font-mono text-xs text-blue-400">[{preset.name}]</strong>

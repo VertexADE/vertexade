@@ -1,6 +1,6 @@
 import type { Job, PullRequestDialogItem, WorkResource } from './dashboard-types'
 
-export type WorkDetailSection = 'overview' | 'threads' | 'memory' | 'links' | 'activity'
+export type WorkDetailSection = 'overview' | 'threads' | 'memory' | 'links' | 'activity' | 'impact'
 export type WorkDetailSearch = {
   section?: WorkDetailSection
   thread?: number
@@ -16,7 +16,7 @@ function positiveInteger(value: unknown) {
 }
 
 export function workDetailSearch(search: Record<string, unknown>): WorkDetailSearch {
-  const section = ['overview', 'threads', 'memory', 'links', 'activity'].includes(String(search.section))
+  const section = ['overview', 'threads', 'memory', 'links', 'activity', 'impact'].includes(String(search.section))
     ? (String(search.section) as WorkDetailSection)
     : undefined
   return {

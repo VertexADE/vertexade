@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { readRequestBody } from '@vertexade/platform-server/http'
-import { runCommand } from '../process.ts'
+import { runCommand, runCommandResult, type CommandResult, type RunOptions } from '../process.ts'
 
 let resolveCommand = (command: string) => command
 
@@ -44,4 +44,8 @@ export async function body(request: Request, maxBytes = 100_000): Promise<any> {
 
 export function run(command: string, args: string[], options: any = {}) {
   return runCommand(resolveCommand(command), args, options)
+}
+
+export function runResult(command: string, args: string[], options: RunOptions = {}): Promise<CommandResult> {
+  return runCommandResult(resolveCommand(command), args, options)
 }

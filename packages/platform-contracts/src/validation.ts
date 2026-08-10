@@ -108,6 +108,7 @@ import type {
   SearchProvider,
   DeploymentStage,
   DeploymentCommit,
+  DeploymentTarget,
   DeploymentService,
   DeploymentOverview,
   DeploymentSnapshot,

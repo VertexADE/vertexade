@@ -18,6 +18,32 @@ export type BackendAttributed = {
 }
 
 export const federatedIdSpan = 1_000_000_000
+export const activeBackendStorageKey = 'vertexade.active-backend'
+
+export function activeBackendId() {
+  if (typeof localStorage === 'undefined') return ''
+  try {
+    return String(localStorage.getItem(activeBackendStorageKey) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+export function saveActiveBackendId(id: string) {
+  if (typeof localStorage === 'undefined') return
+  const value = id.trim()
+  try {
+    if (value) localStorage.setItem(activeBackendStorageKey, value)
+    else localStorage.removeItem(activeBackendStorageKey)
+  } catch {
+    // A blocked storage implementation should not prevent server selection for
+    // the current page; callers still reload with the in-memory UI selection.
+  }
+}
+
+export function resolveActiveBackend(backends: BackendDescriptor[], requested = activeBackendId()) {
+  return backends.find((backend) => backend.id === requested) || backends.find((backend) => backend.isDefault) || backends[0] || null
+}
 
 export function backendApiPath(path: string, backendId?: string | null) {
   if (!backendId) return path
@@ -46,5 +72,8 @@ export function displayBackendKey(source: BackendAttributed, value: unknown) {
 export async function loadBackendRegistry() {
   const response = await fetch('/api/backends', { headers: { accept: 'application/json' } })
   if (!response.ok) throw new Error(`Backend registry failed with HTTP ${response.status}`)
-  return (await response.json()) as { backends: BackendDescriptor[] }
+  const result = (await response.json()) as { backends: BackendDescriptor[] }
+  const active = resolveActiveBackend(result.backends)
+  if (active && active.id !== activeBackendId()) saveActiveBackendId(active.id)
+  return result
 }

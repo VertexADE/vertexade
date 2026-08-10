@@ -14,10 +14,13 @@ import { Route as ThreadsRouteImport } from './routes/threads'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PullRequestsRouteImport } from './routes/pull-requests'
+import { Route as MigrationsRouteImport } from './routes/migrations'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as ImpactRouteImport } from './routes/impact'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as AutomationsRouteImport } from './routes/automations'
+import { Route as ArchitectureRouteImport } from './routes/architecture'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkIndexRouteImport } from './routes/work.index'
 import { Route as ExtensionsIndexRouteImport } from './routes/extensions.index'
@@ -52,9 +55,19 @@ const PullRequestsRoute = PullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MigrationsRoute = MigrationsRouteImport.update({
+  id: '/migrations',
+  path: '/migrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InboxRoute = InboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpactRoute = ImpactRouteImport.update({
+  id: '/impact',
+  path: '/impact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExtensionsRoute = ExtensionsRouteImport.update({
@@ -70,6 +83,11 @@ const DeploymentsRoute = DeploymentsRouteImport.update({
 const AutomationsRoute = AutomationsRouteImport.update({
   id: '/automations',
   path: '/automations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchitectureRoute = ArchitectureRouteImport.update({
+  id: '/architecture',
+  path: '/architecture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -116,10 +134,13 @@ const ExtensionsModuleIdSplatRoute = ExtensionsModuleIdSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/architecture': typeof ArchitectureRoute
   '/automations': typeof AutomationsRoute
   '/deployments': typeof DeploymentsRoute
   '/extensions': typeof ExtensionsRouteWithChildren
+  '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
+  '/migrations': typeof MigrationsRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -135,9 +156,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/architecture': typeof ArchitectureRoute
   '/automations': typeof AutomationsRoute
   '/deployments': typeof DeploymentsRoute
+  '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
+  '/migrations': typeof MigrationsRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -153,10 +177,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/architecture': typeof ArchitectureRoute
   '/automations': typeof AutomationsRoute
   '/deployments': typeof DeploymentsRoute
   '/extensions': typeof ExtensionsRouteWithChildren
+  '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
+  '/migrations': typeof MigrationsRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -174,10 +201,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/architecture'
     | '/automations'
     | '/deployments'
     | '/extensions'
+    | '/impact'
     | '/inbox'
+    | '/migrations'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -193,9 +223,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/architecture'
     | '/automations'
     | '/deployments'
+    | '/impact'
     | '/inbox'
+    | '/migrations'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -210,10 +243,13 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/architecture'
     | '/automations'
     | '/deployments'
     | '/extensions'
+    | '/impact'
     | '/inbox'
+    | '/migrations'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -230,10 +266,13 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArchitectureRoute: typeof ArchitectureRoute
   AutomationsRoute: typeof AutomationsRoute
   DeploymentsRoute: typeof DeploymentsRoute
   ExtensionsRoute: typeof ExtensionsRouteWithChildren
+  ImpactRoute: typeof ImpactRoute
   InboxRoute: typeof InboxRoute
+  MigrationsRoute: typeof MigrationsRoute
   PullRequestsRoute: typeof PullRequestsRoute
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
@@ -281,11 +320,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PullRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/migrations': {
+      id: '/migrations'
+      path: '/migrations'
+      fullPath: '/migrations'
+      preLoaderRoute: typeof MigrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/inbox': {
       id: '/inbox'
       path: '/inbox'
       fullPath: '/inbox'
       preLoaderRoute: typeof InboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impact': {
+      id: '/impact'
+      path: '/impact'
+      fullPath: '/impact'
+      preLoaderRoute: typeof ImpactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/extensions': {
@@ -307,6 +360,13 @@ declare module '@tanstack/react-router' {
       path: '/automations'
       fullPath: '/automations'
       preLoaderRoute: typeof AutomationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/architecture': {
+      id: '/architecture'
+      path: '/architecture'
+      fullPath: '/architecture'
+      preLoaderRoute: typeof ArchitectureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -396,10 +456,13 @@ const WorkRouteWithChildren = WorkRoute._addFileChildren(WorkRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArchitectureRoute: ArchitectureRoute,
   AutomationsRoute: AutomationsRoute,
   DeploymentsRoute: DeploymentsRoute,
   ExtensionsRoute: ExtensionsRouteWithChildren,
+  ImpactRoute: ImpactRoute,
   InboxRoute: InboxRoute,
+  MigrationsRoute: MigrationsRoute,
   PullRequestsRoute: PullRequestsRoute,
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,

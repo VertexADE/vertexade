@@ -7,7 +7,9 @@ import { allocateAgentWorktree } from './agent-worktree.ts'
 describe('agent worktree allocation', () => {
   it('reuses the stable combined repository worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-combined-'))
-    const worktree = join(root, 'work-items', 'W-0042', 'acme--api')
+    const agentWorkspaceRoot = join(root, 'agents', 'codex')
+    const workItemWorkspaceRoot = join(root, '.vertex-ade', 'work-items')
+    const worktree = join(workItemWorkspaceRoot, 'W-0042', 'acme--api')
     await mkdir(worktree, { recursive: true })
     const run = vi.fn(async (_command: string, args: string[]) => {
       if (args.includes('--git-common-dir')) return '/repos/acme-api/.git'
@@ -15,14 +17,16 @@ describe('agent worktree allocation', () => {
       if (args.at(-1) === 'HEAD') return 'current-head'
       return ''
     })
+    const prepare = vi.fn()
+    const assertReusable = vi.fn()
 
     const result = await allocateAgentWorktree(
       { full_name: 'acme/api', local_path: '/repos/acme-api' },
-      { workspaceRoot: root },
+      { workspaceRoot: agentWorkspaceRoot },
       'origin/main',
       'feature/new-branch',
       { mode: 'combined', workItemKey: 'W-0042' },
-      { run, prepare: vi.fn(), cleanup: vi.fn() },
+      { run, workItemWorkspaceRoot, assertReusable, prepare, cleanup: vi.fn() },
     )
 
     expect(result).toMatchObject({
@@ -32,5 +36,10 @@ describe('agent worktree allocation', () => {
       created: false,
     })
     expect(run.mock.calls.flat(2)).not.toContain('add')
+    expect(assertReusable).toHaveBeenCalledWith({ full_name: 'acme/api', local_path: '/repos/acme-api' }, worktree)
+    expect(assertReusable.mock.invocationCallOrder[0]).toBeLessThan(prepare.mock.invocationCallOrder[0]!)
+    expect(prepare).toHaveBeenCalledWith({ full_name: 'acme/api', local_path: '/repos/acme-api' }, worktree, {
+      workspaceRoot: agentWorkspaceRoot,
+    })
   })
 })

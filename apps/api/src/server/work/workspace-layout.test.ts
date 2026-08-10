@@ -11,6 +11,7 @@ describe('Work item workspace layout', () => {
   it('groups repository worktrees below one stable Work item root', () => {
     const layout = workItemWorkspaceLayout({
       agentWorkspaceRoot: '/managed/codex',
+      workItemWorkspaceRoot: '/home/example/.vertex-ade/work-items',
       workItemKey: 'W-0042',
       repositoryFullName: 'acme/api',
       repositoryPath: '/repos/api',
@@ -20,8 +21,8 @@ describe('Work item workspace layout', () => {
 
     expect(layout).toEqual({
       mode: 'combined',
-      root: '/managed/codex/work-items/W-0042',
-      worktree: '/managed/codex/work-items/W-0042/acme--api',
+      root: '/home/example/.vertex-ade/work-items/W-0042',
+      worktree: '/home/example/.vertex-ade/work-items/W-0042/acme--api',
     })
     expect(relativeWorktreePath(layout.root, layout.worktree)).toBe('acme--api')
     expect(
@@ -32,45 +33,48 @@ describe('Work item workspace layout', () => {
           worktree_path: layout.worktree,
         },
         '/managed/codex',
+        '/home/example/.vertex-ade/work-items',
       ),
     ).toBe(layout.root)
   })
 
-  it('uses the same repository path across launch identifiers', () => {
+  it('uses the same repository path across agents and launch identifiers', () => {
     const input = {
       agentWorkspaceRoot: '/managed/codex',
+      workItemWorkspaceRoot: '/home/example/.vertex-ade/work-items',
       workItemKey: 'W-0042',
       repositoryFullName: 'acme/api',
       repositoryPath: '/repos/api',
       mode: 'combined' as const,
     }
 
-    expect(workItemWorkspaceLayout({ ...input, identifier: 'first-run' }).worktree).toBe(
-      workItemWorkspaceLayout({ ...input, identifier: 'second-run' }).worktree,
+    expect(workItemWorkspaceLayout({ ...input, agentWorkspaceRoot: '/managed/codex', identifier: 'first-run' }).worktree).toBe(
+      workItemWorkspaceLayout({ ...input, agentWorkspaceRoot: '/managed/claude', identifier: 'second-run' }).worktree,
     )
   })
 
-  it('keeps isolated review and child runs inside their owning Work item', () => {
+  it('does not create a second repository worktree for another thread', () => {
     const layout = workItemWorkspaceLayout({
       agentWorkspaceRoot: '/managed/codex',
+      workItemWorkspaceRoot: '/home/example/.vertex-ade/work-items',
       workItemKey: 'W-0042',
       repositoryFullName: 'acme/api',
       repositoryPath: '/repos/api',
       mode: 'combined',
-      identifier: 'ignored',
-      isolationKey: 'review-17',
+      identifier: 'review-17',
     })
 
     expect(layout).toEqual({
       mode: 'combined',
-      root: '/managed/codex/work-items/W-0042/runs/review-17',
-      worktree: '/managed/codex/work-items/W-0042/runs/review-17/acme--api',
+      root: '/home/example/.vertex-ade/work-items/W-0042',
+      worktree: '/home/example/.vertex-ade/work-items/W-0042/acme--api',
     })
   })
 
   it('preserves the existing per-repository layout and cwd', () => {
     const layout = workItemWorkspaceLayout({
       agentWorkspaceRoot: '/managed/codex',
+      workItemWorkspaceRoot: '/home/example/.vertex-ade/work-items',
       workItemKey: 'W-0042',
       repositoryFullName: 'acme/api',
       repositoryPath: '/repos/api',
@@ -99,7 +103,22 @@ describe('Work item workspace layout', () => {
           worktree_path: '/managed/codex/other/api',
         },
         '/managed/codex',
+        '/home/example/.vertex-ade/work-items',
       ),
     ).toThrow('does not contain')
+  })
+
+  it('keeps legacy combined Work item paths readable without using them for new layouts', () => {
+    expect(
+      jobSessionCwd(
+        {
+          workspace_mode: 'combined',
+          session_cwd: '/managed/codex/work-items/W-0042',
+          worktree_path: '/managed/codex/work-items/W-0042/acme--api',
+        },
+        '/managed/codex',
+        '/home/example/.vertex-ade/work-items',
+      ),
+    ).toBe('/managed/codex/work-items/W-0042')
   })
 })
