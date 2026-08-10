@@ -53,10 +53,10 @@ import { agentSafetyBoundary, untrustedExternalTask } from '../prompts/security.
 import { contextTransferPrompt, contextTransferSnapshot } from '../work/context-transfer.ts'
 import { WorkMemoryService } from '../work/memory.ts'
 import { allocateAgentWorktree } from '../work/agent-worktree.ts'
+import { assertCombinedWorktreeIdle, reusedCombinedWorktree } from '../work/combined-worktree.ts'
 import { jobSessionCwd, parseWorkItemWorkspaceMode, relativeWorktreePath, workItemWorkspaceLayout } from '../work/workspace-layout.ts'
 import { createCoreRoutes } from '../core-routes.ts'
 import { worktreeCodeReviewPrompt } from '../work/prompts.ts'
-import { populateWorktreeSnapshot } from '../work/worktree-snapshot.ts'
 import { WorktreePreviewRuntime, normalizePreviewSettings } from '../previews/runtime.ts'
 import { WorktreePreviewGateway } from '../previews/gateway.ts'
 import { openDashboardDatabase } from '../database/dashboard-database.ts'
@@ -230,6 +230,7 @@ export async function cleanupFailedLaunch(repoPath: string, worktreePath: string
 export async function createAgentWorktree(repo, runtimeAgent, revision: string, branchName: string | null = null, workspace: any = {}) {
   return allocateAgentWorktree(repo, runtimeAgent, revision, branchName, workspace, {
     run,
+    assertReusable: (repository, worktree) => assertCombinedWorktreeIdle(db, worktree, repository.full_name),
     prepare: prepareRepositoryWorktree,
     cleanup: cleanupFailedLaunch,
   })
@@ -307,7 +308,7 @@ async function inspectWorktreeReviewSource(source, repo) {
   const sourceHead = (await run('git', ['-C', sourcePath, 'rev-parse', 'HEAD'])).trim()
   const baseSha = String(source.head_sha || sourceHead)
   await run('git', ['-C', sourcePath, 'rev-parse', '--verify', `${baseSha}^{commit}`])
-  return { sourcePath, sourceHead, baseSha }
+  return { sourceHead, baseSha }
 }
 
 export async function launchWorktreeReview(sourceJobId: number, options: any = {}) {
@@ -317,14 +318,21 @@ export async function launchWorktreeReview(sourceJobId: number, options: any = {
   const ephemeral = resolveEphemeralLaunch(runtimeAgent, reviewOptions.ephemeral ?? agentLaunchContext.getStore()?.ephemeral, true)
   let failedWorktree: string | null = null
   try {
-    const { sourcePath, sourceHead, baseSha } = await inspectWorktreeReviewSource(source, repo)
-    const { worktree, baseGitDir, sessionCwd } = await createAgentWorktree(repo, runtimeAgent, sourceHead, null, {
+    const { sourceHead, baseSha } = await inspectWorktreeReviewSource(source, repo)
+    const allocation = await createAgentWorktree(repo, runtimeAgent, sourceHead, null, {
       mode: 'combined',
       workItemKey: workItem.key,
-      isolationKey: `review-${source.id}-${randomUUID().slice(0, 8)}`,
     })
-    failedWorktree = worktree
-    await populateWorktreeSnapshot(sourcePath, worktree, run)
+    const { worktree, baseGitDir, sessionCwd } = allocation
+    const reviewHeadSha = allocation.created
+      ? sourceHead
+      : reusedCombinedWorktree(db, allocation, {
+          workItemId: workItem.id,
+          repositoryId: repo.id,
+          repositoryName: repo.full_name,
+          fallbackHeadSha: sourceHead,
+        }).headSha
+    failedWorktree = allocation.created ? worktree : null
     const prompt = systemConfiguration.prompt(
       'review',
       worktreeCodeReviewPrompt({
@@ -339,7 +347,7 @@ export async function launchWorktreeReview(sourceJobId: number, options: any = {
         focus: String(reviewOptions.focus),
       }),
     )
-    const context = `\n\nWork item workspace: ${sessionCwd}\nRepository: ${repo.full_name}\nOriginal implementation worktree: ${sourcePath}\nAssigned isolated review snapshot: ${worktree}\nSource Work run: #${source.id}\nReview base commit: ${baseSha}\nStart from the Work item workspace and work only in the assigned review snapshot. The source worktree and any linked pull request are outside this review target. Do not modify the source worktree or use a linked pull request as context.\n\nContinue autonomously until the detailed review and relevant safe checks are complete.`
+    const context = `\n\nWork item workspace: ${sessionCwd}\nRepository: ${repo.full_name}\nShared repository worktree: ${worktree}\nSource Work run: #${source.id}\nReview base commit: ${baseSha}\nThis review reuses the Work item's existing repository worktree. Inspect its current state and keep the review read-only; do not modify files, branches, commits, or the linked pull request.\n\nContinue autonomously until the detailed review and relevant safe checks are complete.`
     const memoryLaunch = await workMemory.launchContext(workItem.id, `${agentSafetyBoundary()}\n\n${prompt}${context}`)
     const launch = await resolveAgentLaunch(workItem.id, memoryLaunch.prompt, runtimeAgent.id)
     const finalPrompt = launch.prompt
@@ -357,8 +365,8 @@ export async function launchWorktreeReview(sourceJobId: number, options: any = {
         status: 'starting',
         baseRepoPath: repo.local_path,
         baseGitDir,
-        headSha: sourceHead,
-        latestActivity: `Preparing isolated review snapshot of thread #${source.id}…`,
+        headSha: reviewHeadSha,
+        latestActivity: `Starting review in the shared worktree for thread #${source.id}…`,
         activityAt: sql`CURRENT_TIMESTAMP`,
         kind: 'work_review',
         sourceJobId: source.id,
@@ -469,12 +477,20 @@ export async function launchJob(
     }
     await run('git', ['-C', repo.local_path, 'fetch', 'origin', `pull/${pr.number}/head`])
     const headSha = (await run('git', ['-C', repo.local_path, 'rev-parse', 'FETCH_HEAD'])).trim()
-    const { worktree, baseGitDir, sessionCwd } = await createAgentWorktree(repo, runtimeAgent, headSha, null, {
+    const allocation = await createAgentWorktree(repo, runtimeAgent, headSha, null, {
       mode: 'combined',
       workItemKey: workItem.key,
-      isolationKey: `pull-request-${pr.number}-${randomUUID().slice(0, 8)}`,
     })
-    failedWorktree = worktree
+    const { worktree, baseGitDir, sessionCwd } = allocation
+    const recordedHeadSha = allocation.created
+      ? headSha
+      : reusedCombinedWorktree(db, allocation, {
+          workItemId: workItem.id,
+          repositoryId: repo.id,
+          repositoryName: repo.full_name,
+          fallbackHeadSha: headSha,
+        }).headSha
+    failedWorktree = allocation.created ? worktree : null
     const context = `\n\nWork item workspace: ${sessionCwd}\nRepository: ${repo.full_name}\nOriginal checkout: ${repo.local_path}\nAssigned pull-request worktree: ${worktree}\nPull request: #${pr.number} — ${pr.title}\nPR URL: ${pr.url}\nStart from the Work item workspace and work only in the assigned PR worktree. It is linked to the original checkout through shared Git metadata.\n\nContinue autonomously until the requested work is fully complete and verified. Progress messages, acknowledgements, and plans are not completion. Do not end the turn after describing what you will do; perform the work and its relevant checks first. End only with the completed outcome or a concrete blocking question that requires user input.`
     const configuredPrompt = systemConfiguration.prompt(kind === 'review' || kind === 'review_handoff' ? 'review' : 'work', prompt)
     const memoryLaunch = await workMemory.launchContext(workItem.id, `${agentSafetyBoundary()}\n\n${configuredPrompt.trim()}${context}`)
@@ -494,8 +510,8 @@ export async function launchJob(
         status: 'starting',
         baseRepoPath: repo.local_path,
         baseGitDir,
-        headSha,
-        latestActivity: 'Preparing agent worktree…',
+        headSha: recordedHeadSha,
+        latestActivity: allocation.created ? 'Preparing agent worktree…' : 'Reusing Work item repository worktree…',
         activityAt: sql`CURRENT_TIMESTAMP`,
         kind,
         sourceJobId,

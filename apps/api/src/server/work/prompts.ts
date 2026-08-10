@@ -22,9 +22,9 @@ type WorktreeCodeReviewInput = {
 export function worktreeCodeReviewPrompt(input: WorktreeCodeReviewInput) {
   const focus = input.focus?.trim() || 'No additional review focus was supplied.'
   const connectedRepositories = [...new Set(input.connectedRepositories?.filter(Boolean) || [input.repository])]
-  return `Perform a complete lead-engineer code review of the implementation snapshot for this Work item. Apply the same depth, evidence standards, quality scorecard, and validation discipline as a pull-request review, but review only this local Work-item worktree. Do not locate, open, fetch, or use a pull request linked to the Work item.
+  return `Perform a complete lead-engineer code review of the current implementation state for this Work item. Apply the same depth, evidence standards, quality scorecard, and validation discipline as a pull-request review, but review only this local Work-item repository worktree. Do not locate, open, fetch, or use a pull request linked to the Work item.
 
-Start by reading every applicable repository instruction, skill, ADR, and project configuration. Review the complete local change set from base commit ${input.baseSha} through HEAD, plus staged, unstaged, and untracked files in the snapshot. Use \`git status --short\`, \`git diff --stat ${input.baseSha}\`, \`git diff ${input.baseSha}...HEAD\`, and the working-tree diffs as appropriate. Inspect full changed files plus enough surrounding and dependent code to understand the end-to-end behavior. Distinguish intentional product changes from generated files, formatting churn, unrelated changes, dependency artifacts, and accidental additions.
+Start by reading every applicable repository instruction, skill, ADR, and project configuration. Review the complete local change set from base commit ${input.baseSha} through HEAD, plus staged, unstaged, and untracked files in the shared worktree. Use \`git status --short\`, \`git diff --stat ${input.baseSha}\`, \`git diff ${input.baseSha}...HEAD\`, and the working-tree diffs as appropriate. Inspect full changed files plus enough surrounding and dependent code to understand the end-to-end behavior. Distinguish intentional product changes from generated files, formatting churn, unrelated changes, dependency artifacts, and accidental additions.
 
 ${repositoryTopologyReviewContract}
 
@@ -50,7 +50,7 @@ ${focus}
 
 Repository under review: ${input.repository}
 Connected Work item repositories: ${connectedRepositories.join(', ') || input.repository}
-Repository review scope: only ${input.repository} is present in this isolated snapshot. Use the connected set to reason about contracts and rollout order, but do not claim the other repositories were inspected by this review.
+Repository review scope: review only ${input.repository}. Sibling Work-item worktrees may be read as supporting context for contracts and rollout order, but do not report them as review targets or modify them.
 Source Work run: #${input.sourceRunId}
 Source branch: ${input.sourceBranch || 'detached or unavailable'}
 Review base commit: ${input.baseSha}

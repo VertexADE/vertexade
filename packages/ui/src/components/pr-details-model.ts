@@ -98,7 +98,7 @@ export type PrDetailsActions = {
   contextualMenuActions?: ReactNode
 }
 
-export type PrDetailsTab = 'conversation' | 'changes' | 'checks' | 'commits'
+export type PrDetailsTab = 'conversation' | 'changes' | 'impact' | 'evidence' | 'checks' | 'commits'
 
 export function pullRequestInitialTab(details: PullRequestDecisionDetails & Pick<PullRequestDetails, 'reviewThreads'>): PrDetailsTab {
   const statuses = details.statusCheckRollup.map(statusValue)

@@ -21,6 +21,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardTitle } from '@vertexade/ui/components/ui/card'
 import { List, ListItem, ListItemAction, ListItemContent, ListItemMeta, ListItemTitle } from '@vertexade/ui/components/ui/list'
 import { Status } from '@vertexade/ui/components/ui/status'
+import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { age } from '@vertexade/ui/lib/dashboard-api'
 import { cn } from '@vertexade/ui/lib/utils'
 import type { DeploymentService, DeploymentStage } from '@vertexade/ui/lib/dashboard-types'
@@ -44,7 +45,12 @@ export function ServiceCard({ service, rerunning, onRerun }: { service: Deployme
       <details className="group/service" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
         <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 p-3 transition-colors hover:bg-accent/16">
           <div className="min-w-0 flex-1">
-            <CardTitle className="truncate font-mono text-sm">{service.name}</CardTitle>
+            <div className="flex min-w-0 items-center gap-2">
+              <CardTitle className="truncate font-mono text-sm">{service.name}</CardTitle>
+              <Badge variant="outline" className="shrink-0">
+                {service.target.label}
+              </Badge>
+            </div>
             <p className="mt-1 truncate text-[11px] text-muted-foreground">
               {service.latest ? (
                 <>
@@ -66,26 +72,21 @@ export function ServiceCard({ service, rerunning, onRerun }: { service: Deployme
         <CardContent className="min-w-0 border-t p-0">
           {canRerun && service.state !== 'deployed' && (
             <div className="flex justify-end border-b border-border/45 px-3 py-2">
-              <Button
-                size="sm"
-                variant={service.state === 'failed' ? 'destructive' : 'outline'}
-                loading={rerunning}
-                loadingText="Requesting…"
-                onClick={onRerun}
-              >
-                <Rocket />
-                {service.state === 'failed' ? 'Retry failed' : 'Trigger rerun'}
+              <Button size="sm" variant={service.state === 'failed' ? 'destructive' : 'outline'} disabled={rerunning} onClick={onRerun}>
+                {rerunning ? <Spinner data-icon="inline-start" /> : <Rocket data-icon="inline-start" />}
+                {rerunning ? 'Requesting…' : service.state === 'failed' ? 'Retry failed' : 'Trigger rerun'}
               </Button>
             </div>
           )}
           <div className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,.85fr)]">
-            <div className="min-w-0 divide-y border-b sm:grid sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:border-b-0 lg:border-r">
-              {(['dev', 'acc', 'prd'] as const).map((environment) => (
+            <div className="grid min-w-0 border-b sm:[grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))] lg:border-b-0 lg:border-r">
+              {service.target.environments.map((environment) => (
                 <Environment
                   key={environment}
                   name={environment}
                   stage={service.environments[environment]}
-                  outdated={environment === 'prd' && service.production_outdated}
+                  outdated={environment === service.target.production_environment && service.production_outdated}
+                  outdatedLabel={`Behind ${service.target.comparison_environment}`}
                 />
               ))}
             </div>
@@ -102,9 +103,14 @@ export function ServiceCard({ service, rerunning, onRerun }: { service: Deployme
 function DeploymentDetails({ service }: { service: DeploymentService }) {
   return (
     <>
+      <p className="mb-2 truncate text-[11px] text-muted-foreground">
+        {service.target.repository} · {service.target.workflow} · {service.target.branch} · {service.target.event}
+      </p>
       <DeployDifference service={service} />
       <div className="mb-2 mt-3 flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-[11px] font-medium text-muted-foreground">Service commits awaiting production</span>
+        <span className="min-w-0 truncate text-[11px] font-medium text-muted-foreground">
+          Service commits awaiting {service.target.production_environment}
+        </span>
         <Badge variant="secondary" className="shrink-0 font-mono">
           {service.pending_commits.length}
         </Badge>
@@ -138,8 +144,9 @@ function DeploymentDetails({ service }: { service: DeploymentService }) {
 function DeployDifference({ service }: { service: DeploymentService }) {
   const delta = service.deployment_delta
   if (!delta) {
-    const matched =
-      service.environments.dev?.deployed_sha && service.environments.dev.deployed_sha === service.environments.prd?.deployed_sha
+    const comparison = service.environments[service.target.comparison_environment]
+    const production = service.environments[service.target.production_environment]
+    const matched = comparison?.deployed_sha && comparison.deployed_sha === production?.deployed_sha
     return (
       <div
         className={cn(
@@ -148,7 +155,11 @@ function DeployDifference({ service }: { service: DeploymentService }) {
         )}
       >
         <GitCompareArrows className="size-3.5 shrink-0" />
-        <span>{matched ? 'Dev and production are on the same commit' : 'No dev-to-production comparison available'}</span>
+        <span>
+          {matched
+            ? `${service.target.comparison_environment} and ${service.target.production_environment} are on the same commit`
+            : `No ${service.target.comparison_environment}-to-${service.target.production_environment} comparison available`}
+        </span>
       </div>
     )
   }
@@ -162,7 +173,9 @@ function DeployDifference({ service }: { service: DeploymentService }) {
       <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-orange-300">
           <GitCompareArrows className="size-3.5 shrink-0" />
-          <span className="truncate">Production is behind dev</span>
+          <span className="truncate">
+            {service.target.production_environment} is behind {service.target.comparison_environment}
+          </span>
         </span>
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground group-hover:text-orange-200">
           Compare changes
@@ -181,10 +194,25 @@ function DeployDifference({ service }: { service: DeploymentService }) {
   )
 }
 
-function Environment({ name, stage, outdated = false }: { name: string; stage: DeploymentStage | null; outdated?: boolean }) {
+function Environment({
+  name,
+  stage,
+  outdated = false,
+  outdatedLabel,
+}: {
+  name: string
+  stage: DeploymentStage | null
+  outdated?: boolean
+  outdatedLabel: string
+}) {
   const Icon = !stage ? Clock3 : stage.conclusion === 'success' ? Check : stage.conclusion === 'failure' ? AlertTriangle : Loader2
   return (
-    <div className={cn('grid min-w-0 grid-cols-[4rem_minmax(0,1fr)] items-center gap-2 p-3 sm:block', outdated && 'bg-orange-500/[.045]')}>
+    <div
+      className={cn(
+        'grid min-w-0 grid-cols-[4rem_minmax(0,1fr)] items-center gap-2 border-b border-r border-border/45 p-3 sm:block',
+        outdated && 'bg-orange-500/[.045]',
+      )}
+    >
       <div className="flex items-center gap-1.5 sm:mb-1.5">
         <Icon
           className={cn(
@@ -218,7 +246,7 @@ function Environment({ name, stage, outdated = false }: { name: string; stage: D
         </div>
         <p className={cn('mt-0.5 truncate text-xs capitalize', outdated ? 'text-orange-300' : 'text-muted-foreground')}>
           {outdated
-            ? 'Behind dev'
+            ? outdatedLabel
             : stage
               ? `${stage.conclusion || stage.status} · ${age(stage.completed_at || stage.started_at)}`
               : 'No attempt found'}

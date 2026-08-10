@@ -15,9 +15,15 @@ function fakeUpdater() {
 
 describe('desktop updater', () => {
   it('requires a valid signature for packaged macOS builds', () => {
-    expect(canStartDesktopUpdater({ isPackaged: true, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => true })).toBe(true)
-    expect(canStartDesktopUpdater({ isPackaged: true, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => false })).toBe(false)
-    expect(canStartDesktopUpdater({ isPackaged: false, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => true })).toBe(false)
+    expect(canStartDesktopUpdater({ isPackaged: true, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => true })).toBe(
+      true,
+    )
+    expect(canStartDesktopUpdater({ isPackaged: true, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => false })).toBe(
+      false,
+    )
+    expect(canStartDesktopUpdater({ isPackaged: false, platform: 'darwin', updatesDisabled: false, verifyMacSignature: () => true })).toBe(
+      false,
+    )
   })
 
   it('checks packaged releases and installs a downloaded update after confirmation', async () => {

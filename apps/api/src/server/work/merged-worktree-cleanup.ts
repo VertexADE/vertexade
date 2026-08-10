@@ -1,11 +1,13 @@
 import { rmdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { MergedWorktreeCleanupResult } from '@vertexade/platform-contracts'
+import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 import { asc, eq, isNotNull, isNull, max, min, sql } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { jobs, repositories } from '../database/schema/tables.ts'
 import { withWorktreeOwnershipRepair } from './worktree-ownership.ts'
-import { isPathInside, pathExists as defaultPathExists } from './worktree-filesystem.ts'
+import { pathExists as defaultPathExists } from './worktree-filesystem.ts'
+import { isManagedJobWorkspacePath } from './workspace-layout.ts'
 
 type RuntimeAgent = {
   name: string
@@ -17,6 +19,7 @@ type Dependencies = {
   agents: { require(id: string): RuntimeAgent }
   defaultAgentId: string
   run(command: string, args: string[]): Promise<string>
+  workItemWorkspaceRoot?: string
   beforeRemoveJobs?: (jobs: any[]) => Promise<void>
   notify?: (reason: string, id?: number) => void
   pathExists?: (path: string) => Promise<boolean>
@@ -30,6 +33,7 @@ function missingWorktree(error: unknown) {
 
 export function createMergedWorktreeCleanup(dependencies: Dependencies) {
   const pathExists = dependencies.pathExists || defaultPathExists
+  const workItemWorkspaceRoot = dependencies.workItemWorkspaceRoot || vertexWorkItemDirectory()
 
   function candidates(repositoryId?: number) {
     const conditions = [isNotNull(jobs.prMergedAt), isNull(jobs.worktreeRemovedAt), isNotNull(jobs.worktreePath)]
@@ -79,8 +83,8 @@ export function createMergedWorktreeCleanup(dependencies: Dependencies) {
     const job = related.find((entry) => entry.pr_merged_at) || related[0]
     const runtimeAgent = dependencies.agents.require(job.agent_id || dependencies.defaultAgentId)
     const worktree = resolve(job.worktree_path)
-    if (!isPathInside(runtimeAgent.workspaceRoot, worktree)) {
-      throw new Error(`Refusing to remove a worktree outside the ${runtimeAgent.name} workspace directory`)
+    if (!isManagedJobWorkspacePath(job, worktree, runtimeAgent.workspaceRoot, workItemWorkspaceRoot)) {
+      throw new Error(`Refusing to remove a worktree outside VertexADE-managed workspace storage for ${runtimeAgent.name}`)
     }
     if (resolve(job.base_repo_path) !== resolve(job.repository_path)) {
       throw new Error('Refusing to remove a worktree with an unexpected base repository path')
@@ -104,7 +108,7 @@ export function createMergedWorktreeCleanup(dependencies: Dependencies) {
 
   async function removeCombinedRoot(job: any, runtimeAgent: RuntimeAgent) {
     if (job.workspace_mode !== 'combined' || !job.session_cwd) return
-    if (!isPathInside(runtimeAgent.workspaceRoot, job.session_cwd)) return
+    if (!isManagedJobWorkspacePath(job, job.session_cwd, runtimeAgent.workspaceRoot, workItemWorkspaceRoot)) return
     try {
       await rmdir(resolve(job.session_cwd))
     } catch {}

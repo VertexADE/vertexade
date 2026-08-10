@@ -6,6 +6,22 @@ import { cn } from '@vertexade/ui/lib/utils'
 import type { CheckResult, PullRequestDetails } from './pr-details-model'
 import { pullRequestStatusTone } from './pr-details-status'
 
+export default function PullRequestStatusTab({
+  tab,
+  details,
+  embedded,
+}: {
+  tab: 'checks' | 'commits'
+  details: PullRequestDetails
+  embedded: boolean
+}) {
+  return tab === 'checks' ? (
+    <PullRequestChecks details={details} embedded={embedded} />
+  ) : (
+    <PullRequestCommits details={details} embedded={embedded} />
+  )
+}
+
 export function PullRequestChecks({ details, embedded }: { details: PullRequestDetails; embedded: boolean }) {
   const content = (
     <section className="mx-auto max-w-4xl p-3 sm:p-4">

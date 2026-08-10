@@ -39,7 +39,7 @@ describe('WorkThreads', () => {
     expect(html.match(/example\/review-thread/g)).toHaveLength(2)
     expect(html).toContain('feature/thread-1')
     expect(html).toContain('Open &amp; continue · #1')
-    expect(html).toContain('detached worktree snapshot')
+    expect(html).toContain('shared worktree review')
     expect(html).toContain('Findings ready')
     expect(html).toContain('Open findings · #2')
     expect(html).toContain('New agent thread')

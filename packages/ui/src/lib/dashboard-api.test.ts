@@ -8,9 +8,11 @@ import {
   isNotificationEvent,
   isThreadEvent,
   isWorkBoardEvent,
+  platformClient,
   saveAgentLaunchOptions,
   subscribeToDashboardEvents,
 } from './dashboard-api.ts'
+import { activeBackendStorageKey } from './backend-registry.ts'
 
 function browserStorage(initial = '') {
   let value = initial
@@ -57,6 +59,38 @@ describe('dashboard API client', () => {
     vi.stubGlobal('fetch', fetch)
     await expect(backendApi('team', '/api/work-items', { method: 'POST', body: '{}' })).resolves.toEqual({ ok: true })
     expect(fetch).toHaveBeenCalledWith('/api/backends/team/work-items', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('targets ordinary requests at the independently selected server', async () => {
+    browserStorage('team')
+    const fetch = vi.fn().mockResolvedValue(Response.json({ ok: true }))
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(api('/api/settings/system-configuration')).resolves.toEqual({ ok: true })
+
+    const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers)
+    expect(headers.get('x-vertexade-backend')).toBe('team')
+    expect(activeBackendStorageKey).toBe('vertexade.active-backend')
+  })
+
+  it('keeps extension catalog, settings, and mutations on the selected server', async () => {
+    browserStorage('team')
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ modules: [], configured: true }))
+    vi.stubGlobal('fetch', fetch)
+    const extension = platformClient.extension('linear')
+
+    await platformClient.modules.list()
+    await extension.request('/settings')
+    await extension.request('/settings', { method: 'POST', body: '{}' })
+
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/modules',
+      '/api/extensions/linear/settings',
+      '/api/extensions/linear/settings',
+    ])
+    for (const [, init] of fetch.mock.calls) {
+      expect(new Headers(init?.headers).get('x-vertexade-backend')).toBe('team')
+    }
   })
 
   it('migrates the previous flat agent preference record', () => {

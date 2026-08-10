@@ -664,20 +664,24 @@ export class WorkService {
       for (const service of services) {
         const run = (service.runs || []).find((candidate: any) => candidate.sha === mergeSha)
         if (!run) continue
-        const production = run.stages?.prd
+        const productionEnvironment = String(service.target?.production_environment || 'prd')
+        const production = run.stages?.[productionEnvironment]
+        const targetId = String(service.target?.id || 'default')
         this.linkResource(linked.work_item_id, {
           provider: deploymentProvider,
           kind: 'deployment',
-          externalId: `${repositoryName}:${service.name}:${mergeSha}`.toLowerCase(),
+          externalId: `${repositoryName}:${targetId}:${service.name}:${mergeSha}`.toLowerCase(),
           role: 'delivery',
           label: `${service.name} deployment`,
           url: production?.url || run.url,
           repositoryId: repository.id,
-          state: deploymentState(run),
+          state: deploymentState(run, productionEnvironment),
           metadata: {
             service: service.name,
+            deploymentTargetId: targetId,
             sha: mergeSha,
             runId: run.run_id,
+            productionEnvironment,
             environments: run.stages,
           },
         })

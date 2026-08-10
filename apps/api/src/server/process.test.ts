@@ -18,7 +18,7 @@ describe('runCommand', () => {
 
 describe('processStartIdentity', () => {
   it('returns the current process start identity and rejects invalid pids', async () => {
-    await expect(processStartIdentity(process.pid)).resolves.toMatch(/^\d+$/)
+    await expect(processStartIdentity(process.pid)).resolves.toMatch(/\S+/)
     await expect(processStartIdentity(-1)).resolves.toBeNull()
     await expect(processWorkingDirectory(process.pid)).resolves.toBe(process.cwd())
   })

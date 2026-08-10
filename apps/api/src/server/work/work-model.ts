@@ -123,8 +123,8 @@ export function resourceChanged(current: any, value: ReturnType<typeof normalize
   )
 }
 
-export function deploymentState(run: any) {
-  const production = run.stages?.prd
+export function deploymentState(run: any, productionEnvironment = 'prd') {
+  const production = run.stages?.[productionEnvironment]
   if (production?.conclusion === 'success') return 'deployed'
   if (production?.conclusion === 'failure' || run.conclusion === 'failure') return 'failed'
   return production?.status || run.status || 'waiting'

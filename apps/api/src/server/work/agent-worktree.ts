@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, rm, rmdir, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 import { parseWorkItemWorkspaceMode, workItemWorkspaceLayout } from './workspace-layout.ts'
 
 type Repository = { full_name: string; local_path: string }
@@ -9,6 +10,8 @@ type Run = (command: string, args: string[]) => Promise<string>
 
 type Dependencies = {
   run: Run
+  workItemWorkspaceRoot?: string
+  assertReusable?(repository: Repository, worktree: string): Promise<void> | void
   prepare(repository: Repository, worktree: string, agent: RuntimeAgent): Promise<void>
   cleanup(repositoryPath: string, worktreePath: string | null, branchName?: string | null): Promise<void>
 }
@@ -22,7 +25,6 @@ type AllocationInput = {
   root: string
   worktree: string
   baseGitDir: string
-  isolated: boolean
 }
 
 async function commonGitDirectory(run: Run, path: string) {
@@ -114,18 +116,18 @@ export async function allocateAgentWorktree(
   agent: RuntimeAgent,
   revision: string,
   branchName: string | null,
-  workspace: { mode?: unknown; workItemKey?: string; isolationKey?: string },
+  workspace: { mode?: unknown; workItemKey?: string },
   dependencies: Dependencies,
 ) {
   const mode = parseWorkItemWorkspaceMode(workspace.mode, 'repository')
   const layout = workItemWorkspaceLayout({
     agentWorkspaceRoot: agent.workspaceRoot,
+    workItemWorkspaceRoot: dependencies.workItemWorkspaceRoot || vertexWorkItemDirectory(),
     workItemKey: String(workspace.workItemKey || 'work'),
     repositoryFullName: repository.full_name,
     repositoryPath: repository.local_path,
     mode,
     identifier: randomUUID(),
-    isolationKey: workspace.isolationKey,
   })
   await dependencies.run('git', ['-C', repository.local_path, 'config', 'extensions.worktreeConfig', 'true'])
   const input: AllocationInput = {
@@ -137,11 +139,14 @@ export async function allocateAgentWorktree(
     root: layout.root,
     worktree: layout.worktree,
     baseGitDir: await commonGitDirectory(dependencies.run, repository.local_path),
-    isolated: Boolean(workspace.isolationKey),
   }
-  if (mode === 'combined' && !input.isolated) {
+  if (mode === 'combined') {
     const reused = await reuseCombinedWorktree(input, dependencies.run)
-    if (reused) return reused
+    if (reused) {
+      await dependencies.assertReusable?.(repository, input.worktree)
+      await dependencies.prepare(repository, input.worktree, agent)
+      return reused
+    }
   }
   return createWorktree(input, dependencies)
 }

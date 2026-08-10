@@ -9,6 +9,12 @@ export type RunOptions = SpawnOptions & {
   onOutput?: (value: string, stream: 'stdout' | 'stderr') => void
 }
 
+export type CommandResult = {
+  stdout: string
+  stderr: string
+  exitCode: number
+}
+
 const DEFAULT_TIMEOUT_MS = 10 * 60_000
 const DEFAULT_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 
@@ -18,11 +24,11 @@ function appendBounded(current: Buffer[], chunk: Buffer, state: { bytes: number 
   current.push(chunk)
 }
 
-export function runCommand(command: string, args: string[], options: RunOptions = {}): Promise<string> {
+export function runCommandResult(command: string, args: string[], options: RunOptions = {}): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const {
       input,
-      includeStderr = false,
+      includeStderr: _includeStderr = false,
       timeoutMs = DEFAULT_TIMEOUT_MS,
       maxOutputBytes = DEFAULT_MAX_OUTPUT_BYTES,
       onOutput,
@@ -75,16 +81,28 @@ export function runCommand(command: string, args: string[], options: RunOptions 
         if (failure) return reject(failure)
         const stdoutText = Buffer.concat(stdout).toString('utf8')
         const stderrText = Buffer.concat(stderr).toString('utf8').trim()
-        return code === 0
-          ? resolve(includeStderr ? [stdoutText, stderrText].filter(Boolean).join('\n') : stdoutText)
-          : reject(new Error(stderrText || `${command} exited with ${code}`))
+        resolve({ stdout: stdoutText, stderr: stderrText, exitCode: code ?? -1 })
       }),
     )
   })
 }
 
+export async function runCommand(command: string, args: string[], options: RunOptions = {}): Promise<string> {
+  const result = await runCommandResult(command, args, options)
+  if (result.exitCode !== 0) throw new Error(result.stderr || `${command} exited with ${result.exitCode}`)
+  return options.includeStderr ? [result.stdout, result.stderr].filter(Boolean).join('\n') : result.stdout
+}
+
 export async function processStartIdentity(pid: number | null | undefined) {
   if (!pid || !Number.isInteger(pid) || pid <= 0) return null
+  if (process.platform !== 'linux') {
+    try {
+      const result = await runCommandResult('ps', ['-p', String(pid), '-o', 'lstart='], { timeoutMs: 2_000, maxOutputBytes: 10_000 })
+      return result.exitCode === 0 ? result.stdout.trim() || null : null
+    } catch {
+      return null
+    }
+  }
   try {
     const stat = await readFile(`/proc/${pid}/stat`, 'utf8')
     const closing = stat.lastIndexOf(')')
@@ -97,6 +115,22 @@ export async function processStartIdentity(pid: number | null | undefined) {
 
 export async function processWorkingDirectory(pid: number | null | undefined) {
   if (!pid || !Number.isInteger(pid) || pid <= 0) return null
+  if (pid === process.pid) return realpath(process.cwd())
+  if (process.platform !== 'linux') {
+    try {
+      const result = await runCommandResult('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], {
+        timeoutMs: 2_000,
+        maxOutputBytes: 100_000,
+      })
+      const path = result.stdout
+        .split(/\r?\n/)
+        .find((line) => line.startsWith('n'))
+        ?.slice(1)
+      return path ? await realpath(path) : null
+    } catch {
+      return null
+    }
+  }
   try {
     return await realpath(`/proc/${pid}/cwd`)
   } catch {

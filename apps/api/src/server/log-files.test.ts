@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -22,7 +22,9 @@ describe('bounded log reads', () => {
     const canonicalPath = join(logsRoot, 'run.log')
     await writeFile(canonicalPath, 'conversation')
 
-    await expect(resolveReadableLogPath(join(root, 'previous', 'data', 'logs', 'run.log'), logsRoot)).resolves.toBe(canonicalPath)
+    await expect(resolveReadableLogPath(join(root, 'previous', 'data', 'logs', 'run.log'), logsRoot)).resolves.toBe(
+      await realpath(canonicalPath),
+    )
   })
 
   it('rejects a canonical log symlink that escapes the logs directory', async () => {

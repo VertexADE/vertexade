@@ -10,7 +10,7 @@ const budgets = [
   { label: 'application entry', pattern: /^index-[\w-]+\.js$/, maximumGzipBytes: 160 * 1024 },
   {
     label: 'command palette',
-    pattern: /^command-palette-[\w-]+\.js$/,
+    pattern: /^app-command-palette-[\w-]+\.js$/,
     maximumGzipBytes: 40 * 1024,
   },
   { label: 'KaTeX runtime', pattern: /^katex-[\w-]+\.js$/, maximumGzipBytes: 85 * 1024 },

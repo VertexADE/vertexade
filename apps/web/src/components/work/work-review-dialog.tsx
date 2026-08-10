@@ -143,9 +143,9 @@ export function UpfrontReviewDialog({
           <div className="flex items-start gap-2 rounded-lg border border-cyan-500/25 bg-cyan-500/[.05] p-3 text-[11px] leading-relaxed text-muted-foreground">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-cyan-400" />
             <span>
-              Review thread: committed, staged, unstaged, and untracked changes are copied into a private, read-only snapshot. Supporting
-              providers use an ephemeral session while VertexADE retains the complete report. Use a work thread when you want the agent to
-              implement changes.
+              Review thread: committed, staged, unstaged, and untracked changes are inspected read-only in the existing shared worktree.
+              Supporting providers use an ephemeral session while VertexADE retains the complete report. Use a work thread when you want the
+              agent to implement changes.
             </span>
           </div>
         </div>

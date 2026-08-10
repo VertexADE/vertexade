@@ -1,6 +1,5 @@
 import { appendFile, readFile, mkdir, realpath, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createWriteStream } from 'node:fs'
-import { spawn } from 'node:child_process'
 import { join, basename, delimiter, dirname, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -25,7 +24,7 @@ import {
   repositoryTopologyReviewContract,
   reviewIntentContract,
 } from './server/review-prompt-contract.ts'
-import { agentProcessEnvironment, migrateAgentEnvironmentsV1, trustWorkspaceMiseConfigs } from '@vertexade/platform-server/agents'
+import { migrateAgentEnvironmentsV1, trustWorkspaceMiseConfigs } from '@vertexade/platform-server/agents'
 import { vertexDataDirectory } from '@vertexade/platform-server/configuration'
 import { guardedIntegrationFetch } from '@vertexade/platform-server/outbound-policy'
 import {
@@ -52,12 +51,11 @@ import { jobSessionCwd, parseWorkItemWorkspaceMode, relativeWorktreePath, workIt
 import { createCoreRoutes } from './server/core-routes.ts'
 import { inspectRepositoryEnvironmentEntries, snapshotRepositoryEnvironment } from './server/repository-environment.ts'
 import { worktreeCodeReviewPrompt } from './server/work/prompts.ts'
-import { populateWorktreeSnapshot } from './server/work/worktree-snapshot.ts'
 import { WorktreePreviewRuntime, normalizePreviewSettings } from './server/previews/runtime.ts'
 import { WorktreePreviewGateway } from './server/previews/gateway.ts'
 import { openDashboardDatabase } from './server/database/dashboard-database.ts'
 import { jobRecord, repositoryRecord } from './server/database/contract-records.ts'
-import { jobs, notifications, repositories, reviewBatches, workItems } from './server/database/schema/tables.ts'
+import { jobs, notifications, pullRequests, repositories, reviewBatches, workItems } from './server/database/schema/tables.ts'
 import { DashboardEvents, configuredDashboardEventLimits } from './server/events/dashboard-events.ts'
 import { createDashboardApiDispatcher, createDashboardRequestHandler } from './server/dashboard/request-handler.ts'
 import { createPullRequestDetailsCache } from './server/dashboard/pr-details-cache.ts'
@@ -68,7 +66,14 @@ import {
   worktreePreviewSettings as readWorktreePreviewSettings,
 } from './server/dashboard/runtime-settings.ts'
 import { backfillJobActivity, createJobDiffStore } from './server/dashboard/job-state.ts'
-import { agentLogPath as createAgentLogPath, body, configureCommandResolver, json, run } from './server/dashboard/server-utils.ts'
+import {
+  agentLogPath as createAgentLogPath,
+  body,
+  configureCommandResolver,
+  json,
+  run,
+  runResult,
+} from './server/dashboard/server-utils.ts'
 import { createProviderSelectionRuntime } from './server/dashboard/provider-selection-runtime.ts'
 import { createJobLogQuery } from './server/dashboard/job-log-query.ts'
 import { createExtensionMigrationStore } from './server/dashboard/extension-migration-store.ts'
@@ -81,8 +86,6 @@ import { createWorkspaceRoutes } from './server/platform/workspace-routes.ts'
 import { NotificationService } from './server/notifications/service.ts'
 import { createNotificationRoutes } from './server/notifications/routes.ts'
 import { JobLifecycle } from './server/workflows/job-lifecycle.ts'
-import { CapabilityExecutionService } from './server/workflows/capability-execution.ts'
-import { createCapabilityRoutes } from './server/workflows/capability-routes.ts'
 import { AutomationRecipeService } from './server/workflows/automation-recipes.ts'
 import { createAutomationRoutes } from './server/workflows/automation-routes.ts'
 import { CoreAutomationTriggers } from './server/workflows/core-automation-triggers.ts'
@@ -94,10 +97,12 @@ import { AgentResourceService, applyCustomAgentPrompt, applySkillInstructions } 
 import { createAgentResourceRoutes } from './server/agents/resource-routes.ts'
 import { CustomAgentSynchronizer } from './server/agents/custom-agents.ts'
 import { SubagentHarness } from './server/agents/subagent-harness.ts'
+import { createAgentThreadSpawner } from './server/agents/agent-thread-spawner.ts'
 import { createSubagentWorkspace, integrateSubagentWorkspace } from './server/agents/subagent-workspace.ts'
 import { createReadOnlyContentGenerator } from './server/agents/content-generation.ts'
 import { createDiffPreview, storedDiffSummary } from './server/diff-preview.ts'
 import { JobFollowUpQueue } from './server/job-follow-up-queue.ts'
+import { createDevelopmentRuntime } from './server/development/runtime.ts'
 import { DashboardReadModelStore, type DashboardReadModelEntry } from './server/read-model/dashboard-read-model.ts'
 import {
   persistedThreadContext,
@@ -362,23 +367,21 @@ registerCoreAutomationActions(db, extensions.contributions, {
     await syncRepository(repository)
   },
 })
-const capabilityExecutions = new CapabilityExecutionService(
-  db,
-  extensions.contributions,
-  (reason, id) => {
-    notifyClients(reason, id)
-    if (!id || !['capability_execution_failed', 'capability_execution_timed_out'].includes(reason)) return
-    const execution = capabilityExecutions.get(id)
-    if (execution)
-      notificationService.create(
-        'extension_failed',
-        `${execution.capabilityId} ${execution.status}`,
-        execution.error || 'Extension capability execution failed',
-      )
-  },
-  () => systemConfiguration.read().runtime,
-)
-const capabilityRoutes = createCapabilityRoutes(capabilityExecutions)
+const {
+  executions: capabilityExecutions,
+  capabilityRoutes,
+  developmentRoutes,
+  migrationRoutes,
+} = createDevelopmentRuntime({
+  database: db,
+  run,
+  runResult,
+  contributions: extensions.contributions,
+  launchTask: launchRepositoryTask,
+  notify: notifyClients,
+  notifyExecutionFailure: (title, message) => notificationService.create('extension_failed', title, message),
+  runtimeDefaults: () => systemConfiguration.read().runtime,
+})
 const workRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'workItem', options)
 const reviewRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'review', options)
 const automationThreadLauncher = createAutomationThreadLauncher(db, {
@@ -531,9 +534,7 @@ export async function startDashboardPreviewGateway() {
 }
 export const stopDashboardRuntime = () =>
   stopDashboardRuntimeResources(automationRecoveryTimer, workCleanup, dashboardReadModelStore, dashboardEvents, previewGateway)
-function createNotification(kind, title, message, { jobId = null, automationRecipeId = null } = {}) {
-  notificationService.create(kind, title, message, { jobId, automationRecipeId })
-}
+const createNotification = notificationService.create.bind(notificationService)
 work = new WorkService(
   db,
   (reason, workItemId) => {
@@ -582,24 +583,15 @@ subagentHarness = new SubagentHarness({
   apiUrl: INTERNAL_API_URL,
   notify: notifyClients,
   resolveLaunch: resolveAgentLaunch,
-  createWorkspace: (parent, runtimeAgent, title) =>
-    createSubagentWorkspace(parent, runtimeAgent, title, {
+  createWorkspace: (parent) =>
+    createSubagentWorkspace(parent, {
       repository: (id) => {
         const row = db.select().from(repositories).where(eq(repositories.id, id)).get()
         return row ? repositoryRecord(row) : null
       },
       run,
-      createWorktree: createAgentWorktree,
-      populateSnapshot: populateWorktreeSnapshot,
-      cleanup: cleanupFailedLaunch,
     }),
-  discardWorkspace: (parent, workspace) =>
-    cleanupFailedLaunch(
-      db.select({ local_path: repositories.localPath }).from(repositories).where(eq(repositories.id, parent.repo_id)).get()?.local_path ||
-        parent.base_repo_path,
-      workspace.worktree,
-      workspace.branchName,
-    ),
+  discardWorkspace: async () => undefined,
   integrateWorkspace: (parent, child) => integrateSubagentWorkspace(parent, child, { run }),
   startChild: (options) => startMonitoredJob(options),
 })
@@ -637,30 +629,21 @@ workCleanup.startRecovery()
 await automationRecipes.syncTriggers()
 const storeJobDiff = createJobDiffStore(db, notifyClients)
 await backfillJobActivity(db, agents, agent)
-function requestedAgent() {
-  return agents.require(agentLaunchContext.getStore()?.agentId || agentProvider)
-}
-function spawnAgentThread(options: any, spawnOptions: any, runtimeAgent = requestedAgent()): any {
-  const localized = localizeAgentPrompt({ ...agentLaunchContext.getStore(), ...options })
-  const decorated = localized.jobId ? subagentHarness.decorateLaunch(Number(localized.jobId), localized) : localized
-  const { jobId: _jobId, ...agentOptions } = decorated
-  const launch = runtimeAgent.launch(agentOptions)
-  const child: any = spawn(systemConfiguration.tool(launch.command), launch.args, {
-    ...spawnOptions,
-    env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env, {
-      VERTEXADE_TOOL_PATHS: JSON.stringify(systemConfiguration.read().tools),
-    }),
-  })
-  child.runtimeAgent = runtimeAgent
-  if (runtimeAgent.closeStdinAfterLaunch) child.stdin?.end()
-  return child
-}
+const requestedAgent = () => agents.require(agentLaunchContext.getStore()?.agentId || agentProvider)
+const spawnAgentThread = createAgentThreadSpawner({
+  agents,
+  defaultAgentId: agentProvider,
+  launchContext: agentLaunchContext,
+  localize: localizeAgentPrompt,
+  decorate: (jobId, options) => subagentHarness.decorateLaunch(jobId, options),
+  resolveCommand: (command) => systemConfiguration.tool(command),
+  tools: () => systemConfiguration.read().tools,
+})
 const runReadOnlyContentGeneration = createReadOnlyContentGenerator({
   agents,
   dataDirectory: DATA,
   spawnAgentThread,
 })
-
 configureDashboardRuntime({
   API_TOKEN,
   LOGS,
@@ -773,7 +756,6 @@ configureDashboardRuntime({
   workMemory,
   worktreePreviews,
 })
-
 startAutomaticReviewQueue()
 startRepositoryRefreshTimer()
 startMergedThreadRefreshTimer()
@@ -782,21 +764,26 @@ setInterval(() => {
   for (const batch of db.select({ id: reviewBatches.id }).from(reviewBatches).where(eq(reviewBatches.status, 'pending')).all())
     void maybeLaunchReviewAggregate(batch.id)
 }, 15_000).unref()
-
 startThreadRecoveryTimers()
 automationRecipes.startScheduleTimers()
 dashboardReadModelStore = initializeDashboardReadModel()
 setDashboardReadModelStore(dashboardReadModelStore)
-
 const api = createDashboardApiDispatcher([handleSystemApi, handlePullRequestApi, handleThreadApi], () => json(404, { error: 'Not found' }))
-
 export const handleDashboardRequest = createDashboardRequestHandler({
   agents,
   agentProvider,
   launchContext: agentLaunchContext,
   events: dashboardEvents,
   subagentDispatch: (request) => subagentHarness.dispatch(request),
-  coreRouters: [platformManagementRoutes, capabilityRoutes, automationRoutes, workspaceRoutes, notificationRoutes],
+  coreRouters: [
+    platformManagementRoutes,
+    capabilityRoutes,
+    developmentRoutes,
+    migrationRoutes,
+    automationRoutes,
+    workspaceRoutes,
+    notificationRoutes,
+  ],
   extensionDispatch: (request) => extensions.routes.dispatch(request),
   api,
 })

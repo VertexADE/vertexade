@@ -114,6 +114,7 @@ import {
 import { highlightRules, jobs, presets, pullRequests, repositories } from '../database/schema/tables.ts'
 import { highlightRuleRecord, presetRecord, pullRequestRecord, repositoryRecord } from '../database/contract-records.ts'
 import { normalizeLinkedServer, readLinkedServers, verifyLinkedServer, writeLinkedServers } from '../settings/linked-servers.ts'
+import { serverRuntimeStatus, updateServerRuntimeConfiguration } from '../settings/server-runtime.ts'
 import { guardedIntegrationFetch } from '@vertexade/platform-server/outbound-policy'
 
 function repositoryRow(id: number) {
@@ -201,6 +202,42 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     profiles: repositoryEnvironments,
   })
   if (repositoryEnvironmentResponse) return repositoryEnvironmentResponse
+  if (request.method === 'GET' && url.pathname === '/api/settings/workspace-overview') {
+    return json(200, {
+      repositories: db
+        .select()
+        .from(repositories)
+        .orderBy(sql`${repositories.fullName} COLLATE NOCASE`)
+        .all()
+        .map(repositoryRecord),
+      presets: db
+        .select()
+        .from(presets)
+        .orderBy(sql`${presets.name} COLLATE NOCASE`)
+        .all()
+        .map(presetRecord),
+      highlights: db
+        .select()
+        .from(highlightRules)
+        .orderBy(sql`${highlightRules.text} COLLATE NOCASE`)
+        .all()
+        .map(highlightRuleRecord),
+    })
+  }
+  if (url.pathname === '/api/settings/server-runtime' && ['GET', 'POST'].includes(request.method)) {
+    try {
+      if (request.method === 'POST') {
+        const status = await updateServerRuntimeConfiguration(await body(request))
+        notifyClients('server_runtime_updated')
+        return json(200, status)
+      }
+      return json(200, await serverRuntimeStatus())
+    } catch (error) {
+      return json(request.method === 'POST' ? 400 : 500, {
+        error: error instanceof Error ? error.message : 'Server runtime configuration could not be read',
+      })
+    }
+  }
   if (url.pathname === '/api/settings/linked-servers') {
     if (request.method === 'GET') {
       return json(200, {
@@ -320,8 +357,9 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     const input = await body(request)
     const mode = input.mode === 'all' ? 'all' : 'failed'
     const providerId = selectedProviderId('deployment', { explicit: String(input.provider || '') })
-    await extensions.providers.deployment.require(providerId).rerun(Number(deploymentRerunMatch[1]), mode)
-    return json(202, { accepted: true, mode, provider: providerId })
+    const targetId = String(input.target_id || '').trim()
+    await extensions.providers.deployment.require(providerId).rerun(Number(deploymentRerunMatch[1]), mode, targetId || undefined)
+    return json(202, { accepted: true, mode, provider: providerId, target_id: targetId || null })
   }
   if (request.method === 'POST' && url.pathname === '/api/highlights') {
     const input = await body(request)

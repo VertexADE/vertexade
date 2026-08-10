@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { createGitHubDeploymentProvider } from './deployments.ts'
+import { normalizeGitHubDeploymentTargets } from './deployment-configuration.ts'
 
 const workflowRun = {
   id: 42,
@@ -51,5 +52,36 @@ describe('GitHub Actions deployment provider', () => {
     const provider = createGitHubDeploymentProvider(run)
     await provider.rerun(42, 'failed')
     expect(run).toHaveBeenCalledWith('gh', ['api', '--method', 'POST', expect.stringContaining('/actions/runs/42/rerun-failed-jobs')])
+  })
+
+  it('keeps multiple targets distinct and routes reruns through the selected repository', async () => {
+    const targets = normalizeGitHubDeploymentTargets(
+      ['platform', 'payments'].map((id) => ({
+        id,
+        label: id,
+        repository: `acme/${id}`,
+        workflow: 'deploy.yml',
+        branch: 'main',
+        event: 'push',
+        services: [],
+        environments: ['dev', 'prd'],
+        production_environment: 'prd',
+        comparison_environment: 'dev',
+        job_name_template: 'Build and deploy service - {service} / Deploy {*} -> {environment}',
+      })),
+    )
+    const run = vi.fn(async (_command: string, args: string[]) =>
+      args.some((value) => value.endsWith('/jobs'))
+        ? JSON.stringify({ jobs: [job('dev'), job('prd')] })
+        : JSON.stringify({ workflow_runs: [workflowRun] }),
+    )
+    const provider = createGitHubDeploymentProvider(run, undefined, undefined, () => targets)
+
+    const overview = await provider.overview()
+    expect(overview.targets).toHaveLength(2)
+    expect(overview.services.map((service) => service.key)).toEqual(['platform:availability-service', 'payments:availability-service'])
+    await expect(provider.rerun(42, 'all')).rejects.toThrow('Deployment target is required')
+    await provider.rerun(42, 'all', 'payments')
+    expect(run).toHaveBeenLastCalledWith('gh', ['api', '--method', 'POST', 'repos/acme/payments/actions/runs/42/rerun'])
   })
 })

@@ -2,8 +2,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { ensureWorkSchema } from './work-schema.ts'
 import { baseSchema } from './base-schema.ts'
 import { migrateCanonicalPaths } from './canonical-paths-migration.ts'
+import { developmentMigrations } from './development-migrations.ts'
 
-type Migration = {
+export type Migration = {
   version: number
   name: string
   migrate(database: DatabaseSync): void
@@ -724,6 +725,44 @@ const migrations: Migration[] = [
     name: 'automation-thread-service-tier',
     migrate(database) {
       database.exec('ALTER TABLE automation_recipes ADD COLUMN service_tier TEXT')
+    },
+  },
+  ...developmentMigrations,
+  {
+    version: 41,
+    name: 'single-active-work-item-worktree',
+    migrate(database) {
+      database.exec(`
+        CREATE TRIGGER jobs_single_active_work_item_worktree_insert
+        BEFORE INSERT ON jobs
+        WHEN NEW.work_item_id IS NOT NULL
+          AND NEW.status IN ('starting','running')
+          AND EXISTS (
+            SELECT 1 FROM jobs active
+            WHERE active.worktree_path=NEW.worktree_path
+              AND active.status IN ('starting','running')
+              AND NOT (NEW.kind='subagent' AND active.id=NEW.source_job_id)
+          )
+        BEGIN
+          SELECT RAISE(ABORT, 'Work item repository already has an active thread');
+        END;
+
+        CREATE TRIGGER jobs_single_active_work_item_worktree_update
+        BEFORE UPDATE OF status,worktree_path ON jobs
+        WHEN NEW.work_item_id IS NOT NULL
+          AND NEW.status IN ('starting','running')
+          AND EXISTS (
+            SELECT 1 FROM jobs active
+            WHERE active.worktree_path=NEW.worktree_path
+              AND active.status IN ('starting','running')
+              AND active.id<>OLD.id
+              AND NOT (NEW.kind='subagent' AND active.id=NEW.source_job_id)
+              AND NOT (active.kind='subagent' AND active.source_job_id=NEW.id)
+          )
+        BEGIN
+          SELECT RAISE(ABORT, 'Work item repository already has an active thread');
+        END;
+      `)
     },
   },
 ]

@@ -1,21 +1,6 @@
 import { lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ModuleAccent, ModuleCatalog, ModuleCatalogEntry } from '@vertexade/platform-contracts'
-import {
-  Blocks,
-  BriefcaseBusiness,
-  GitPullRequest,
-  Inbox,
-  MessagesSquare,
-  Moon,
-  Plus,
-  Rocket,
-  Search,
-  Settings,
-  Sun,
-  Workflow,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react'
+import { Moon, Plus, Search, Server, Sun, type LucideIcon } from 'lucide-react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { readAppearancePreferences, saveAppearancePreferences } from '@vertexade/ui/lib/appearance-preferences'
@@ -24,6 +9,7 @@ import { NotificationCenter } from '@vertexade/ui/components/notification-center
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Kbd } from '@vertexade/ui/components/ui/kbd'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import {
   Sidebar,
   SidebarContent,
@@ -43,12 +29,13 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@vertexade/ui/components/ui/tooltip'
 import { useReactiveApi } from '@vertexade/ui/hooks/use-reactive-api'
 import { api, isModuleCatalogEvent, platformBackendState, platformConnectionState } from '@vertexade/ui/lib/dashboard-api'
-import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
+import { activeBackendId, resolveActiveBackend, saveActiveBackendId, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import { extensionAccent, extensionIcon } from '@vertexade/ui/lib/extension-presentation'
 import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
 import { desktopSidebarOpen, WIDE_DESKTOP_BREAKPOINT } from '@vertexade/ui/lib/responsive-layout'
 import { cn } from '@vertexade/ui/lib/utils'
 import { useUiPreferences } from '@vertexade/ui/lib/ui-preferences'
+import { coreItems } from '@vertexade/ui/components/app-nav-items'
 
 export type NavItem = {
   to: string
@@ -81,73 +68,6 @@ function storedSidebarPreference() {
     ?.split('=')[1]
   return value === 'true' ? true : value === 'false' ? false : undefined
 }
-
-const coreItems = [
-  {
-    to: '/',
-    label: 'Focus',
-    description: 'Decide what needs your attention next',
-    icon: Inbox,
-    group: 'Workspace',
-  },
-  {
-    to: '/work',
-    label: 'Work',
-    description: 'Plan and manage durable outcomes',
-    icon: BriefcaseBusiness,
-    group: 'Workspace',
-  },
-  {
-    to: '/threads',
-    label: 'Agents',
-    description: 'Follow active runs, decisions, and results',
-    icon: MessagesSquare,
-    group: 'Workspace',
-  },
-  {
-    to: '/pull-requests',
-    label: 'Pull requests',
-    compactLabel: 'PRs',
-    description: 'Review code and move it toward merge',
-    icon: GitPullRequest,
-    group: 'Operations',
-  },
-  {
-    to: '/deployments',
-    label: 'Delivery',
-    description: 'Follow releases, services, and environments',
-    icon: Rocket,
-    group: 'Operations',
-  },
-  {
-    to: '/automations',
-    label: 'Automations',
-    description: 'Build and monitor repeatable flows',
-    icon: Workflow,
-    group: 'Operations',
-  },
-  {
-    to: '/extensions',
-    label: 'Extensions',
-    description: 'Connect tools and manage integrations',
-    icon: Blocks,
-    group: 'System',
-  },
-  {
-    to: '/setup',
-    label: 'System health',
-    description: 'Check prerequisites, connections, and services',
-    icon: Wrench,
-    group: 'System',
-  },
-  {
-    to: '/settings',
-    label: 'Settings',
-    description: 'Workspace defaults, repositories, agents, and appearance',
-    icon: Settings,
-    group: 'System',
-  },
-] as const satisfies readonly NavItem[]
 
 const recentDestinationsStorageKey = 'vertexade.recent-destinations'
 
@@ -343,6 +263,41 @@ function MobileSidebarRouteCloser({ pathname }: { pathname: string }) {
     if (isMobile && routeChanged) setOpenMobile(false)
   }, [isMobile, pathname, setOpenMobile])
   return null
+}
+
+function ActiveBackendSelect({ backends }: { backends: BackendDescriptor[] }) {
+  const [selectedBackendId, setSelectedBackendId] = useState('')
+
+  useEffect(() => {
+    const selected = resolveActiveBackend(backends, activeBackendId())
+    setSelectedBackendId(selected?.id || '')
+  }, [backends])
+
+  const selectBackend = (backendId: string) => {
+    if (backendId === selectedBackendId) return
+    saveActiveBackendId(backendId)
+    window.location.reload()
+  }
+
+  if (backends.length <= 1) return null
+  return (
+    <Select value={selectedBackendId} onValueChange={selectBackend}>
+      <SelectTrigger size="sm" className="max-w-36 border-border/55 bg-muted/24" aria-label="Active VertexADE server">
+        <Server />
+        <SelectValue placeholder="Select server" />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectGroup>
+          {backends.map((backend) => (
+            <SelectItem key={backend.id} value={backend.id}>
+              <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
+              {backend.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
 }
 
 export function AppNav({ children }: { children: ReactNode }) {
@@ -688,6 +643,7 @@ export function AppNav({ children }: { children: ReactNode }) {
               <Kbd className="ml-auto">⌘ K</Kbd>
             </Button>
             <div className="ml-auto flex items-center gap-1">
+              <ActiveBackendSelect backends={backends} />
               {!coreScreenOwnsPrimaryAction(pathname) && (
                 <Tooltip>
                   <TooltipTrigger asChild>

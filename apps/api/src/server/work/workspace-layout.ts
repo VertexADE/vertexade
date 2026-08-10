@@ -1,5 +1,6 @@
 import { basename, join, relative, resolve, sep } from 'node:path'
 import type { WorkItemWorkspaceMode } from '@vertexade/platform-contracts'
+import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 
 const DEFAULT_WORK_ITEM_WORKSPACE_MODE: WorkItemWorkspaceMode = 'combined'
 type RecordedWorkspaceMode = WorkItemWorkspaceMode | 'repository'
@@ -38,12 +39,12 @@ export function workItemLaunchWorkspaceMode(value: unknown): 'combined' {
 
 export function workItemWorkspaceLayout(input: {
   agentWorkspaceRoot: string
+  workItemWorkspaceRoot: string
   workItemKey: string
   repositoryFullName: string
   repositoryPath: string
   mode: RecordedWorkspaceMode
   identifier: string
-  isolationKey?: string
 }) {
   if (input.mode === 'repository') {
     const identifier = safeSegment(input.identifier, 'run')
@@ -51,27 +52,40 @@ export function workItemWorkspaceLayout(input: {
     return { mode: input.mode, root: worktree, worktree }
   }
 
-  const workItemRoot = join(input.agentWorkspaceRoot, 'work-items', safeSegment(input.workItemKey, 'work'))
-  const root = input.isolationKey ? join(workItemRoot, 'runs', safeSegment(input.isolationKey, 'run')) : workItemRoot
+  const workItemRoot = join(input.workItemWorkspaceRoot, safeSegment(input.workItemKey, 'work'))
   const repository = safeSegment(input.repositoryFullName.replaceAll('/', '--'), basename(input.repositoryPath) || 'repository')
-  const worktree = join(root, repository)
-  if (
-    !inside(input.agentWorkspaceRoot, workItemRoot) ||
-    (root !== workItemRoot && !inside(workItemRoot, root)) ||
-    !inside(root, worktree)
-  ) {
-    throw new Error('Work item workspace must stay inside the managed agent workspace')
+  const worktree = join(workItemRoot, repository)
+  if (!inside(input.workItemWorkspaceRoot, workItemRoot) || !inside(workItemRoot, worktree)) {
+    throw new Error('Work item workspace must stay inside the VertexADE Work item directory')
   }
-  return { mode: input.mode, root, worktree }
+  return { mode: input.mode, root: workItemRoot, worktree }
 }
 
-export function jobSessionCwd(job: { workspace_mode?: unknown; session_cwd?: unknown; worktree_path: string }, agentWorkspaceRoot: string) {
+type RecordedJobWorkspace = { workspace_mode?: unknown; session_cwd?: unknown; worktree_path: string }
+
+export function isManagedJobWorkspacePath(
+  job: Pick<RecordedJobWorkspace, 'workspace_mode'>,
+  path: string,
+  agentWorkspaceRoot: string,
+  workItemWorkspaceRoot: string = vertexWorkItemDirectory(),
+): boolean {
+  const mode = parseWorkItemWorkspaceMode(job.workspace_mode, 'repository')
+  return inside(agentWorkspaceRoot, path) || (mode === 'combined' && inside(workItemWorkspaceRoot, path))
+}
+
+export function jobSessionCwd(
+  job: RecordedJobWorkspace,
+  agentWorkspaceRoot: string,
+  workItemWorkspaceRoot: string = vertexWorkItemDirectory(),
+): string {
   const mode = parseWorkItemWorkspaceMode(job.workspace_mode, 'repository')
   const worktree = resolve(job.worktree_path)
   const cwd = resolve(mode === 'combined' ? String(job.session_cwd || '') : job.worktree_path)
-  if (!inside(agentWorkspaceRoot, worktree)) throw new Error('The recorded worktree is outside the managed agent workspace')
+  if (!isManagedJobWorkspacePath(job, worktree, agentWorkspaceRoot, workItemWorkspaceRoot)) {
+    throw new Error('The recorded worktree is outside VertexADE-managed workspace storage')
+  }
   if (mode === 'combined') {
-    if (!job.session_cwd || !inside(agentWorkspaceRoot, cwd) || !inside(cwd, worktree)) {
+    if (!job.session_cwd || !isManagedJobWorkspacePath(job, cwd, agentWorkspaceRoot, workItemWorkspaceRoot) || !inside(cwd, worktree)) {
       throw new Error('The Work item workspace does not contain its recorded repository worktree')
     }
   } else if (cwd !== worktree) {

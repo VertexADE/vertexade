@@ -34,7 +34,6 @@ import { usePullRequestDetails } from './pr-details-data'
 import { PullRequestDecisionBar, PullRequestHeader, PullRequestOverview } from './pr-details-summary'
 import { ConversationEntry, InlineReviewThread } from '@vertexade/ui/components/pr-details-conversation'
 import { MarkdownContent } from '@vertexade/ui/components/markdown-content'
-import { PullRequestChecks, PullRequestCommits } from '@vertexade/ui/components/pr-details-checks'
 export type { PrDetailsActions, PrDetailsTab } from './pr-details-model'
 
 const inlineComposerLayout = { true: 'my-2 max-w-none', false: '' }
@@ -241,6 +240,8 @@ type PrDiffAnnotation = { kind: 'thread'; thread: ReviewThread } | { kind: 'draf
 const LazyDiffReview = lazy(() =>
   import('@vertexade/ui/components/diff-review').then(({ DiffReview }) => ({ default: DiffReview<PrDiffAnnotation> })),
 )
+const LazyPullRequestIntelligenceTab = lazy(() => import('@vertexade/ui/components/pull-request-intelligence-tab'))
+const LazyPullRequestStatusTab = lazy(() => import('@vertexade/ui/components/pr-details-checks'))
 
 function pullRequestDiffAnnotations(threads: ReviewThread[], draft: DiffCommentTarget | null): DiffReviewAnnotation<PrDiffAnnotation>[] {
   const existing = threads.flatMap((thread) => {
@@ -540,12 +541,18 @@ export function PrDetailsDialog({
               className={cn('min-h-0 flex-1 gap-0', pageFlow ? 'overflow-visible' : 'overflow-hidden')}
             >
               <EntityTabBar className={cn('shrink-0 py-1 sm:py-2', pageFlow && stickyTabs && 'top-[3.25rem] z-20')}>
-                <TabsList variant="line" className="grid h-10 w-full grid-cols-4 gap-0 p-0 sm:flex sm:h-8 sm:w-fit sm:gap-1 sm:p-[3px]">
+                <TabsList variant="line" className="grid h-10 w-full grid-cols-6 gap-0 p-0 sm:flex sm:h-8 sm:w-fit sm:gap-1 sm:p-[3px]">
                   <TabsTrigger value="conversation" className="min-w-0 px-1 text-[11px] sm:px-1.5 sm:text-sm">
                     Discussion <span className="text-muted-foreground">{conversationCount}</span>
                   </TabsTrigger>
                   <TabsTrigger value="changes" className="min-w-0 px-1 text-[11px] sm:px-1.5 sm:text-sm">
                     Changes <span className="text-muted-foreground">{details.changedFiles}</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="impact" className="min-w-0 px-1 text-[11px] sm:px-1.5 sm:text-sm">
+                    Impact
+                  </TabsTrigger>
+                  <TabsTrigger value="evidence" className="min-w-0 px-1 text-[11px] sm:px-1.5 sm:text-sm">
+                    Evidence
                   </TabsTrigger>
                   <TabsTrigger value="checks" className="min-w-0 px-1 text-[11px] sm:px-1.5 sm:text-sm">
                     Checks <span className="text-muted-foreground">{details.statusCheckRollup.length}</span>
@@ -611,11 +618,31 @@ export function PrDetailsDialog({
                   embedded={pageFlow}
                 />
               </TabsContent>
+              <Suspense fallback={null}>
+                <TabsContent value="impact" className={cn('min-h-0 min-w-0 flex-1 p-3', pageFlow ? 'overflow-visible' : 'overflow-y-auto')}>
+                  <LazyPullRequestIntelligenceTab tab="impact" repositoryId={pr.repo_id} pullRequestNumber={pr.number} />
+                </TabsContent>
+                <TabsContent
+                  value="evidence"
+                  className={cn('min-h-0 min-w-0 flex-1 p-3', pageFlow ? 'overflow-visible' : 'overflow-y-auto')}
+                >
+                  <LazyPullRequestIntelligenceTab
+                    tab="evidence"
+                    repositoryId={pr.repo_id}
+                    pullRequestNumber={pr.number}
+                    onNavigate={onTabChange}
+                  />
+                </TabsContent>
+              </Suspense>
               <TabsContent value="checks" className={cn('min-h-0 flex-1 p-0', pageFlow ? 'overflow-visible' : 'overflow-hidden')}>
-                <PullRequestChecks details={details} embedded={pageFlow} />
+                <Suspense fallback={null}>
+                  <LazyPullRequestStatusTab tab="checks" details={details} embedded={pageFlow} />
+                </Suspense>
               </TabsContent>
               <TabsContent value="commits" className={cn('min-h-0 flex-1 p-0', pageFlow ? 'overflow-visible' : 'overflow-hidden')}>
-                <PullRequestCommits details={details} embedded={pageFlow} />
+                <Suspense fallback={null}>
+                  <LazyPullRequestStatusTab tab="commits" details={details} embedded={pageFlow} />
+                </Suspense>
               </TabsContent>
             </Tabs>
           </>

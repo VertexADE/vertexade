@@ -57,7 +57,6 @@ import { jobSessionCwd, relativeWorktreePath, workItemLaunchWorkspaceMode, workI
 import { createCoreRoutes } from '../core-routes.ts'
 import { inspectRepositoryEnvironmentEntries, snapshotRepositoryEnvironment } from '../repository-environment.ts'
 import { worktreeCodeReviewPrompt } from '../work/prompts.ts'
-import { populateWorktreeSnapshot } from '../work/worktree-snapshot.ts'
 import { WorktreePreviewRuntime, normalizePreviewSettings } from '../previews/runtime.ts'
 import { WorktreePreviewGateway } from '../previews/gateway.ts'
 import { openDashboardDatabase } from '../database/dashboard-database.ts'
@@ -256,7 +255,7 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
         baseRepoPath: repo.local_path,
         baseGitDir,
         headSha,
-        latestActivity: readOnly ? 'Preparing read-only review snapshot…' : 'Preparing task worktree…',
+        latestActivity: readOnly ? 'Preparing read-only thread…' : 'Preparing task worktree…',
         activityAt: sql`CURRENT_TIMESTAMP`,
         kind: jobKind,
         taskTitle: title,
@@ -337,7 +336,6 @@ export async function launchStackAnalysis(repo) {
   const { worktree, baseGitDir, sessionCwd } = await createAgentWorktree(repo, runtimeAgent, headSha, null, {
     mode: 'combined',
     workItemKey: workItem.key,
-    isolationKey: `stack-analysis-${randomUUID().slice(0, 8)}`,
   })
   const prompt = `Analyze all open pull requests in ${repo.full_name} and produce a private PR stacking report.
 
@@ -429,11 +427,12 @@ export async function launchPlanningWorkflow(request: PlanningWorkflowRequest) {
     } catch {}
     if (!baseRef) baseRef = 'HEAD'
     const headSha = (await run('git', ['-C', host.local_path, 'rev-parse', baseRef])).trim()
-    const { worktree, baseGitDir, sessionCwd } = await createAgentWorktree(host, runtimeAgent, headSha, null, {
+    const allocation = await createAgentWorktree(host, runtimeAgent, headSha, null, {
       mode: workspaceMode,
       workItemKey: workItem.key,
     })
-    failedWorktree = worktree
+    const { worktree, baseGitDir, sessionCwd } = allocation
+    failedWorktree = allocation.created ? worktree : null
     const workspaceContext = `\n\nWork item workspace: ${sessionCwd}\nAssigned repository worktree: ${worktree}\nStart from the Work item workspace. Treat sibling repository worktrees as read-only context and keep this planning task read-only.`
     const memoryLaunch = await workMemory.launchContext(
       workItem.id,

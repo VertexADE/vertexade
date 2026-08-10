@@ -22,19 +22,23 @@ function fixture(maximumSteps = 20, providedLauncher?: ThreadLauncher, maximumCo
   databases.push(database)
   const launchThread =
     providedLauncher ||
-    vi.fn<ThreadLauncher>(async () => {
+    vi.fn<ThreadLauncher>(async (_action, _prompt, trigger) => {
+      const repositoryId = Number(trigger?.subject?.match(/^repository:(\d+)$/)?.[1] || 1)
+      const jobId = 41 + repositoryId
       database.$client
-        .prepare('INSERT OR IGNORE INTO repositories (id,full_name,clone_url,local_path) VALUES (1,?,?,?)')
-        .run('acme/api', 'git@example.test:acme/api.git', '/tmp/acme-api')
+        .prepare('INSERT OR IGNORE INTO repositories (id,full_name,clone_url,local_path) VALUES (?,?,?,?)')
+        .run(repositoryId, `acme/repo-${repositoryId}`, `git@example.test:acme/repo-${repositoryId}.git`, `/tmp/acme-repo-${repositoryId}`)
       database.$client
         .prepare(`INSERT OR IGNORE INTO work_items (id,key,title,kind,state,primary_repository_id)
       VALUES (7,'W-0007','Automation target','implementation','active',1)`)
         .run()
-      database.$client
-        .prepare(`INSERT OR IGNORE INTO jobs (id,repo_id,work_item_id,pr_number,prompt,worktree_path,log_path,status,kind)
-      VALUES (42,1,7,0,'Flow','/tmp/work','/tmp/run.log','running','pre_pr')`)
-        .run()
-      return { jobId: 42 }
+      if (!database.$client.prepare('SELECT id FROM jobs WHERE id=?').get(jobId)) {
+        database.$client
+          .prepare(`INSERT INTO jobs (id,repo_id,work_item_id,pr_number,prompt,worktree_path,log_path,status,kind)
+          VALUES (?,?,7,0,'Flow',?,?,'running','pre_pr')`)
+          .run(jobId, repositoryId, `/tmp/work-${repositoryId}`, `/tmp/run-${repositoryId}.log`)
+      }
+      return { jobId }
     })
   const registries = new PlatformCapabilityRegistries()
   const notify = vi.fn()

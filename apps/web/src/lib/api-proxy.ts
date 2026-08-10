@@ -157,6 +157,8 @@ function backendFromWorkKey(pathname: string) {
 }
 
 const namespacedRoutePatterns = [
+  /^\/api\/migration-campaigns\/(\d+)/,
+  /^\/api\/extensions\/container-preview\/agent-threads\/(\d+)/,
   /^\/api\/agent-threads\/(\d+)/,
   /^\/api\/repositories\/(\d+)/,
   /^\/api\/pulls\/(\d+)/,
@@ -188,6 +190,10 @@ function rewritePath(pathname: string, backend: ApiBackend) {
     rewritten = rewritten.replace(match[1], String(localId(match[1])))
     break
   }
+  for (const pattern of [/\/validation-runs\/(\d+)/, /\/impact-analyses\/(\d+)/, /\/architecture-index\/(\d+)/]) {
+    const match = rewritten.match(pattern)
+    if (match) rewritten = rewritten.replace(match[1], String(localId(match[1])))
+  }
   return rewritten
 }
 
@@ -204,7 +210,9 @@ function selectedBackend(source: URL, request: Request) {
   if (explicit) return explicit
   const requested = request.headers.get('x-vertexade-backend')
   const headerBackend = requested ? activeBackends.find((backend) => backend.id === requested) : undefined
-  const backend = headerBackend || backendFromPath(source.pathname) || activeBackends[0]
+  // Entity ownership is authoritative. A global UI selection is only a
+  // default for routes that do not identify their owning backend.
+  const backend = backendFromPath(source.pathname) || headerBackend || activeBackends[0]
   return { backend, pathname: source.pathname }
 }
 

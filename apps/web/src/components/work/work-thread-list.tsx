@@ -103,7 +103,7 @@ function ReviewThreadMetadata({ job }: { job: WorkItem['threads'][number] }) {
       <span className="flex min-w-0 items-center gap-1">
         {job.pr_number ? <GitPullRequest className="size-2.5 shrink-0" /> : <FileSearch className="size-2.5 shrink-0" />}
         <span className="truncate">
-          {job.pr_number ? `${job.full_name} · PR #${job.pr_number}` : `${job.full_name} · detached worktree snapshot`}
+          {job.pr_number ? `${job.full_name} · PR #${job.pr_number}` : `${job.full_name} · shared worktree review`}
         </span>
       </span>
       <span className="block line-clamp-2 leading-relaxed sm:truncate">
@@ -114,7 +114,7 @@ function ReviewThreadMetadata({ job }: { job: WorkItem['threads'][number] }) {
 }
 
 function reviewThreadTitle(job: WorkItem['threads'][number]) {
-  return job.task_title || (job.pr_number ? `Review PR #${job.pr_number}` : 'Review implementation snapshot')
+  return job.task_title || (job.pr_number ? `Review PR #${job.pr_number}` : 'Review shared implementation')
 }
 
 function reviewThreadStatus(state: ReturnType<typeof agentThreadState>) {
@@ -198,8 +198,8 @@ export function ThreadList({
             Threads <Badge variant="secondary">{item.threads.length}</Badge>
           </CardTitle>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Work threads can change their own repository worktree. Review threads inspect a stopped worktree snapshot and keep findings
-            separate.
+            Work threads sequentially reuse their repository worktree. Review threads inspect that shared worktree read-only and keep
+            findings separate.
           </p>
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
@@ -224,14 +224,14 @@ export function ThreadList({
       <CardContent className="grid gap-3 xl:grid-cols-2">
         <ThreadSection
           title="Work threads"
-          description="Implementation, investigation, planning, and follow-up work in an isolated repository worktree."
+          description="Implementation, investigation, planning, and follow-up work reuse this Work item's repository worktree."
           threads={threads.work}
           onOpen={onOpen}
           review={false}
         />
         <ThreadSection
           title="Review threads"
-          description="Private code review of a pull request or a detached implementation worktree snapshot."
+          description="Private read-only review of the current shared repository worktree."
           threads={threads.review}
           onOpen={onOpen}
           review

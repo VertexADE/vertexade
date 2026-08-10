@@ -16,7 +16,7 @@ export type PullRequestDashboardSearch = {
   backend?: string
   pr?: number
   thread?: number
-  tab?: 'conversation' | 'changes' | 'checks' | 'commits'
+  tab?: 'conversation' | 'changes' | 'impact' | 'evidence' | 'checks' | 'commits'
   view?: PullRequestViewSearch
   q?: string
   repos?: string

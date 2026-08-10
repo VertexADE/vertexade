@@ -238,12 +238,13 @@ describe('WorkService', () => {
     work.syncDeploymentOverview(repository.full_name, [
       {
         name: 'web',
+        target: { id: 'release', production_environment: 'production' },
         runs: [
           {
             sha: 'merged-abc',
             run_id: 9,
             url: 'https://buildkite.example/builds/9',
-            stages: { prd: { conclusion: 'success' } },
+            stages: { production: { conclusion: 'success' } },
           },
         ],
       },

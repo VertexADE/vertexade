@@ -50,7 +50,11 @@ export function PullRequestThreadLocations({ threads, onRun }: { threads: Job[];
           <span
             className={cn(
               'size-1.5 rounded-full',
-              ['running', 'starting', 'waiting'].includes(location.state) ? 'bg-blue-400' : location.state === 'completed' ? 'bg-emerald-400' : 'bg-amber-400',
+              ['running', 'starting', 'waiting'].includes(location.state)
+                ? 'bg-blue-400'
+                : location.state === 'completed'
+                  ? 'bg-emerald-400'
+                  : 'bg-amber-400',
             )}
           />
         </Button>

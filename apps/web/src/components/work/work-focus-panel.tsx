@@ -68,7 +68,7 @@ function unstartedFocus(item: WorkItem): WorkFocus | null {
   if (item.threads.length) return null
   return {
     title: 'Ready to start implementation',
-    detail: 'Launch the first isolated agent thread with the outcome and references already attached.',
+    detail: 'Launch the first agent thread in the reusable Work-item repository worktree.',
     tone: 'border-emerald-500/30 bg-emerald-500/[.04]',
     icon: Play,
   }

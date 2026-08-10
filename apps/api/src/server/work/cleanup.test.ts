@@ -24,6 +24,7 @@ function setup(
     removeFile?: (path: string) => Promise<void>
     logsRoot?: string
     legacyLogsRoots?: string[]
+    workItemWorkspaceRoot?: string
   } = {},
 ) {
   const db = new DatabaseSync(':memory:')
@@ -61,6 +62,7 @@ function setup(
     defaultAgentId: 'codex',
     activeJobs: options.activeJobs || new Map(),
     logsRoot: options.logsRoot || '/logs',
+    workItemWorkspaceRoot: options.workItemWorkspaceRoot,
     legacyLogsRoots: options.legacyLogsRoots,
     run,
     removeFile,
@@ -156,16 +158,17 @@ describe('Work cleanup', () => {
   })
 
   it('removes the combined Work folder after its managed repository worktrees', async () => {
-    const { db, work, cleanup, removeDirectory } = setup()
+    const workItemWorkspaceRoot = '/home/example/.vertex-ade/work-items'
+    const { db, work, cleanup, removeDirectory } = setup({ workItemWorkspaceRoot })
     const item = work.create({ title: 'Combined workspace' })!
     insertJob(db, item.id, 10, {
-      worktree_path: `/managed/work-items/${item.key}/example--repo-a`,
-      session_cwd: `/managed/work-items/${item.key}`,
+      worktree_path: `${workItemWorkspaceRoot}/${item.key}/example--repo-a`,
+      session_cwd: `${workItemWorkspaceRoot}/${item.key}`,
       workspace_mode: 'combined',
     })
     insertJob(db, item.id, 11, {
-      worktree_path: `/managed/work-items/${item.key}/example--repo-b`,
-      session_cwd: `/managed/work-items/${item.key}`,
+      worktree_path: `${workItemWorkspaceRoot}/${item.key}/example--repo-b`,
+      session_cwd: `${workItemWorkspaceRoot}/${item.key}`,
       workspace_mode: 'combined',
       branch_name: 'feature/example-two',
     })
@@ -174,7 +177,7 @@ describe('Work cleanup', () => {
 
     expect(result).toMatchObject({ deleted: true, worktrees_removed: 2 })
     expect(removeDirectory).toHaveBeenCalledTimes(1)
-    expect(removeDirectory).toHaveBeenCalledWith(`/managed/work-items/${item.key}`)
+    expect(removeDirectory).toHaveBeenCalledWith(`${workItemWorkspaceRoot}/${item.key}`)
   })
 
   it('refuses to remove a combined Work folder that does not contain its recorded worktree', async () => {
@@ -359,7 +362,7 @@ describe('Work cleanup', () => {
         logsRoot,
         legacyLogsRoots: [legacyRoot],
         removeFile: async (path) => {
-          if (path === legacyLog && sourceFailure) {
+          if (path.endsWith('/previous/logs/W-0002--repo--task.log') && sourceFailure) {
             sourceFailure = false
             throw new Error('simulated interruption')
           }
@@ -381,8 +384,11 @@ describe('Work cleanup', () => {
       expect(db.prepare("SELECT state FROM work_cleanup_artifacts WHERE identity='job:10:legacy-source'").get()).toEqual({
         state: 'retrying',
       })
+      db.prepare("UPDATE work_cleanup_artifacts SET next_retry_at=CURRENT_TIMESTAMP WHERE identity='job:10:legacy-source'").run()
+      db.prepare('UPDATE work_cleanup_tombstones SET next_retry_at=CURRENT_TIMESTAMP WHERE work_item_id=?').run(item.id)
 
       const recovered = await cleanup.remove(item.id)
+      expect(recovered.cleanup_artifacts).toEqual([])
       expect(recovered).toMatchObject({ deleted: true, cleanup_complete: true })
       await expect(access(legacyLog)).rejects.toMatchObject({ code: 'ENOENT' })
       expect(work.raw(item.id)).toBeNull()

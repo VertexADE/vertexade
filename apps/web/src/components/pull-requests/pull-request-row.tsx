@@ -128,6 +128,15 @@ export function PrRow({
             >
               {lifecycleStatus}
             </Badge>
+            {pr.evidence_readiness && (
+              <Badge
+                variant={pr.evidence_readiness === 'blocked' || pr.evidence_readiness === 'stale' ? 'destructive' : 'outline'}
+                className="h-5 shrink-0 rounded-full px-1.5 text-[11px]"
+                title={`Current evidence readiness: ${pr.evidence_readiness}`}
+              >
+                Evidence {pr.evidence_readiness}
+              </Badge>
+            )}
             {conventional && (
               <Badge variant="outline" className={cn('h-5 shrink-0 px-1.5 font-mono text-[11px] uppercase', typeStyles[conventional.type])}>
                 {conventional.type}

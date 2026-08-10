@@ -86,6 +86,53 @@ describe('multi-backend API proxy', () => {
       if (url.host === 'team.internal' && url.pathname === '/api/agent-threads/7/log') {
         return Response.json({ id: 7, repo_id: 7, status: 'completed', kind: 'task', thread_id: 'thread-team', agent_id: 'codex' })
       }
+      if (url.host === 'team.internal' && url.pathname === '/api/extensions/container-preview/agent-threads/7') {
+        return Response.json({ status: 'running' })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/pulls/7/17/impact-analysis') {
+        return Response.json({ id: 4, subject: { repositoryId: 7, pullRequestNumber: 17 }, freshness: 'current' })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/pulls/7/17/validation-runs') {
+        return Response.json({ runs: [{ id: 9, repositoryId: 7 }], errors: [] })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/repositories/7/validation-runs/9/log') {
+        return Response.json({ output: 'remote evidence' })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/repositories/7/validation-runs/9/repair-loop') {
+        return Response.json({
+          id: 2,
+          rootRunId: 9,
+          currentRunId: 11,
+          currentJobId: 14,
+          state: 'active',
+          maxAttempts: 3,
+          attemptCount: 1,
+        })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/pulls/7/17/evidence') {
+        return Response.json({ id: 10, repositoryId: 7, readiness: 'ready' })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/migration-campaigns/12/control') {
+        return Response.json({
+          id: 12,
+          federationGroupId: 'group-remote',
+          recipe: {
+            id: 3,
+            key: 'node-types',
+            version: 1,
+            configuration: { kind: 'dependency_upgrade', packageName: '@types/node', targetVersion: '^24.0.0', sections: [] },
+          },
+          targets: [{ id: 4, campaignId: 12, repositoryId: 7 }],
+        })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/migration-campaigns') {
+        return Response.json({
+          id: 13,
+          federationGroupId: 'group-created',
+          recipe: { id: 3, key: 'node-types', version: 1, configuration: { kind: 'dependency_upgrade' } },
+          targets: [],
+        })
+      }
       return Response.json({ error: 'Unexpected test request' }, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
@@ -103,7 +150,9 @@ describe('multi-backend API proxy', () => {
     ])
 
     const jobResponse = await proxyApiRequest({
-      request: new Request('http://frontend.internal/api/agent-threads/1000000007/log'),
+      request: new Request('http://frontend.internal/api/agent-threads/1000000007/log', {
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
     })
     expect(await jobResponse.json()).toMatchObject({
       id: 1_000_000_007,
@@ -113,6 +162,118 @@ describe('multi-backend API proxy', () => {
     expect(fetch).toHaveBeenLastCalledWith(
       new URL('http://team.internal/api/agent-threads/7/log'),
       expect.objectContaining({ method: 'GET' }),
+    )
+
+    const previewResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/extensions/container-preview/agent-threads/1000000007', {
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await previewResponse.json()).toEqual({ status: 'running' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/extensions/container-preview/agent-threads/7'),
+      expect.objectContaining({ method: 'GET' }),
+    )
+
+    const impactResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/pulls/1000000007/17/impact-analysis', {
+        method: 'POST',
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await impactResponse.json()).toMatchObject({
+      id: 1_000_000_004,
+      subject: { repositoryId: 1_000_000_007 },
+      freshness: 'current',
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/pulls/7/17/impact-analysis'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const validationResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/pulls/1000000007/17/validation-runs', {
+        method: 'POST',
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await validationResponse.json()).toMatchObject({ runs: [{ id: 1_000_000_009, repositoryId: 1_000_000_007 }] })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/pulls/7/17/validation-runs'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const logResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/repositories/1000000007/validation-runs/1000000009/log', {
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await logResponse.json()).toEqual({ output: 'remote evidence' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/repositories/7/validation-runs/9/log'),
+      expect.objectContaining({ method: 'GET' }),
+    )
+
+    const loopResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/repositories/1000000007/validation-runs/1000000009/repair-loop', {
+        method: 'POST',
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await loopResponse.json()).toMatchObject({
+      rootRunId: 1_000_000_009,
+      currentRunId: 1_000_000_011,
+      currentJobId: 1_000_000_014,
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/repositories/7/validation-runs/9/repair-loop'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const evidenceResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/pulls/1000000007/17/evidence', {
+        method: 'POST',
+        headers: { 'x-vertexade-backend': 'local' },
+      }),
+    })
+    expect(await evidenceResponse.json()).toMatchObject({ id: 1_000_000_010, repositoryId: 1_000_000_007, readiness: 'ready' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/pulls/7/17/evidence'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const campaignResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/migration-campaigns/1000000012/control', {
+        method: 'POST',
+        headers: { 'x-vertexade-backend': 'local', 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'retry', targetId: 1_000_000_004 }),
+      }),
+    })
+    expect(await campaignResponse.json()).toMatchObject({
+      id: 1_000_000_012,
+      backend_id: 'team',
+      recipe: { id: 1_000_000_003 },
+      targets: [{ id: 1_000_000_004, campaignId: 1_000_000_012, repositoryId: 1_000_000_007 }],
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/migration-campaigns/12/control'),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ action: 'retry', targetId: 4 }) }),
+    )
+
+    const createCampaignResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/backends/team/migration-campaigns', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ federationGroupId: 'group-created', recipeId: 1_000_000_003, repositoryIds: [1_000_000_007] }),
+      }),
+    })
+    expect(await createCampaignResponse.json()).toMatchObject({ id: 1_000_000_013, backend_id: 'team' })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/migration-campaigns'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ federationGroupId: 'group-created', recipeId: 3, repositoryIds: [7] }),
+      }),
     )
   })
 })

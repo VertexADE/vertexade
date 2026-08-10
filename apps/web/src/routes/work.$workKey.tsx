@@ -40,6 +40,9 @@ import {
 import { MarkdownContent } from '@vertexade/ui/components/markdown-content'
 import { EntityTabBar } from '@vertexade/ui/components/entity-workspace'
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
+import { ImpactAnalysisPanel, WorkImpactAnalysisPanel } from '@vertexade/ui/components/impact-analysis-panel'
+import { ArchitectureContextPanel } from '@vertexade/ui/components/architecture-context-panel'
+import { TestIntelligencePanel } from '@vertexade/ui/components/test-intelligence-panel'
 import { PromptImageTextarea } from '@vertexade/ui/components/prompt-images'
 import { RepositoryMultiSelect } from '@vertexade/ui/components/repository-multi-select'
 import { SequentialWorkOption } from '@vertexade/ui/components/sequential-work-option'
@@ -204,6 +207,7 @@ function WorkDetail() {
     .filter((resource) => resource.kind === 'pull_request' && resource.role !== 'context')
     .sort((left, right) => right.is_primary - left.is_primary)[0]
   const dialogPr = selectedPullRequest(item.resources, item.threads, search)
+  const primaryPr = pr ? pullRequestDialogItem(pr, item.threads) : null
   const activeSection = search.section || 'overview'
   const changeSection = (section: WorkDetailSection) =>
     void navigate({
@@ -287,6 +291,7 @@ function WorkDetail() {
             <TabsTrigger value="links">
               Links <span className="hidden text-muted-foreground sm:inline">({item.resources.length})</span>
             </TabsTrigger>
+            <TabsTrigger value="impact">Impact</TabsTrigger>
             <TabsTrigger value="memory">Details</TabsTrigger>
           </TabsList>
         </EntityTabBar>
@@ -301,6 +306,17 @@ function WorkDetail() {
         </TabsContent>
         <TabsContent value="links" className="mt-0">
           <WorkLinks item={item} pullRequest={pr} onOpenPullRequest={openPullRequest} />
+        </TabsContent>
+        <TabsContent value="impact" className="mt-0">
+          {primaryPr ? (
+            <div className="flex flex-col gap-3">
+              <ImpactAnalysisPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+              <ArchitectureContextPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+              <TestIntelligencePanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+            </div>
+          ) : (
+            <WorkImpactAnalysisPanel workItemId={item.id} />
+          )}
         </TabsContent>
         <TabsContent value="memory" className="mt-0">
           <WorkDetails

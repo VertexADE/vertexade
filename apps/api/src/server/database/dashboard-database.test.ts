@@ -50,6 +50,15 @@ describe('dashboard database migrations', () => {
       { version: 30, name: 'durable-extension-state' },
       { version: 31, name: 'automation-thread-runtime-options' },
       { version: 32, name: 'automation-thread-service-tier' },
+      { version: 33, name: 'development-impact-analyses' },
+      { version: 34, name: 'development-architecture-context' },
+      { version: 35, name: 'development-test-intelligence' },
+      { version: 36, name: 'development-pull-request-evidence' },
+      { version: 37, name: 'development-migration-campaigns' },
+      { version: 38, name: 'development-impact-feedback' },
+      { version: 39, name: 'development-validation-artifacts-and-migration-evidence' },
+      { version: 40, name: 'development-bounded-repair-loops' },
+      { version: 41, name: 'single-active-work-item-worktree' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',
@@ -176,6 +185,139 @@ describe('dashboard database migrations', () => {
         .all()
         .map((column) => column.name),
     ).toEqual(expect.arrayContaining(['contextual_action_id', 'entity_kind', 'entity_key']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(impact_analyses)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(
+      expect.arrayContaining([
+        'repository_id',
+        'subject_kind',
+        'base_revision',
+        'head_revision',
+        'analyzer_version',
+        'execution_id',
+        'result',
+        'digest',
+      ]),
+    )
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(architecture_indexes)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['repository_id', 'revision', 'index_version', 'execution_id', 'result', 'digest']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(architecture_context_packets)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['repository_id', 'index_id', 'subject_kind', 'subject_key', 'packet', 'byte_budget', 'truncated']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(repository_test_targets)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(
+      expect.arrayContaining([
+        'repository_id',
+        'target_id',
+        'executable',
+        'args',
+        'working_directory',
+        'timeout_ms',
+        'artifact_paths',
+        'enabled',
+      ]),
+    )
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(validation_runs)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(
+      expect.arrayContaining([
+        'repository_id',
+        'impact_analysis_id',
+        'target_id',
+        'target',
+        'output',
+        'failures',
+        'artifacts',
+        'base_comparison',
+        'repair_work_item_id',
+        'repair_job_id',
+        'parent_run_id',
+      ]),
+    )
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(pull_request_evidence_snapshots)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(
+      expect.arrayContaining(['repository_id', 'pull_request_number', 'head_revision', 'policy_version', 'entries', 'counts', 'digest']),
+    )
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(validation_repair_loops)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['root_run_id', 'current_run_id', 'current_job_id', 'max_attempts', 'deadline_at', 'stop_reason']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(pull_request_evidence_waivers)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['repository_id', 'pull_request_number', 'head_revision', 'entry_key', 'actor', 'reason']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(migration_campaigns)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['federation_group_id', 'recipe_id', 'state', 'canary_count', 'wave_size', 'writes_approved']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(migration_targets)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(
+      expect.arrayContaining([
+        'campaign_id',
+        'repository_id',
+        'base_revision',
+        'wave',
+        'applicability',
+        'predicted_changes',
+        'output_revision',
+        'validation_run_ids',
+        'evidence_snapshot_id',
+      ]),
+    )
+  })
+
+  it('allows one active thread plus one delegated child in a Work-item repository worktree', () => {
+    const database = openDashboardDatabase(':memory:')
+    databases.push(database)
+    const native = nativeDatabase(database)
+    native.exec(`
+      INSERT INTO repositories (id,full_name,clone_url,local_path) VALUES (1,'owner/repo','ssh://repo','/repo');
+      INSERT INTO work_items (id,key,title) VALUES (7,'W-0007','Shared worktree');
+      INSERT INTO jobs (id,repo_id,pr_number,prompt,worktree_path,session_cwd,log_path,status,kind,work_item_id)
+      VALUES (1,1,0,'parent','/work-items/W-0007/owner--repo','/work-items/W-0007','/logs/1','running','pre_pr',7);
+      INSERT INTO jobs (id,repo_id,pr_number,prompt,worktree_path,session_cwd,log_path,status,kind,source_job_id,work_item_id)
+      VALUES (2,1,0,'child','/work-items/W-0007/owner--repo','/work-items/W-0007','/logs/2','starting','subagent',1,7);
+    `)
+
+    expect(() =>
+      native.exec(`INSERT INTO jobs (id,repo_id,pr_number,prompt,worktree_path,session_cwd,log_path,status,kind,work_item_id)
+        VALUES (3,1,0,'other','/work-items/W-0007/owner--repo','/work-items/W-0007','/logs/3','starting','review',7)`),
+    ).toThrow('Work item repository already has an active thread')
+    expect(() =>
+      native.exec(`INSERT INTO jobs (id,repo_id,pr_number,prompt,worktree_path,session_cwd,log_path,status,kind,source_job_id,work_item_id)
+        VALUES (4,1,0,'second child','/work-items/W-0007/owner--repo','/work-items/W-0007','/logs/4','starting','subagent',1,7)`),
+    ).toThrow('Work item repository already has an active thread')
   })
 
   it('copies legacy extension settings without replacing an existing scoped value', () => {
