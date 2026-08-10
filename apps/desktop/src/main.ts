@@ -4,7 +4,9 @@ import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 import { desktopServiceEnvironment } from './desktop-environment.ts'
 import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
-import { autoUpdater } from 'electron-updater'
+import updaterPackage from 'electron-updater'
+
+const { autoUpdater } = updaterPackage
 
 const services = new Set<ChildProcess>()
 let desktopWindow: BrowserWindow | null = null
