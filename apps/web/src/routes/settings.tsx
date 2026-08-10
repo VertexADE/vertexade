@@ -224,9 +224,10 @@ function LinkedServersSettings() {
         <StatusPanel tone="info">
           <Network />
           <StatusPanelContent>
-            <StatusPanelTitle>Public VertexADE servers only</StatusPanelTitle>
+            <StatusPanelTitle>Public and private VertexADE servers</StatusPanelTitle>
             <StatusPanelDescription>
-              The API verifies the server identity and blocks loopback, private, link-local, metadata, and DNS-rebinding destinations.
+              Linking explicitly trusts this exact origin. The API verifies its VertexADE identity, pins DNS, and revalidates every
+              redirect.
             </StatusPanelDescription>
           </StatusPanelContent>
         </StatusPanel>
@@ -241,7 +242,7 @@ function LinkedServersSettings() {
           </Label>
           <Label className="grid gap-1.5 text-xs">
             API origin
-            <Input name="url" type="url" required placeholder="https://vertexade.example.com" />
+            <Input name="url" type="url" required placeholder="http://192.168.1.10:4174" />
           </Label>
           <Button className="self-end" type="submit">
             <Plus />

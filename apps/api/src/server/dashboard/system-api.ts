@@ -113,9 +113,8 @@ import {
 } from './runtime-context.ts'
 import { highlightRules, jobs, presets, pullRequests, repositories } from '../database/schema/tables.ts'
 import { highlightRuleRecord, presetRecord, pullRequestRecord, repositoryRecord } from '../database/contract-records.ts'
-import { normalizeLinkedServer, readLinkedServers, verifyLinkedServer, writeLinkedServers } from '../settings/linked-servers.ts'
+import { normalizeLinkedServer, readLinkedServers, verifyApprovedLinkedServer, writeLinkedServers } from '../settings/linked-servers.ts'
 import { serverRuntimeStatus, updateServerRuntimeConfiguration } from '../settings/server-runtime.ts'
-import { guardedIntegrationFetch } from '@vertexade/platform-server/outbound-policy'
 
 function repositoryRow(id: number) {
   const row = db.select().from(repositories).where(eq(repositories.id, id)).get()
@@ -251,7 +250,7 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
           ...normalizeLinkedServer(await body(request)),
           namespace: Math.max(0, ...current.map((candidate) => candidate.namespace)) + 1,
         }
-        await verifyLinkedServer(server.url, guardedIntegrationFetch)
+        await verifyApprovedLinkedServer(server.url)
         const duplicate = current.find((candidate) => candidate.id === server.id || candidate.url === server.url)
         if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
         writeLinkedServers(appSettings, [...current, server])
@@ -278,7 +277,7 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     try {
       const patch = await body(request)
       const next = normalizeLinkedServer({ ...current[index], ...patch, id: current[index].id })
-      if (next.url !== current[index].url) await verifyLinkedServer(next.url, guardedIntegrationFetch)
+      if (next.url !== current[index].url) await verifyApprovedLinkedServer(next.url)
       const duplicate = current.find((candidate, candidateIndex) => candidateIndex !== index && candidate.url === next.url)
       if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
       const updated = [...current]

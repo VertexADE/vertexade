@@ -1,3 +1,5 @@
+import { OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
+
 export type LinkedServer = {
   id: string
   label: string
@@ -74,6 +76,17 @@ export async function verifyLinkedServer(url: string, request: VerifyRequest) {
     throw new Error('Origin is not a compatible VertexADE server')
   }
   return { instanceId: payload.instanceId, version: payload.version }
+}
+
+export async function verifyApprovedLinkedServer(url: string) {
+  const policy = new OutboundRequestPolicy({
+    allowedOrigins: [new URL(url).origin],
+  })
+  try {
+    return await verifyLinkedServer(url, policy.fetch)
+  } finally {
+    await policy.dispose()
+  }
 }
 
 export function readLinkedServers(store: SettingsStore) {

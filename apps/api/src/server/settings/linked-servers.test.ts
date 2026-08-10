@@ -1,5 +1,12 @@
+import { createServer } from 'node:http'
 import { describe, expect, it } from 'vite-plus/test'
-import { normalizeLinkedServer, readLinkedServers, verifyLinkedServer, writeLinkedServers } from './linked-servers.ts'
+import {
+  normalizeLinkedServer,
+  readLinkedServers,
+  verifyApprovedLinkedServer,
+  verifyLinkedServer,
+  writeLinkedServers,
+} from './linked-servers.ts'
 
 function memoryStore(initial: unknown[] = []) {
   let value = initial
@@ -39,5 +46,37 @@ describe('linked servers', () => {
     await expect(verifyLinkedServer('https://one.example', async () => Response.json({ service: 'other' }))).rejects.toThrow(
       'not a compatible VertexADE server',
     )
+  })
+
+  it('verifies an operator-approved private server origin', async () => {
+    const server = createServer((request, response) => {
+      if (request.url !== '/api/read-model/status') {
+        response.writeHead(404).end()
+        return
+      }
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ instanceId: 'private-instance', version: 9 }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Expected a TCP test server')
+
+    try {
+      await expect(verifyApprovedLinkedServer(`http://127.0.0.1:${address.port}`)).resolves.toEqual({
+        instanceId: 'private-instance',
+        version: 9,
+      })
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error)
+          else resolve()
+        })
+      })
+    }
   })
 })
