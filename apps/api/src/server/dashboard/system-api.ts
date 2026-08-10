@@ -113,7 +113,13 @@ import {
 } from './runtime-context.ts'
 import { highlightRules, jobs, presets, pullRequests, repositories } from '../database/schema/tables.ts'
 import { highlightRuleRecord, presetRecord, pullRequestRecord, repositoryRecord } from '../database/contract-records.ts'
-import { normalizeLinkedServer, readLinkedServers, verifyApprovedLinkedServer, writeLinkedServers } from '../settings/linked-servers.ts'
+import {
+  LinkedServerAccessError,
+  normalizeLinkedServer,
+  readLinkedServers,
+  verifyLinkedServerAccess,
+  writeLinkedServers,
+} from '../settings/linked-servers.ts'
 import { serverRuntimeStatus, updateServerRuntimeConfiguration } from '../settings/server-runtime.ts'
 
 function repositoryRow(id: number) {
@@ -128,6 +134,11 @@ function pullRequestRow(repoId: number, number: number) {
     .where(and(eq(pullRequests.repoId, repoId), eq(pullRequests.number, number)))
     .get()
   return row ? pullRequestRecord(row) : null
+}
+
+function linkedServerErrorResponse(error: unknown): Response {
+  const status = error instanceof LinkedServerAccessError ? (error.code === 'operator_token_not_configured' ? 503 : 401) : 400
+  return json(status, { error: error instanceof Error ? error.message : 'Invalid linked server' })
 }
 
 import { resolveSubagentLaunch } from '../agents/subagents.ts'
@@ -250,14 +261,14 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
           ...normalizeLinkedServer(await body(request)),
           namespace: Math.max(0, ...current.map((candidate) => candidate.namespace)) + 1,
         }
-        await verifyApprovedLinkedServer(server.url)
+        await verifyLinkedServerAccess(server.url, request.headers.get('authorization'), API_TOKEN)
         const duplicate = current.find((candidate) => candidate.id === server.id || candidate.url === server.url)
         if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
         writeLinkedServers(appSettings, [...current, server])
         notifyClients('linked_servers_updated')
         return json(201, server)
       } catch (error) {
-        return json(400, { error: error instanceof Error ? error.message : 'Invalid linked server' })
+        return linkedServerErrorResponse(error)
       }
     }
   }
@@ -277,7 +288,8 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     try {
       const patch = await body(request)
       const next = normalizeLinkedServer({ ...current[index], ...patch, id: current[index].id })
-      if (next.url !== current[index].url) await verifyApprovedLinkedServer(next.url)
+      if (next.url !== current[index].url)
+        await verifyLinkedServerAccess(next.url, request.headers.get('authorization'), API_TOKEN)
       const duplicate = current.find((candidate, candidateIndex) => candidateIndex !== index && candidate.url === next.url)
       if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
       const updated = [...current]
@@ -286,7 +298,7 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       notifyClients('linked_servers_updated')
       return json(200, next)
     } catch (error) {
-      return json(400, { error: error instanceof Error ? error.message : 'Invalid linked server' })
+      return linkedServerErrorResponse(error)
     }
   }
   if (url.pathname === '/api/settings/thread-runtime-defaults') {

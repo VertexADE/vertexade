@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   normalizeLinkedServer,
   readLinkedServers,
-  verifyApprovedLinkedServer,
+  verifyLinkedServerAccess,
   verifyLinkedServer,
   writeLinkedServers,
 } from './linked-servers.ts'
@@ -49,7 +49,9 @@ describe('linked servers', () => {
   })
 
   it('verifies an operator-approved private server origin', async () => {
+    let requests = 0
     const server = createServer((request, response) => {
+      requests += 1
       if (request.url !== '/api/read-model/status') {
         response.writeHead(404).end()
         return
@@ -63,12 +65,19 @@ describe('linked servers', () => {
     })
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Expected a TCP test server')
+    const url = `http://127.0.0.1:${address.port}`
 
     try {
-      await expect(verifyApprovedLinkedServer(`http://127.0.0.1:${address.port}`)).resolves.toEqual({
+      await expect(verifyLinkedServerAccess(url, null, '')).rejects.toMatchObject({ code: 'operator_token_not_configured' })
+      await expect(verifyLinkedServerAccess(url, 'Bearer wrong', 'operator-secret')).rejects.toMatchObject({
+        code: 'invalid_operator_token',
+      })
+      expect(requests).toBe(0)
+      await expect(verifyLinkedServerAccess(url, 'Bearer operator-secret', 'operator-secret')).resolves.toEqual({
         instanceId: 'private-instance',
         version: 9,
       })
+      expect(requests).toBe(1)
     } finally {
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
