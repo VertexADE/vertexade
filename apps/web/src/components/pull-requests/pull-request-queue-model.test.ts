@@ -119,6 +119,19 @@ describe('pull request queue model', () => {
     expect(pullRequestsForView('ready', [passive, failed, requested, ready], identity)).toEqual([ready])
   })
 
+  it('uses the source backend identity for authored pull requests', () => {
+    const primaryIdentity = { status: 'ready' as const, login: 'DominicVonk' }
+    const milencePr = pullRequest({
+      backend_id: 'milence-agent',
+      author: 'dominicvonk-milence',
+      checks_failed: 1,
+      review_decision: null,
+    })
+    const identities = new Map([['milence-agent', { status: 'ready' as const, login: 'dominicvonk-milence' }]])
+
+    expect(pullRequestsForView('for-you', [milencePr], primaryIdentity, [], identities)).toEqual([milencePr])
+  })
+
   it('counts primary and advanced filters independently', () => {
     expect(
       pullRequestFilterCounts({

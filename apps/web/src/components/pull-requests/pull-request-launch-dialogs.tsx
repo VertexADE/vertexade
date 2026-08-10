@@ -9,10 +9,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@vertexade/
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { api, parseJson } from '@vertexade/ui/lib/dashboard-api'
+import { api, backendApi, parseJson } from '@vertexade/ui/lib/dashboard-api'
 import type { DashboardData, GithubLabel, Job, PullRequest } from '@vertexade/ui/lib/dashboard-types'
 import type { PullRequestFlowDecision } from '@vertexade/ui/lib/pull-request-flow'
 import { reconcilePullRequestChange, useSingleSubmission } from '../../lib/use-pull-request-mutation'
+import {
+  defaultPullRequestExecutionTarget,
+  useVerifiedPullRequestExecutionTargets,
+  type VerifiedPullRequestExecutionTarget,
+} from './pull-request-execution-target'
 
 function renderPreset(template: string, pr: PullRequest) {
   const values: Record<string, string> = {
@@ -42,25 +47,36 @@ export function LaunchDialog({
 }) {
   const [preset, setPreset] = useState('pr')
   const [prompt, setPrompt] = useState('')
+  const [backendId, setBackendId] = useState('')
+  const targets = useVerifiedPullRequestExecutionTargets(pr, data)
   const submission = useSingleSubmission()
   useEffect(() => {
     if (!pr) return
     setPreset(defaultLaunchPreset(data))
     setPrompt(launchDecisionPrompt(decision))
   }, [decision?.detail, pr?.id])
+  useEffect(() => {
+    if (!pr) return
+    const allowed = targets.filter((target) => target.access === 'allowed')
+    if (!allowed.some((target) => target.backend.id === backendId))
+      setBackendId(defaultPullRequestExecutionTarget(pr, allowed)?.backend.id || '')
+  }, [backendId, pr?.id, targets])
   async function submit() {
     if (!pr) return
+    const target = targets.find((candidate) => candidate.backend.id === backendId)
+    if (!target || target.access !== 'allowed') return toast.error('The selected server SCM user cannot access this repository')
     const job = await submission.run(() =>
-      api<Job>(`/api/pulls/${pr.repo_id}/${pr.number}/launch`, {
+      backendApi<Job>(target.backend.id, `/api/pulls/${target.repositoryId}/${pr.number}/launch`, {
         method: 'POST',
         body: JSON.stringify({ preset: preset === 'none' ? '' : preset, prompt }),
       }),
     )
     if (!job) return
-    toast.success(`${job.agent_name} started as run #${job.id}`)
+    toast.success(`${job.agent_name} started on ${target.backend.label} as run #${job.id}`)
     onStarted(job.id)
   }
   const selected = data.presets.find((item) => item.name === preset)
+  const target = targets.find((candidate) => candidate.backend.id === backendId)
   return (
     <Dialog open={Boolean(pr)} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -72,6 +88,13 @@ export function LaunchDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <ExecutionServerPicker
+            targets={targets}
+            value={backendId}
+            onChange={setBackendId}
+            sourceName={pr?.backend_name}
+            selectedName={target?.backend.label}
+          />
           <Select value={preset} onValueChange={setPreset}>
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -110,13 +133,53 @@ export function LaunchDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={submission.busy} onClick={submit}>
+          <Button disabled={submission.busy || target?.access !== 'allowed'} onClick={submit}>
             <GitBranch />
             Start work
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+export function ExecutionServerPicker({
+  targets,
+  value,
+  onChange,
+  sourceName,
+  selectedName,
+}: {
+  targets: VerifiedPullRequestExecutionTarget[]
+  value: string
+  onChange(value: string): void
+  sourceName?: string
+  selectedName?: string
+}) {
+  return (
+    <section className="space-y-2 rounded-lg border border-blue-500/25 bg-blue-500/[.06] p-3" aria-label="Execution location">
+      <div className="flex items-center justify-between gap-3">
+        <strong className="text-xs">Execution server</strong>
+        <Badge variant="outline" className="border-blue-500/30 text-blue-300">
+          Runs + stores here
+        </Badge>
+      </div>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full"><SelectValue placeholder="Choose a server" /></SelectTrigger>
+        <SelectContent>
+          {targets.map((target) => (
+            <SelectItem key={target.backend.id} value={target.backend.id} disabled={target.access !== 'allowed'}>
+              {target.backend.label} · {target.access === 'allowed' ? `access as ${target.scmLogin}` : target.access === 'checking' ? 'checking access…' : 'no SCM access'}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        The PR stays on <strong className="text-foreground/80">{sourceName || 'its source server'}</strong>. The agent process, worktree,
+        logs, and run history are executed and stored on <strong className="text-foreground/80">{selectedName || 'the selected server'}</strong>.
+        A destination is enabled only after its SCM identity successfully reads the repository.
+      </p>
+    </section>
   )
 }
 

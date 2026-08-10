@@ -19,7 +19,8 @@ type BackendRuntime = BackendStatus & {
 }
 
 let activeBackends = configuredBackends
-const linkedOutboundPolicy = new OutboundRequestPolicy()
+let linkedOutboundPolicy = new OutboundRequestPolicy()
+let linkedAllowedOriginsKey = ''
 let linkedBackendIds = new Set<string>()
 let linkedServersCheckedAt = 0
 
@@ -86,6 +87,15 @@ async function refreshLinkedServers(request: Request, source: URL, force = false
     ]
     const resolved = resolveApiBackendInputs(inputs)
     linkedBackendIds = new Set(resolved.slice(configuredBackends.length).map((backend) => backend.id))
+    const allowedOrigins = resolved.slice(configuredBackends.length).map((backend) => backend.url)
+    const allowedOriginsKey = [...allowedOrigins].sort().join('\n')
+    if (allowedOriginsKey !== linkedAllowedOriginsKey) {
+      const previousPolicy = linkedOutboundPolicy
+      linkedOutboundPolicy = new OutboundRequestPolicy({ allowedOrigins })
+      linkedAllowedOriginsKey = allowedOriginsKey
+      const disposal = setTimeout(() => void previousPolicy.dispose(), 30_000)
+      disposal.unref()
+    }
     syncRuntime(resolved)
   } catch {
     // Retain the last usable linked-server topology while the primary is unavailable.

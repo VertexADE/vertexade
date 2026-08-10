@@ -13,6 +13,7 @@ import { pullRequestQueueGroup } from '../../lib/pull-request-action-policy'
 import { PrAssignedPeople } from './pull-request-assignees'
 import { AgentReviewStatus, PrSignal } from './pull-request-row-status'
 import { usePrRow } from './use-pr-row'
+import { PullRequestThreadLocations } from './pull-request-thread-locations'
 
 const typeStyles: Record<string, string> = {
   feat: 'border-blue-500/40 text-blue-400',
@@ -217,6 +218,7 @@ export function PrRow({
               <span className="max-w-28 truncate text-foreground/80">{pr.author || 'Unknown author'}</span>
             </span>
           </div>
+          <PullRequestThreadLocations threads={agentThreads} onRun={onRun} />
           {(Boolean(pr.auto_merge_enabled) || Boolean(pr.manual_not_ready_at) || Boolean(pr.updated_after_not_ready_at)) && (
             <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 lg:col-span-2">
               {pr.auto_merge_enabled ? (

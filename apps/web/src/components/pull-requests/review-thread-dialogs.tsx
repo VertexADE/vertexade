@@ -8,6 +8,7 @@ export function ReviewThreadDialogs({
   threadId,
   handoffJob,
   presentation,
+  data,
   setReviewPr,
   setHandoffJob,
   onSubmitReview,
@@ -18,6 +19,7 @@ export function ReviewThreadDialogs({
   threadId: number | null
   handoffJob: JobLog | null
   presentation: DashboardData['presentation']
+  data: DashboardData
   setReviewPr(pr: PullRequest | null): void
   setHandoffJob(job: JobLog | null): void
   onSubmitReview(job: JobLog): void
@@ -28,6 +30,7 @@ export function ReviewThreadDialogs({
     <>
       <ReviewDialog
         pr={reviewPr}
+        data={data}
         onOpenChange={(open) => !open && setReviewPr(null)}
         onStarted={(id) => {
           setReviewPr(null)

@@ -8,6 +8,7 @@ import { pullRequestReviewActivity } from '@vertexade/ui/lib/activity-status'
 import { agentIsWorking, agentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import type { DashboardData, GithubReviewer, JobLog, PullRequest } from '@vertexade/ui/lib/dashboard-types'
 import type { PullRequestFlowDecision, PullRequestIdentity } from '@vertexade/ui/lib/pull-request-flow'
+import { backendApiPath, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import { dialogNavigationOptions } from '@vertexade/ui/lib/work-dialogs'
 import { ForkPrDialog, LabelDialog, LaunchDialog, ReviewerDialog } from '../components/pull-requests/pull-request-dialogs'
 import { PullRequestBatchDialog } from '../components/pull-requests/pull-request-batch-dialog'
@@ -33,6 +34,7 @@ import {
   type PullRequestDashboardSearch as DashboardSearch,
 } from '../components/pull-requests/pull-request-queue-model'
 import { PullRequestDetailsWorkspace, PullRequestQueueWorkspace } from '../components/pull-requests/pull-request-workspaces'
+import { pullRequestThreads } from '../components/pull-requests/pull-request-thread-association'
 
 export const Route = createFileRoute('/pull-requests')({
   ssr: false,
@@ -82,6 +84,7 @@ function Dashboard() {
     filters.limit,
     scmIdentity.user,
     scmIdentity.identity,
+    scmIdentity.identitiesByBackend,
   )
   const refresh = usePullRequestWorkspaceRefresh(dashboard.refresh)
   const review = usePullRequestReview(dialogs.setReviewPr)
@@ -287,15 +290,48 @@ function navigateDialog(navigate: Navigate, values: Pick<DashboardSearch, 'repo'
   void navigate({ search: (current) => ({ ...current, ...values }), replace: true, ...dialogNavigationOptions })
 }
 
+type ScmIdentityState = {
+  user: GithubReviewer | null
+  identity: PullRequestIdentity
+  identitiesByBackend: ReadonlyMap<string, PullRequestIdentity>
+}
+
+const unavailableScmIdentity = (): ScmIdentityState => ({
+  user: null,
+  identity: { status: 'unavailable' },
+  identitiesByBackend: new Map(),
+})
+
+async function loadBackendScmIdentity(backend: BackendDescriptor) {
+  try {
+    return [backend, await api<GithubReviewer>(backendApiPath('/api/scm/me', backend.id))] as const
+  } catch {
+    return [backend, null] as const
+  }
+}
+
+async function loadScmIdentityState(): Promise<ScmIdentityState> {
+  const { backends } = await api<{ backends: BackendDescriptor[] }>('/api/backends')
+  const entries = await Promise.all(backends.map(loadBackendScmIdentity))
+  const identitiesByBackend = new Map<string, PullRequestIdentity>(
+    entries.map(([backend, user]) => [backend.id, user ? { status: 'ready', login: user.login } : { status: 'unavailable' }]),
+  )
+  const primary = entries.find(([backend]) => backend.isDefault)?.[1] || null
+  return {
+    user: primary,
+    identity: primary ? { status: 'ready', login: primary.login } : { status: 'unavailable' },
+    identitiesByBackend,
+  }
+}
+
 function useCurrentScmIdentity() {
-  const [state, setState] = useState<{ user: GithubReviewer | null; identity: PullRequestIdentity }>({
+  const [state, setState] = useState<ScmIdentityState>({
     user: null,
     identity: { status: 'loading' },
+    identitiesByBackend: new Map(),
   })
   useEffect(() => {
-    api<GithubReviewer>('/api/scm/me')
-      .then((user) => setState({ user, identity: { status: 'ready', login: user.login } }))
-      .catch(() => setState({ user: null, identity: { status: 'unavailable' } }))
+    void loadScmIdentityState().then(setState, () => setState(unavailableScmIdentity()))
   }, [])
   return state
 }
@@ -307,6 +343,7 @@ function usePullRequestProjection(
   limit: number,
   currentUser: GithubReviewer | null,
   identity: PullRequestIdentity,
+  identitiesByBackend: ReadonlyMap<string, PullRequestIdentity>,
 ) {
   const [renderedAt] = useState(Date.now)
   const filtered = useMemo(
@@ -315,31 +352,30 @@ function usePullRequestProjection(
   )
   const filterOptions = useMemo(() => pullRequestFilterOptions(data.prs), [data.prs])
   const forYouPrs = useMemo(
-    () => pullRequestsForView('for-you', filtered, identity, data.agentThreads),
-    [data.agentThreads, filtered, identity],
+    () => pullRequestsForView('for-you', filtered, identity, data.agentThreads, identitiesByBackend),
+    [data.agentThreads, filtered, identitiesByBackend, identity],
   )
   const actionPrs = useMemo(
-    () => pullRequestsForView('action', filtered, identity, data.agentThreads),
-    [data.agentThreads, filtered, identity],
+    () => pullRequestsForView('action', filtered, identity, data.agentThreads, identitiesByBackend),
+    [data.agentThreads, filtered, identitiesByBackend, identity],
   )
   const readyPrs = useMemo(
-    () => pullRequestsForView('ready', filtered, identity, data.agentThreads),
-    [data.agentThreads, filtered, identity],
+    () => pullRequestsForView('ready', filtered, identity, data.agentThreads, identitiesByBackend),
+    [data.agentThreads, filtered, identitiesByBackend, identity],
   )
   const visiblePrs = useMemo(() => {
     if (view === 'for-you') return forYouPrs
     if (view === 'action') return actionPrs
     if (view === 'ready') return readyPrs
-    return pullRequestsForView(view, filtered, identity, data.agentThreads)
-  }, [actionPrs, data.agentThreads, filtered, forYouPrs, identity, readyPrs, view])
+    return pullRequestsForView(view, filtered, identity, data.agentThreads, identitiesByBackend)
+  }, [actionPrs, data.agentThreads, filtered, forYouPrs, identitiesByBackend, identity, readyPrs, view])
   const serviceColors = useMemo(
     () => new Map(data.service_colors.map((item) => [item.service.toLocaleLowerCase(), item.color])),
     [data.service_colors],
   )
   const dependencyGroups = useMemo(() => buildDependencyGroups(data.prs), [data.prs])
   const reviewActivity = useMemo(() => reviewActivityCounts(data.prs, data.agentThreads), [data.agentThreads, data.prs])
-  const runsFor = (pr: PullRequest) =>
-    data.agentThreads.filter((job) => job.repo_id === pr.repo_id && (job.pr_number === pr.number || job.linked_pr_number === pr.number))
+  const runsFor = (pr: PullRequest) => pullRequestThreads(pr, data.agentThreads)
   return {
     filtered,
     filterOptions,
@@ -553,6 +589,7 @@ function SharedReviewDialogs({ dashboard, dialogs, selection }: DashboardViewPro
       threadId={selection.threadId}
       handoffJob={dialogs.handoffJob}
       presentation={dashboard.data.presentation}
+      data={dashboard.data}
       setReviewPr={dialogs.setReviewPr}
       setHandoffJob={dialogs.setHandoffJob}
       onSubmitReview={(job) => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 vi.mock('@vertexade/platform-server/outbound-policy', () => ({
   OutboundRequestPolicy: class {
     fetch = (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args)
+    dispose = async () => undefined
   },
 }))
 

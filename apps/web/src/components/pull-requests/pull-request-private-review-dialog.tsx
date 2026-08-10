@@ -8,18 +8,22 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@vertexade/
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Label } from '@vertexade/ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { api, type AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
-import type { Job, PullRequest } from '@vertexade/ui/lib/dashboard-types'
+import { backendApi, type AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
+import type { DashboardData, Job, PullRequest } from '@vertexade/ui/lib/dashboard-types'
 import { useSingleSubmission } from '../../lib/use-pull-request-mutation'
+import { ExecutionServerPicker } from './pull-request-launch-dialogs'
+import { defaultPullRequestExecutionTarget, useVerifiedPullRequestExecutionTargets } from './pull-request-execution-target'
 
 type ReviewAgent = { id: string; name: string; enabled: boolean; supportsEphemeral?: boolean }
 
 export function ReviewDialog({
   pr,
+  data,
   onOpenChange,
   onStarted,
 }: {
   pr: PullRequest | null
+  data: DashboardData
   onOpenChange: (open: boolean) => void
   onStarted: (id: number) => void
 }) {
@@ -34,13 +38,26 @@ export function ReviewDialog({
   })
   const [aggregator, setAggregator] = useState('')
   const [ephemeral, setEphemeral] = useState(true)
+  const [backendId, setBackendId] = useState('')
+  const targets = useVerifiedPullRequestExecutionTargets(pr, data)
   const submission = useSingleSubmission()
 
   useEffect(() => {
     if (!pr) return
     setMode('single')
     setSelected([])
-    api<{ agent: ReviewAgent; agents: ReviewAgent[] }>('/api/agent/options')
+  }, [pr?.id])
+
+  useEffect(() => {
+    if (!pr) return
+    const allowed = targets.filter((target) => target.access === 'allowed')
+    if (!allowed.some((target) => target.backend.id === backendId))
+      setBackendId(defaultPullRequestExecutionTarget(pr, allowed)?.backend.id || '')
+  }, [backendId, pr?.id, targets])
+
+  useEffect(() => {
+    if (!pr || !backendId) return
+    backendApi<{ agent: ReviewAgent; agents: ReviewAgent[] }>(backendId, '/api/agent/options')
       .then((result) => {
         const enabled = result.agents.filter((item) => item.enabled)
         setAgents(enabled)
@@ -54,25 +71,28 @@ export function ReviewDialog({
         setEphemeral(Boolean(enabled.find((item) => item.id === result.agent.id)?.supportsEphemeral))
       })
       .catch((error) => toast.error(error.message))
-  }, [pr])
+  }, [backendId, pr?.id])
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!pr) return
+    const target = targets.find((candidate) => candidate.backend.id === backendId)
+    if (!target || target.access !== 'allowed') return toast.error('The selected server SCM user cannot access this repository')
     const agentIds = mode === 'single' ? [options.agentId] : selected
     const supportsEphemeral = Boolean(agents.find((agent) => agent.id === options.agentId)?.supportsEphemeral)
     if (!agentIds.filter(Boolean).length) return toast.error('Choose at least one agent')
     const request = privateReviewRequest(mode, agentIds, aggregator, options, ephemeral && supportsEphemeral)
-    const result = await submission.run(() => startPrivateReview(pr, request))
+    const result = await submission.run(() => startPrivateReview(target.backend.id, target.repositoryId, pr.number, request))
     if (!result) return
     toast.success(
       mode === 'aggregate'
-        ? `Started ${result.threads.length} independent reviews; aggregation will follow`
-        : `Private review started as run #${result.threads[0].id}`,
+        ? `Started ${result.threads.length} reviews on ${target.backend.label}; aggregation will follow`
+        : `Private review started on ${target.backend.label} as run #${result.threads[0].id}`,
     )
     onStarted(result.threads[0].id)
   }
 
+  const target = targets.find((candidate) => candidate.backend.id === backendId)
   return (
     <Dialog open={Boolean(pr)} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
@@ -94,6 +114,13 @@ export function ReviewDialog({
               <small className="text-xs text-muted-foreground">One private review of the current head</small>
             </span>
           </div>
+          <ExecutionServerPicker
+            targets={targets}
+            value={backendId}
+            onChange={setBackendId}
+            sourceName={pr?.backend_name}
+            selectedName={target?.backend.label}
+          />
           <Collapsible>
             <CollapsibleTrigger asChild>
               <Button type="button" variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
@@ -137,7 +164,7 @@ export function ReviewDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button disabled={submission.busy || !options.agentId || (mode === 'aggregate' && !selected.length)}>
+            <Button disabled={submission.busy || target?.access !== 'allowed' || !options.agentId || (mode === 'aggregate' && !selected.length)}>
               <FileSearch />
               {submission.busy ? 'Starting…' : mode === 'aggregate' ? `Run ${selected.length} reviews` : 'Start review'}
             </Button>
@@ -179,8 +206,8 @@ function privateReviewRequest(
   }
 }
 
-function startPrivateReview(pr: PullRequest, request: PrivateReviewRequest) {
-  return api<{ threads: Job[]; batch_id: number | null }>(`/api/pulls/${pr.repo_id}/${pr.number}/review`, {
+function startPrivateReview(backendId: string, repositoryId: number, pullRequestNumber: number, request: PrivateReviewRequest) {
+  return backendApi<{ threads: Job[]; batch_id: number | null }>(backendId, `/api/pulls/${repositoryId}/${pullRequestNumber}/review`, {
     method: 'POST',
     body: JSON.stringify(request.body),
     headers: { 'x-agent-subagents': request.allowSubagents ? 'true' : 'false' },
