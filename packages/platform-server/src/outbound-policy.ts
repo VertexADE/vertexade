@@ -25,6 +25,7 @@ export type OutboundPolicyOptions = {
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization', 'x-api-key'])
+export const NON_PUBLIC_OUTBOUND_REASON = 'Outbound destination resolves to a non-public address'
 const blockedV4 = new BlockList()
 const blockedV6 = new BlockList()
 
@@ -183,7 +184,7 @@ export class OutboundRequestPolicy {
     }
     if (!addresses.length) return this.#reject('Outbound hostname did not resolve to an address', url)
     if (!this.allowedOrigins.has(url.origin) && addresses.some(blockedAddress))
-      return this.#reject('Outbound destination resolves to a non-public address', url)
+      return this.#reject(NON_PUBLIC_OUTBOUND_REASON, url)
     this.#pin(name, addresses)
     return url
   }

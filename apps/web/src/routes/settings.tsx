@@ -182,9 +182,11 @@ function LinkedServersSettings() {
     event.preventDefault()
     const form = event.currentTarget
     const values = new FormData(form)
+    const operatorToken = String(values.get('operatorToken') || '').trim()
     try {
       await api('/api/settings/linked-servers', {
         method: 'POST',
+        headers: operatorToken ? { authorization: `Bearer ${operatorToken}` } : undefined,
         body: JSON.stringify({ id: values.get('id'), label: values.get('label'), url: values.get('url') }),
       })
       form.reset()
@@ -224,13 +226,17 @@ function LinkedServersSettings() {
         <StatusPanel tone="info">
           <Network />
           <StatusPanelContent>
-            <StatusPanelTitle>Public VertexADE servers only</StatusPanelTitle>
+            <StatusPanelTitle>Public and private VertexADE servers</StatusPanelTitle>
             <StatusPanelDescription>
-              The API verifies the server identity and blocks loopback, private, link-local, metadata, and DNS-rebinding destinations.
+              Linking explicitly trusts this exact origin. The API verifies its VertexADE identity, pins DNS, and revalidates every
+              redirect. Private origins require this server's operator API token.
             </StatusPanelDescription>
           </StatusPanelContent>
         </StatusPanel>
-        <form className="grid gap-3 md:grid-cols-[minmax(8rem,.7fr)_minmax(10rem,1fr)_minmax(14rem,1.5fr)_auto]" onSubmit={addServer}>
+        <form
+          className="grid gap-3 md:grid-cols-[minmax(8rem,.7fr)_minmax(10rem,1fr)_minmax(14rem,1.5fr)_minmax(10rem,1fr)_auto]"
+          onSubmit={addServer}
+        >
           <Label className="grid gap-1.5 text-xs">
             Stable id
             <Input name="id" required placeholder="team" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,47}" />
@@ -241,7 +247,11 @@ function LinkedServersSettings() {
           </Label>
           <Label className="grid gap-1.5 text-xs">
             API origin
-            <Input name="url" type="url" required placeholder="https://vertexade.example.com" />
+            <Input name="url" type="url" required placeholder="http://192.168.1.10:4174" />
+          </Label>
+          <Label className="grid gap-1.5 text-xs">
+            Operator token
+            <Input name="operatorToken" type="password" autoComplete="off" placeholder="Private origins only" />
           </Label>
           <Button className="self-end" type="submit">
             <Plus />

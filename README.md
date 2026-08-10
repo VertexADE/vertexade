@@ -126,11 +126,11 @@ See [docs/development-intelligence.md](docs/development-intelligence.md) for imp
 Server federation is configured in the application, not baked into a frontend build:
 
 1. Open **Settings → Servers**.
-2. Add the public URL of another VertexADE backend.
+2. Add the public or private URL of another VertexADE backend.
 3. Let the current backend verify the remote identity and network destination.
 4. Select the active server from the application header.
 
-The selected server owns non-entity screens such as Delivery, System health, Extensions, Automations, and Settings. Every server keeps its own repositories, runtime defaults, credentials, extension configuration, deployment targets, and listener settings. The federated Work and pull-request projections remain unified, and ownership badges plus namespaced identifiers ensure later entity operations return to the server that owns them even when another server is selected. A remote Work item can use that server's repositories, agents, models, skills, MCP resources, references, threads, and extension actions. Server validation rejects unsafe private-network destinations when adding public remotes.
+The selected server owns non-entity screens such as Delivery, System health, Extensions, Automations, and Settings. Every server keeps its own repositories, runtime defaults, credentials, extension configuration, deployment targets, and listener settings. The federated Work and pull-request projections remain unified, and ownership badges plus namespaced identifiers ensure later entity operations return to the server that owns them even when another server is selected. A remote Work item can use that server's repositories, agents, models, skills, MCP resources, references, threads, and extension actions. Linking a server explicitly trusts its exact origin, including private-network origins. Private origins require `VERTEXADE_API_TOKEN` on the selected server and the matching operator token in the link form; the token is sent only with that request and is not stored. Identity checks and subsequent proxy requests still resolve and pin DNS, revalidate redirects, and reject a redirect to an unapproved private origin.
 
 Use **Settings → Servers → Network listeners** to configure the web and API bind hosts and ports for the selected server. Saved listener changes are applied by the bundled `vertexade` launcher on its next restart; explicit `HOST`, `PORT`, `API_HOST`, and `API_PORT` environment values remain authoritative. Keep the API on loopback when browsers use the same-origin web proxy. Exposing either listener beyond loopback requires authentication, firewall policy, TLS termination, and exact CORS configuration appropriate to the deployment.
 

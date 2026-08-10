@@ -1,3 +1,10 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
+import {
+  NON_PUBLIC_OUTBOUND_REASON,
+  OutboundPolicyError,
+  OutboundRequestPolicy,
+} from '@vertexade/platform-server/outbound-policy'
+
 export type LinkedServer = {
   id: string
   label: string
@@ -74,6 +81,61 @@ export async function verifyLinkedServer(url: string, request: VerifyRequest) {
     throw new Error('Origin is not a compatible VertexADE server')
   }
   return { instanceId: payload.instanceId, version: payload.version }
+}
+
+export type LinkedServerAccessErrorCode = 'operator_token_not_configured' | 'invalid_operator_token'
+
+export class LinkedServerAccessError extends Error {
+  constructor(
+    message: string,
+    readonly code: LinkedServerAccessErrorCode,
+  ) {
+    super(message)
+    this.name = 'LinkedServerAccessError'
+  }
+}
+
+function secureTextEqual(left: string, right: string) {
+  const leftDigest = createHash('sha256').update(left).digest()
+  const rightDigest = createHash('sha256').update(right).digest()
+  return timingSafeEqual(leftDigest, rightDigest)
+}
+
+function validOperatorToken(authorization: string | null, operatorToken: string) {
+  const value = String(authorization || '')
+  return value.startsWith('Bearer ') && secureTextEqual(value.slice(7), operatorToken)
+}
+
+async function verifyApprovedLinkedServer(url: string) {
+  const policy = new OutboundRequestPolicy({
+    allowedOrigins: [new URL(url).origin],
+  })
+  try {
+    return await verifyLinkedServer(url, policy.fetch)
+  } finally {
+    await policy.dispose()
+  }
+}
+
+export async function verifyLinkedServerAccess(url: string, authorization: string | null, operatorToken: string) {
+  const publicPolicy = new OutboundRequestPolicy()
+  try {
+    return await verifyLinkedServer(url, publicPolicy.fetch)
+  } catch (error) {
+    if (!(error instanceof OutboundPolicyError) || error.message !== NON_PUBLIC_OUTBOUND_REASON) throw error
+    if (!operatorToken) {
+      throw new LinkedServerAccessError(
+        'Private linked servers require VERTEXADE_API_TOKEN to be configured',
+        'operator_token_not_configured',
+      )
+    }
+    if (!validOperatorToken(authorization, operatorToken)) {
+      throw new LinkedServerAccessError('A valid operator API token is required for private linked servers', 'invalid_operator_token')
+    }
+    return verifyApprovedLinkedServer(url)
+  } finally {
+    await publicPolicy.dispose()
+  }
 }
 
 export function readLinkedServers(store: SettingsStore) {
