@@ -84,6 +84,7 @@
       "category": "Development"
     },
     "mac": {
+      "x64ArchFiles": "**/esbuild",
       "target": [
         "dmg",
         "zip"
