@@ -198,15 +198,25 @@ const resourceKindPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 const semanticVersionPattern = /^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/i
 const catalogIconPattern = /^assets\/[a-z0-9][a-z0-9._/-]*\.svg$/i
 const moduleAccents = new Set<ModuleAccent>(['blue', 'cyan', 'emerald', 'amber', 'orange', 'rose', 'violet', 'slate'])
+const applicationRouteOrigin = 'https://vertexade.invalid'
 
 function requireText(value: unknown, message: string): asserts value is string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(message)
 }
 
+function isApplicationRoute(value: string): boolean {
+  if (!value.startsWith('/') || value.includes('\\')) return false
+  try {
+    return new URL(value, applicationRouteOrigin).origin === applicationRouteOrigin
+  } catch {
+    return false
+  }
+}
+
 function validateNavigation(navigation: ModuleNavigation | undefined, moduleId: string) {
   if (!navigation) return
   requireText(navigation.to, `${moduleId} navigation requires a path`)
-  if (!navigation.to.startsWith('/')) throw new Error(`${moduleId} navigation path must be absolute`)
+  if (!isApplicationRoute(navigation.to)) throw new Error(`${moduleId} navigation path must be an absolute route within the application`)
   requireText(navigation.label, `${moduleId} navigation requires a label`)
 }
 
@@ -303,7 +313,8 @@ function validateUiContributions(ui: ModuleUiContributions | undefined, contribu
     if (!capabilityIdPattern.test(command.id)) throw new Error(`${moduleId} has an invalid command id: ${command.id}`)
     if (commandIds.has(command.id)) throw new Error(`${moduleId} declares command ${command.id} more than once`)
     requireText(command.label, `${moduleId} command ${command.id} requires a label`)
-    if (!command.to.startsWith('/')) throw new Error(`${moduleId} command ${command.id} requires an absolute route`)
+    if (!isApplicationRoute(command.to))
+      throw new Error(`${moduleId} command ${command.id} requires an absolute route within the application`)
     commandIds.add(command.id)
   }
   const notificationKinds = new Set<string>()
@@ -313,8 +324,8 @@ function validateUiContributions(ui: ModuleUiContributions | undefined, contribu
     requireText(notification.label, `${moduleId} notification ${notification.kind} requires a label`)
     if (notification.actionLabel !== undefined)
       requireText(notification.actionLabel, `${moduleId} notification ${notification.kind} requires valid action copy`)
-    if (notification.to !== undefined && !notification.to.startsWith('/'))
-      throw new Error(`${moduleId} notification ${notification.kind} requires an absolute route`)
+    if (notification.to !== undefined && !isApplicationRoute(notification.to))
+      throw new Error(`${moduleId} notification ${notification.kind} requires an absolute route within the application`)
     if (notification.actionLabel && !notification.to)
       throw new Error(`${moduleId} notification ${notification.kind} action requires a route`)
     notificationKinds.add(notification.kind)

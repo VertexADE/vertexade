@@ -1,4 +1,5 @@
 import { resilientFetch } from '@vertexade/platform-server/effect'
+import { readResponseBody } from '@vertexade/platform-server/http'
 
 type AirtableClientConfig = {
   token: string
@@ -168,7 +169,16 @@ export class AirtableClient {
     })
     if (response.status === 204) return null
 
-    const data = await response.json()
+    let data: any
+    try {
+      data =
+        response.body === undefined && typeof response.json === 'function'
+          ? await response.json()
+          : JSON.parse((await readResponseBody(response, 8 * 1024 * 1024)).toString('utf8'))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Response body is too large') throw new Error('Airtable response is too large')
+      throw new Error(`Airtable returned an invalid response (${response.status})`)
+    }
     if (!response.ok) {
       throw new Error(data?.error?.message || `Airtable request failed (${response.status})`)
     }

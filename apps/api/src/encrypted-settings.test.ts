@@ -19,6 +19,22 @@ describe('encrypted settings', () => {
     expect(() => decryptSettings(encrypted, randomBytes(32))).toThrow()
   })
 
+  it('rejects truncated authentication data before decryption', () => {
+    const key = randomBytes(32)
+    const encrypted = Buffer.from(encryptSettings({ pat: 'secret' }, key), 'base64')
+    const truncated = encrypted.subarray(0, 28).toString('base64')
+
+    expect(() => decryptSettings(truncated, key)).toThrow('Encrypted settings are invalid')
+  })
+
+  it('rejects tampered ciphertext', () => {
+    const key = randomBytes(32)
+    const encrypted = Buffer.from(encryptSettings({ pat: 'secret' }, key), 'base64')
+    encrypted[encrypted.length - 1] ^= 1
+
+    expect(() => decryptSettings(encrypted.toString('base64'), key)).toThrow()
+  })
+
   it('uses the shared key for encrypted agent environments', () => {
     const key = randomBytes(32)
     const settings = {

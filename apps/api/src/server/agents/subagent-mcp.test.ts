@@ -90,4 +90,25 @@ describe('VertexADE sub-agent MCP server', () => {
       structuredContent: { error: 'Model is not available' },
     })
   })
+
+  it('rejects an oversized internal API response before buffering its body', async () => {
+    process.env.VERTEXADE_SUBAGENT_API_URL = 'http://127.0.0.1:4174'
+    process.env.VERTEXADE_SUBAGENT_TOKEN = 'parent.capability'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { headers: { 'content-length': '250001', 'content-type': 'application/json' } })),
+    )
+
+    await expect(
+      handleSubagentMcpRequest({
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: { name: 'spawn_agent', arguments: { task: 'Try it' } },
+      }),
+    ).resolves.toMatchObject({
+      isError: true,
+      structuredContent: { error: 'Response body is too large' },
+    })
+  })
 })

@@ -6,6 +6,7 @@ import type { AgentRegistry } from '../agents/registry.ts'
 import { resolveSubagentLaunch } from '../agents/subagents.ts'
 import type { DashboardEvents } from '../events/dashboard-events.ts'
 import { configuredDashboardCorsPolicy, type DashboardCorsPolicy } from './cors-policy.ts'
+import { secureDashboardResponse } from './response-security.ts'
 import { transportClientIdentity } from '../transport-context.ts'
 
 type Router = { dispatch(request: Request, context?: Record<string, unknown>): Promise<Response | null> }
@@ -117,7 +118,7 @@ export function createDashboardRequestHandler({
   return async function handleDashboardRequest(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const corsResponse = cors.before(request)
-    if (corsResponse) return corsResponse
+    if (corsResponse) return secureDashboardResponse(corsResponse)
     let response: Response
     try {
       const immediate = immediateResponse(request, url)
@@ -127,6 +128,6 @@ export function createDashboardRequestHandler({
       console.error(`Dashboard request failed for ${url.pathname}:`, error)
       response = Response.json({ error: 'Unexpected API error' }, { status: 500 })
     }
-    return cors.after(request, response)
+    return secureDashboardResponse(cors.after(request, response))
   }
 }

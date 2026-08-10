@@ -32,7 +32,14 @@ export default defineConfig({
           ...(outputDirectory ? { output: { dir: outputDirectory } } : {}),
           routeRules: {
             '/**': {
-              headers: { 'cache-control': 'no-cache, no-store, must-revalidate' },
+              headers: {
+                'cache-control': 'no-cache, no-store, must-revalidate',
+                'cross-origin-opener-policy': 'same-origin',
+                'permissions-policy': 'camera=(), geolocation=(), microphone=()',
+                'referrer-policy': 'no-referrer',
+                'x-content-type-options': 'nosniff',
+                'x-frame-options': 'DENY',
+              },
             },
           },
         }),

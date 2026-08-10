@@ -202,30 +202,41 @@ A backup can pass verification and the advertised restore drill even though the 
 
 **Status: fixed in Wave 1 (`5c24f26`).** Production and full audits now report zero high or critical findings. Ten moderate Expo SDK 57 toolchain findings remain because npm's proposed remediation is the incompatible Expo 46 downgrade; they remain tracked as upstream exposure.
 
-**2026-08-09 pnpm re-audit:** reopened for upstream remediation. `pnpm audit
---prod --audit-level high` reports two high-severity denial-of-service advisories
-in Expo's transitive `image-size@2.0.2` dependency and one moderate finding. The
-advisories name `2.0.3` as patched, but the registry does not yet publish that
-version, so no installable override is available. Do not add an override until
-the patched release exists and the mobile suite/export pass with it.
+**2026-08-11 mitigation:** the remaining two high-severity denial-of-service
+advisories resolve to Expo's transitive `image-size@1.2.1`. No compatible fixed
+release is available. VertexADE now applies a repository-owned pnpm patch for
+the vulnerable zero-length parsing loops and pairs the two audit exceptions
+with `scripts/security-dependencies.test.ts`. OSV and Trivy still report the
+package version because they cannot account for pnpm patch contents; keep this
+item open until an upstream fixed release replaces the local patch.
 
 **Impact**
 
-The current lockfile fails the dependency security gate. Production dependencies include two high-severity advisories; the full tree includes four high and twelve moderate findings.
+Unpatched upstream `image-size@1.2.1` can loop indefinitely on malformed image
+metadata. The installed package is locally patched and covered by a
+subprocess-timeout regression test, but future lockfile changes could silently
+drop that mitigation if the patch and audit exceptions become disconnected.
 
 **Evidence**
 
-- `npm audit --omit=dev` reported 13 findings: 2 high and 11 moderate.
-- Production-tree high findings are `brace-expansion@5.0.8` (`GHSA-rgw5-rvv9-x895`) through Expo and `fast-uri@3.1.4` (`GHSA-7p8r-x3mc-p8w7`) through AJV/RxDB.
-- Full `npm audit` reported 16 findings: 4 high and 12 moderate, adding high findings in dev-tree `ip-address@10.2.0` and `undici@7.28.0`.
-- Additional moderate findings affect Expo tooling, Hono, PostCSS, UUID, and related transitive packages.
+- `pnpm audit --audit-level high` exits successfully with exactly two ignored
+  `image-size` advisories, each paired with the local patch and regression test.
+- `pnpm audit signatures` verifies registry signatures for the installed tree.
+- OSV and Trivy independently report only those same two high findings and no
+  critical dependency findings.
+- `patches/image-size@1.2.1.patch` bounds both affected metadata loops;
+  `scripts/security-dependencies.test.ts` proves malformed inputs terminate.
 
 **Definition of done**
 
-- Upgrade or override to patched, compatible transitive versions and document exposure decisions.
-- Do not use the audit suggestion that downgrades Expo to 46 without compatibility analysis.
-- Require `npm audit --omit=dev` to contain no high/critical findings; separately track build/dev-chain findings.
-- Re-run web and mobile checks, tests, exports, and dependency provenance review after lockfile changes.
+- Replace the local patch and audit exceptions with a compatible upstream fixed
+  release when one becomes available.
+- Keep CI enforcement that fails if the patched package or regression behavior
+  disappears.
+- Require dependency scanners to contain no unexplained high or critical
+  findings; document version-only false positives for locally patched packages.
+- Re-run web and mobile checks, tests, exports, and dependency provenance review
+  after lockfile changes.
 
 ### TF-009 — P2 — GitHub App authentication can block API startup indefinitely
 

@@ -1,4 +1,5 @@
 import { resilientFetch } from '@vertexade/platform-server/effect'
+import { readResponseBody } from '@vertexade/platform-server/http'
 
 export type LinearClientConfig = { apiKey: string; teamIds: string[] }
 export type LinearConfig = LinearClientConfig & { webhookSecret: string }
@@ -60,8 +61,9 @@ export class LinearClient {
     })
     let payload: GraphQlEnvelope<T>
     try {
-      payload = (await response.json()) as GraphQlEnvelope<T>
-    } catch {
+      payload = JSON.parse((await readResponseBody(response, 8 * 1024 * 1024)).toString('utf8')) as GraphQlEnvelope<T>
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Response body is too large') throw new Error('Linear response is too large')
       throw new Error(`Linear returned an invalid response (${response.status})`)
     }
     if (!response.ok) throw new Error(payload.errors?.[0]?.message || `Linear request failed (${response.status})`)

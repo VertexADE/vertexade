@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import DOMPurify from 'dompurify'
 
 export function MermaidDiagram({ chart }: { chart: string }) {
   const id = `mermaid-${useId().replace(/:/g, '')}`
@@ -11,7 +12,10 @@ export function MermaidDiagram({ chart }: { chart: string }) {
         mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' })
         try {
           const result = await mermaid.render(id, chart)
-          if (active) setSvg(result.svg)
+          const sanitized = DOMPurify.sanitize(result.svg, {
+            USE_PROFILES: { html: true, svg: true, svgFilters: true },
+          })
+          if (active) setSvg(sanitized)
         } catch (cause) {
           if (active) setError(cause instanceof Error ? cause.message : 'Invalid Mermaid diagram')
         }

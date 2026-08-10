@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { maxFederatedReadModelResponseBytes } from './dashboard-cache-model'
 
 vi.mock('@vertexade/platform-server/outbound-policy', () => ({
   OutboundRequestPolicy: class {
@@ -47,6 +48,107 @@ function readModel(id: number, name: string) {
 }
 
 describe('multi-backend API proxy', () => {
+  it('rejects oversized JSON requests before proxying them to a backend', async () => {
+    vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
+      return Response.json({ ok: true })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/settings/example', {
+        method: 'POST',
+        headers: { 'content-length': '100001', 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    })
+
+    expect(response.status).toBe(413)
+    await expect(response.json()).resolves.toEqual({ error: 'Request body is too large' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('divides the aggregate response budget across backends without buffering an oversized body', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+        { id: 'secondary', label: 'Secondary', url: 'http://secondary.internal' },
+      ]),
+    )
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
+      if (url.pathname === '/api/read-model' && url.host === 'team.internal') {
+        return new Response('{}', {
+          headers: {
+            'content-length': String(Math.floor(maxFederatedReadModelResponseBytes / 3) + 1),
+            'content-type': 'application/json',
+          },
+        })
+      }
+      if (url.pathname === '/api/read-model') return Response.json(readModel(url.host === 'local.internal' ? 1 : 2, url.hostname))
+      return Response.json({ error: 'Unexpected test request' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/read-model?since=0') })
+    const payload = await response.json()
+
+    expect(payload.updates.repositories.entries).toHaveLength(2)
+    expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'team', connected: false, error: 'Response body is too large' })]),
+    )
+  })
+
+  it('does not forward primary-server credentials to another backend', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
+      if (url.pathname === '/api/read-model') {
+        return Response.json(url.host === 'local.internal' ? readModel(1, 'local') : readModel(2, 'team'))
+      }
+      return Response.json({ error: 'Unexpected test request' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', {
+        headers: {
+          authorization: 'Bearer primary-secret',
+          cookie: 'primary-session=secret',
+          'proxy-authorization': 'Basic c2VjcmV0',
+        },
+      }),
+    })
+
+    const requestHeaders = (host: string) => {
+      const call = fetch.mock.calls.find(
+        ([input]) => new URL(String(input)).host === host && new URL(String(input)).pathname === '/api/read-model',
+      )
+      if (!call) throw new Error(`Missing read-model request for ${host}`)
+      return new Headers(call[1]?.headers)
+    }
+    expect(requestHeaders('local.internal').get('authorization')).toBe('Bearer primary-secret')
+    expect(requestHeaders('local.internal').get('cookie')).toBe('primary-session=secret')
+    expect(requestHeaders('team.internal').has('authorization')).toBe(false)
+    expect(requestHeaders('team.internal').has('cookie')).toBe(false)
+    expect(requestHeaders('team.internal').has('proxy-authorization')).toBe(false)
+  })
+
   it('discovers backend-managed linked servers without frontend URL configuration', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {

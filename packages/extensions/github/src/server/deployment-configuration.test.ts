@@ -65,5 +65,29 @@ describe('GitHub deployment configuration', () => {
         },
       ]),
     ).toThrow('exactly one')
+    expect(() =>
+      normalizeGitHubDeploymentTargets([
+        {
+          id: 'one',
+          repository: 'acme/repo',
+          workflow: 'deploy.yml',
+          environments: ['dev'],
+          job_name_template: 'Deploy {service} {*} {*} to {environment}',
+        },
+      ]),
+    ).toThrow('at most one')
+  })
+
+  it('rejects unexpectedly large provider job names before regular-expression matching', () => {
+    const target = normalizeGitHubDeploymentTargets([
+      {
+        id: 'one',
+        repository: 'acme/repo',
+        workflow: 'deploy.yml',
+        environments: ['dev'],
+        job_name_template: 'Deploy {service} to {environment}',
+      },
+    ])[0]
+    expect(matchDeploymentJob(`Deploy ${'x'.repeat(600)} to dev`, target)).toBeNull()
   })
 })

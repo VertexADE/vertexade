@@ -1,0 +1,11 @@
+title = "VertexADE secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deterministic Airtable webhook MAC fixtures encode only the literal test values old-secret and new-secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^packages/extensions/airtable/src/server/config\.test\.ts$''']
+regexes = ['''^(?:b2xkLXNlY3JldA==|bmV3LXNlY3JldA==)$''']

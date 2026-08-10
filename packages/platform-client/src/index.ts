@@ -21,6 +21,7 @@ export type AuthenticationMode = 'none' | 'optional' | 'required'
 export type PlatformRequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: HeadersInit
   auth?: AuthenticationMode
+  maxJsonResponseBytes?: number
 }
 export type PlatformRequestContext = {
   method: string
@@ -32,6 +33,7 @@ export type PlatformClientOptions = {
   headers?: HeadersInit | ((context: PlatformRequestContext) => HeadersInit | Promise<HeadersInit>)
   getAccessToken?: () => string | null | undefined | Promise<string | null | undefined>
   credentials?: RequestCredentials
+  maxJsonResponseBytes?: number
 }
 export type ExtensionActionValues = Record<string, PortableActionValue>
 
@@ -41,6 +43,10 @@ type ErrorBody = {
   code?: unknown
   details?: unknown
 }
+
+const DEFAULT_MAX_JSON_RESPONSE_BYTES = 32 * 1024 * 1024
+
+class ResponseBodyTooLargeError extends Error {}
 
 export class PlatformApiError extends Error {
   readonly name = 'PlatformApiError'
@@ -224,14 +230,55 @@ async function configuredHeaders(options: PlatformClientOptions, context: Platfo
   return typeof options.headers === 'function' ? options.headers(context) : options.headers
 }
 
+function jsonResponseLimit(value: number | undefined) {
+  const limit = value ?? DEFAULT_MAX_JSON_RESPONSE_BYTES
+  if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('Platform JSON response limit must be a positive safe integer')
+  return limit
+}
+
+async function readJsonResponseText(response: Response, maxBytes: number) {
+  const contentLength = response.headers.get('content-length')?.trim() || ''
+  if (/^(0|[1-9]\d*)$/.test(contentLength) && Number(contentLength) > maxBytes) {
+    await response.body?.cancel('Response body is too large').catch(() => undefined)
+    throw new ResponseBodyTooLargeError('Response body is too large')
+  }
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const text = await response.text()
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new ResponseBodyTooLargeError('Response body is too large')
+    return text
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  let bytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > maxBytes) {
+        await reader.cancel('Response body is too large')
+        throw new ResponseBodyTooLargeError('Response body is too large')
+      }
+      chunks.push(decoder.decode(value, { stream: true }))
+    }
+    chunks.push(decoder.decode())
+    return chunks.join('')
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 function stripClientOptions(options: PlatformRequestOptions): RequestInit {
-  const { auth: _auth, ...request } = options
+  const { auth: _auth, maxJsonResponseBytes: _maxJsonResponseBytes, ...request } = options
   return request
 }
 
 export function createPlatformClient(options: PlatformClientOptions = {}): PlatformClient {
   const baseUrl = normalizePlatformBaseUrl(options.baseUrl)
   const platformFetch = options.fetch || ((url: string, init?: RequestInit) => globalThis.fetch(url, init))
+  const maxJsonResponseBytes = jsonResponseLimit(options.maxJsonResponseBytes)
 
   const resolve = (path: string) => resolvePlatformUrl(baseUrl, path)
 
@@ -272,8 +319,21 @@ export function createPlatformClient(options: PlatformClientOptions = {}): Platf
 
   const request: ApiClient = async <T>(path: string, requestOptions: PlatformRequestOptions = {}) => {
     const method = (requestOptions.method || 'GET').toUpperCase()
+    const responseLimit =
+      requestOptions.maxJsonResponseBytes === undefined ? maxJsonResponseBytes : jsonResponseLimit(requestOptions.maxJsonResponseBytes)
     const response = await transport(path, requestOptions, true)
-    const text = await response.text()
+    let text: string
+    try {
+      text = await readJsonResponseText(response, responseLimit)
+    } catch (reason) {
+      throw new PlatformDecodeError(
+        reason instanceof ResponseBodyTooLargeError ? 'Server response is too large' : 'Server response could not be read',
+        response.status,
+        method,
+        path,
+        { cause: reason },
+      )
+    }
     let data: unknown = null
     if (text) {
       try {

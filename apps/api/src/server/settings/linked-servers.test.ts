@@ -48,6 +48,12 @@ describe('linked servers', () => {
     )
   })
 
+  it('rejects an oversized identity response before buffering its body', async () => {
+    await expect(
+      verifyLinkedServer('https://one.example', async () => new Response('{}', { headers: { 'content-length': String(64 * 1024 + 1) } })),
+    ).rejects.toThrow('Server verification response is too large')
+  })
+
   it('verifies an operator-approved private server origin', async () => {
     let requests = 0
     const server = createServer((request, response) => {

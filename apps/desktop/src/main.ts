@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path'
 import { desktopServiceEnvironment } from './desktop-environment.ts'
 import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
 import updaterPackage from 'electron-updater'
+import { externalNavigationDecision } from './external-navigation.ts'
+import { desktopPermissionAllowed } from './desktop-permissions.ts'
 
 const { autoUpdater } = updaterPackage
 
@@ -112,11 +114,24 @@ async function createDesktopWindow() {
   })
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (new URL(url).origin !== webUrl) void shell.openExternal(url)
+    if (externalNavigationDecision(url, webUrl) === 'external') void shell.openExternal(url)
     return { action: 'deny' }
   })
   window.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== webUrl) event.preventDefault()
+    if (externalNavigationDecision(url, webUrl) !== 'internal') event.preventDefault()
+  })
+  window.webContents.session.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) =>
+    desktopPermissionAllowed(
+      {
+        permission,
+        requestingUrl: details.requestingUrl || requestingOrigin,
+        isMainFrame: details.isMainFrame,
+      },
+      webUrl,
+    ),
+  )
+  window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    callback(desktopPermissionAllowed({ permission, requestingUrl: details.requestingUrl, isMainFrame: details.isMainFrame }, webUrl))
   })
   await window.loadURL(webUrl)
 }

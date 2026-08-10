@@ -1,7 +1,20 @@
-import { describe, expect, it } from 'vite-plus/test'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { AirtableClient, detectAirtableStructure } from './client.ts'
 
 describe('Airtable structure detection', () => {
+  it('rejects an oversized response before buffering its body', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('{}', {
+          headers: { 'content-length': String(8 * 1024 * 1024 + 1), 'content-type': 'application/json' },
+        }),
+    )
+
+    await expect(
+      new AirtableClient({ token: 'pat', baseId: 'app', tableId: 'work' }, fetchMock as unknown as typeof fetch).listRecords('work'),
+    ).rejects.toThrow('Airtable response is too large')
+  })
+
   it('prefers a linked table and exposes its primary field without semantic mappings', () => {
     const result = detectAirtableStructure({
       tables: [

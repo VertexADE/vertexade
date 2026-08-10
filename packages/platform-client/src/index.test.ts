@@ -111,6 +111,43 @@ describe('platform client', () => {
     await expect(offline.request('/api/test')).rejects.toBeInstanceOf(PlatformNetworkError)
   })
 
+  it('rejects oversized JSON responses before buffering their bodies', async () => {
+    const client = createPlatformClient({
+      maxJsonResponseBytes: 100,
+      fetch: async () =>
+        new Response('{}', {
+          headers: { 'content-length': '101', 'content-type': 'application/json' },
+        }),
+    })
+
+    await expect(client.request('/api/test')).rejects.toMatchObject({
+      name: 'PlatformDecodeError',
+      message: 'Server response is too large',
+    })
+  })
+
+  it('allows a larger response limit for one explicitly bounded request', async () => {
+    const client = createPlatformClient({
+      maxJsonResponseBytes: 10,
+      fetch: async () => Response.json({ value: 'larger than ten bytes' }),
+    })
+
+    await expect(client.request('/api/read-model')).rejects.toBeInstanceOf(PlatformDecodeError)
+    await expect(client.request('/api/read-model', { maxJsonResponseBytes: 100 })).resolves.toEqual({
+      value: 'larger than ten bytes',
+    })
+  })
+
+  it('rejects an invalid request response limit before issuing the request', async () => {
+    const fetch = vi.fn<PlatformFetch>(async () => json({ ok: true }))
+    const client = createPlatformClient({ fetch })
+
+    await expect(client.request('/api/read-model', { maxJsonResponseBytes: 0 })).rejects.toThrow(
+      'Platform JSON response limit must be a positive safe integer',
+    )
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('loads and mutates portable surfaces through one scoped extension client', async () => {
     const fetch = vi.fn<PlatformFetch>(async () => json({ ok: true }))
     const extension = createPlatformClient({ baseUrl: 'https://vertexade.test', fetch }).extension('airtable')
