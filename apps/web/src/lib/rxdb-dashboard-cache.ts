@@ -3,6 +3,7 @@ import { auditTime, BehaviorSubject, filter } from 'rxjs'
 import { platformClient, platformConnectionState, platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
 import {
   dashboardCollections,
+  maxFederatedReadModelResponseBytes,
   normalizeDashboardCollectionValues,
   type DashboardCollection,
   type ReadModelResponse,
@@ -54,6 +55,7 @@ async function syncOnce() {
     if (syncState?.instanceId) search.set('instance', syncState.instanceId)
     const payload = await platformClient.request<ReadModelResponse>(`/api/read-model?${search}`, {
       headers: { accept: 'application/json' },
+      maxJsonResponseBytes: maxFederatedReadModelResponseBytes,
     })
     const syncedAt = new Date().toISOString()
     const updatedCollections: Partial<Record<DashboardCollection, Record<string, unknown>[]>> = {}

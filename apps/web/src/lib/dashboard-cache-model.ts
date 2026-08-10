@@ -1,6 +1,7 @@
 import type { ReactiveProjectionPolicy } from '@vertexade/platform-contracts'
 
 export const dashboardCollections = ['repositories', 'pullRequests', 'agentThreads', 'dashboardMeta', 'workItems'] as const
+export const maxFederatedReadModelResponseBytes = 64 * 1024 * 1024
 
 export type DashboardCollection = (typeof dashboardCollections)[number]
 

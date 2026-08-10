@@ -21,6 +21,7 @@ export type AuthenticationMode = 'none' | 'optional' | 'required'
 export type PlatformRequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: HeadersInit
   auth?: AuthenticationMode
+  maxJsonResponseBytes?: number
 }
 export type PlatformRequestContext = {
   method: string
@@ -270,7 +271,7 @@ async function readJsonResponseText(response: Response, maxBytes: number) {
 }
 
 function stripClientOptions(options: PlatformRequestOptions): RequestInit {
-  const { auth: _auth, ...request } = options
+  const { auth: _auth, maxJsonResponseBytes: _maxJsonResponseBytes, ...request } = options
   return request
 }
 
@@ -318,10 +319,12 @@ export function createPlatformClient(options: PlatformClientOptions = {}): Platf
 
   const request: ApiClient = async <T>(path: string, requestOptions: PlatformRequestOptions = {}) => {
     const method = (requestOptions.method || 'GET').toUpperCase()
+    const responseLimit =
+      requestOptions.maxJsonResponseBytes === undefined ? maxJsonResponseBytes : jsonResponseLimit(requestOptions.maxJsonResponseBytes)
     const response = await transport(path, requestOptions, true)
     let text: string
     try {
-      text = await readJsonResponseText(response, maxJsonResponseBytes)
+      text = await readJsonResponseText(response, responseLimit)
     } catch (reason) {
       throw new PlatformDecodeError(
         reason instanceof ResponseBodyTooLargeError ? 'Server response is too large' : 'Server response could not be read',

@@ -126,6 +126,28 @@ describe('platform client', () => {
     })
   })
 
+  it('allows a larger response limit for one explicitly bounded request', async () => {
+    const client = createPlatformClient({
+      maxJsonResponseBytes: 10,
+      fetch: async () => Response.json({ value: 'larger than ten bytes' }),
+    })
+
+    await expect(client.request('/api/read-model')).rejects.toBeInstanceOf(PlatformDecodeError)
+    await expect(client.request('/api/read-model', { maxJsonResponseBytes: 100 })).resolves.toEqual({
+      value: 'larger than ten bytes',
+    })
+  })
+
+  it('rejects an invalid request response limit before issuing the request', async () => {
+    const fetch = vi.fn<PlatformFetch>(async () => json({ ok: true }))
+    const client = createPlatformClient({ fetch })
+
+    await expect(client.request('/api/read-model', { maxJsonResponseBytes: 0 })).rejects.toThrow(
+      'Platform JSON response limit must be a positive safe integer',
+    )
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('loads and mutates portable surfaces through one scoped extension client', async () => {
     const fetch = vi.fn<PlatformFetch>(async () => json({ ok: true }))
     const extension = createPlatformClient({ baseUrl: 'https://vertexade.test', fetch }).extension('airtable')

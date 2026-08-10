@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { maxFederatedReadModelResponseBytes } from './dashboard-cache-model'
 
 vi.mock('@vertexade/platform-server/outbound-policy', () => ({
   OutboundRequestPolicy: class {
@@ -70,23 +71,27 @@ describe('multi-backend API proxy', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('drops an oversized remote read model without buffering its body', async () => {
+  it('divides the aggregate response budget across backends without buffering an oversized body', async () => {
     vi.stubEnv(
       'VERTEXADE_API_URLS',
       JSON.stringify([
         { id: 'local', label: 'Local', url: 'http://local.internal' },
         { id: 'team', label: 'Team', url: 'http://team.internal' },
+        { id: 'secondary', label: 'Secondary', url: 'http://secondary.internal' },
       ]),
     )
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
       const url = new URL(String(input))
       if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
-      if (url.pathname === '/api/read-model' && url.host === 'local.internal') return Response.json(readModel(1, 'local'))
-      if (url.pathname === '/api/read-model') {
+      if (url.pathname === '/api/read-model' && url.host === 'team.internal') {
         return new Response('{}', {
-          headers: { 'content-length': String(32 * 1024 * 1024 + 1), 'content-type': 'application/json' },
+          headers: {
+            'content-length': String(Math.floor(maxFederatedReadModelResponseBytes / 3) + 1),
+            'content-type': 'application/json',
+          },
         })
       }
+      if (url.pathname === '/api/read-model') return Response.json(readModel(url.host === 'local.internal' ? 1 : 2, url.hostname))
       return Response.json({ error: 'Unexpected test request' }, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
@@ -95,7 +100,7 @@ describe('multi-backend API proxy', () => {
     const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/read-model?since=0') })
     const payload = await response.json()
 
-    expect(payload.updates.repositories.entries).toHaveLength(1)
+    expect(payload.updates.repositories.entries).toHaveLength(2)
     expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'team', connected: false, error: 'Response body is too large' })]),
     )

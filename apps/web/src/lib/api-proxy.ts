@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { Buffer } from 'node:buffer'
 import { HttpError, readRequestBody, readResponseBody } from '@vertexade/platform-server/http'
 import { OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
 import { apiBackends as configuredBackends, resolveApiBackendInputs, type ApiBackend, type BackendInput } from './api-backend'
@@ -13,7 +14,13 @@ import {
   normalizeReadModelEntry,
   type BackendStatus,
 } from './federated-backend'
-import { dashboardCollections, type DashboardCollection, type ReadModelEntry, type ReadModelResponse } from './dashboard-cache-model'
+import {
+  dashboardCollections,
+  maxFederatedReadModelResponseBytes,
+  type DashboardCollection,
+  type ReadModelEntry,
+  type ReadModelResponse,
+} from './dashboard-cache-model'
 
 type BackendRuntime = BackendStatus & {
   snapshot: ReadModelResponse | null
@@ -22,7 +29,7 @@ type BackendRuntime = BackendStatus & {
 const MAX_PROXY_JSON_REQUEST_BYTES = 100_000
 const MAX_PROMPT_IMAGE_REQUEST_BYTES = 28 * 1024 * 1024
 const MAX_LINKED_SERVERS_RESPONSE_BYTES = 256 * 1024
-const MAX_FEDERATED_READ_MODEL_RESPONSE_BYTES = 32 * 1024 * 1024
+const MAX_BACKEND_READ_MODEL_RESPONSE_BYTES = 32 * 1024 * 1024
 const MAX_NORMALIZED_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
 
 let activeBackends = configuredBackends
@@ -270,7 +277,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-async function readBackendModel(request: Request, source: URL, backend: ApiBackend) {
+async function readBackendModel(request: Request, source: URL, backend: ApiBackend, maxResponseBytes: number) {
   const runtime = runtimeById.get(backend.id)!
   try {
     const target = new URL('/api/read-model?since=0', backend.url)
@@ -280,12 +287,7 @@ async function readBackendModel(request: Request, source: URL, backend: ApiBacke
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const payload = (await boundedJsonResponse(
-      response,
-      'Federated read model',
-      MAX_FEDERATED_READ_MODEL_RESPONSE_BYTES,
-      request.signal,
-    )) as ReadModelResponse
+    const payload = (await boundedJsonResponse(response, 'Federated read model', maxResponseBytes, request.signal)) as ReadModelResponse
     if (!payload.instanceId || !payload.updates) throw new Error('Invalid read-model response')
     runtime.connected = true
     runtime.lastConnectedAt = new Date().toISOString()
@@ -303,10 +305,10 @@ function modelEntries(payload: ReadModelResponse, collection: DashboardCollectio
   return (update?.entries || update?.upserts || []) as ReadModelEntry[]
 }
 
-function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadModelResponse }>) {
-  const statuses = publicBackends()
+function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadModelResponse }>, backends: ApiBackend[]) {
+  const statuses = backends.map((backend) => publicBackend(runtimeById.get(backend.id)!))
   const versionIdentity = JSON.stringify(
-    activeBackends.map((backend) => {
+    backends.map((backend) => {
       const runtime = runtimeById.get(backend.id)!
       return [backend.id, runtime.connected, runtime.snapshot?.instanceId, runtime.snapshot?.version, runtime.error]
     }),
@@ -338,17 +340,29 @@ function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadMo
 }
 
 async function federatedReadModel(request: Request, source: URL) {
-  const models = (await Promise.all(activeBackends.map((backend) => readBackendModel(request, source, backend)))).filter(
+  const backends = [...activeBackends]
+  const perBackendLimit = Math.min(MAX_BACKEND_READ_MODEL_RESPONSE_BYTES, Math.floor(maxFederatedReadModelResponseBytes / backends.length))
+  const models = (await Promise.all(backends.map((backend) => readBackendModel(request, source, backend, perBackendLimit)))).filter(
     (model): model is { backend: BackendStatus; payload: ReadModelResponse } => model !== null,
   )
   if (!models.length) {
     return Response.json({ error: 'None of the configured backends could be reached', backends: publicBackends() }, { status: 502 })
   }
-  const payload = mergedReadModel(models)
+  const payload = mergedReadModel(models, backends)
   const since = Number(source.searchParams.get('since') || 0)
   const instance = source.searchParams.get('instance')
   if (instance === payload.instanceId && since === payload.version) payload.updates = {}
-  return Response.json(payload)
+  const body = JSON.stringify(payload)
+  const bodyBytes = Buffer.byteLength(body, 'utf8')
+  if (bodyBytes > maxFederatedReadModelResponseBytes) {
+    return Response.json({ error: 'Federated read model exceeds the aggregate response limit' }, { status: 502 })
+  }
+  return new Response(body, {
+    headers: {
+      'content-length': String(bodyBytes),
+      'content-type': 'application/json',
+    },
+  })
 }
 
 async function boundedJsonResponse(response: Response, service: string, maxBytes: number, signal?: AbortSignal | null) {
