@@ -3,7 +3,7 @@ name: Build and publish
 on:
   pull_request:
   push:
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
@@ -31,6 +31,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Set desktop release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          pnpm --dir apps/desktop pkg set version="$VERSION"
       - run: pnpm --filter @vertexade/web build
       - run: pnpm --filter @vertexade/desktop build:main
       - name: Smoke-test bundled web server
@@ -116,9 +123,20 @@ jobs:
           path: artifacts/*.tgz
       - name: Publish npm packages
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
         run: |
-          pnpm dlx npm@11.5.1 publish ./apps/server --access public
-          pnpm dlx npm@11.5.1 publish ./apps/desktop --access public
+          VERSION="${RELEASE_VERSION#v}"
+          if [ "$(npm view "vertexade@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+            echo "vertexade@$VERSION is already published"
+          else
+            pnpm dlx npm@11.5.1 publish ./apps/server --access public
+          fi
+          if [ "$(npm view "@vertexade/desktop@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+            echo "@vertexade/desktop@$VERSION is already published"
+          else
+            pnpm dlx npm@11.5.1 publish ./apps/desktop --access public
+          fi
 
   github-release:
     if: startsWith(github.ref, 'refs/tags/')
