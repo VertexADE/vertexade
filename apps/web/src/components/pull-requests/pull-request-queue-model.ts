@@ -4,6 +4,7 @@ import { parseConventionalTitle } from '@vertexade/ui/lib/conventional-title'
 import { pullRequestAgentReviewState, pullRequestSummaryFlow, type PullRequestIdentity } from '@vertexade/ui/lib/pull-request-flow'
 import type { PullRequestFiltersValue as Filters } from './pull-request-filters'
 import { defaultValue, mergeDefined } from '../../lib/route-search'
+import { pullRequestThreads } from './pull-request-thread-association'
 
 export const pullRequestFilterStorageKey = 'vertexade.filters.v2'
 
@@ -213,6 +214,14 @@ function pullRequestOwnership(pr: PullRequest, identity: PullRequestIdentity) {
   }
 }
 
+function pullRequestIdentity(
+  pr: PullRequest,
+  fallback: PullRequestIdentity,
+  identitiesByBackend: ReadonlyMap<string, PullRequestIdentity>,
+) {
+  return (pr.backend_id && identitiesByBackend.get(pr.backend_id)) || fallback
+}
+
 function pullRequestBelongsInView(view: PullRequestView, pr: PullRequest, identity: PullRequestIdentity, threads: Job[]) {
   if (view === 'all' || view === 'stacks') return true
   const ownership = pullRequestOwnership(pr, identity)
@@ -264,15 +273,17 @@ function pullRequestSort(pr: PullRequest, identity: PullRequestIdentity, threads
   }
 }
 
-function comparePullRequests(left: PullRequest, right: PullRequest, identity: PullRequestIdentity, allThreads: Job[]) {
-  const leftThreads = allThreads.filter(
-    (job) => job.repo_id === left.repo_id && (job.pr_number === left.number || job.linked_pr_number === left.number),
-  )
-  const rightThreads = allThreads.filter(
-    (job) => job.repo_id === right.repo_id && (job.pr_number === right.number || job.linked_pr_number === right.number),
-  )
-  const a = pullRequestSort(left, identity, leftThreads)
-  const b = pullRequestSort(right, identity, rightThreads)
+function comparePullRequests(
+  left: PullRequest,
+  right: PullRequest,
+  identity: PullRequestIdentity,
+  allThreads: Job[],
+  identitiesByBackend: ReadonlyMap<string, PullRequestIdentity>,
+) {
+  const leftThreads = pullRequestThreads(left, allThreads)
+  const rightThreads = pullRequestThreads(right, allThreads)
+  const a = pullRequestSort(left, pullRequestIdentity(left, identity, identitiesByBackend), leftThreads)
+  const b = pullRequestSort(right, pullRequestIdentity(right, identity, identitiesByBackend), rightThreads)
   return (
     a.ownership - b.ownership ||
     a.flow - b.flow ||
@@ -288,15 +299,14 @@ export function pullRequestsForView(
   pullRequests: PullRequest[],
   identity: PullRequestIdentity,
   threads: Job[] = [],
+  identitiesByBackend: ReadonlyMap<string, PullRequestIdentity> = new Map(),
 ) {
   return pullRequests
     .filter((pr) => {
-      const related = threads.filter(
-        (job) => job.repo_id === pr.repo_id && (job.pr_number === pr.number || job.linked_pr_number === pr.number),
-      )
-      return pullRequestBelongsInView(view, pr, identity, related)
+      const related = pullRequestThreads(pr, threads)
+      return pullRequestBelongsInView(view, pr, pullRequestIdentity(pr, identity, identitiesByBackend), related)
     })
-    .sort((left, right) => comparePullRequests(left, right, identity, threads))
+    .sort((left, right) => comparePullRequests(left, right, identity, threads, identitiesByBackend))
 }
 
 export function pullRequestFilterCounts(filters: Filters) {

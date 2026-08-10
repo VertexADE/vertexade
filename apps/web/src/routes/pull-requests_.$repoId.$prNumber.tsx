@@ -154,6 +154,7 @@ function PullRequestDetailPage() {
       {pr && (
         <ReviewDialog
           pr={reviewOpen ? pr : null}
+          data={data}
           onOpenChange={(open) => !open && setReviewOpen(false)}
           onStarted={(id) => {
             setReviewOpen(false)

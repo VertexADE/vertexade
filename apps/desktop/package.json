@@ -1,6 +1,6 @@
 {
   "name": "@vertexade/desktop",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "private": false,
   "description": "VertexADE desktop application with bundled API and web UI",
   "homepage": "https://github.com/VertexADE/vertexade",
@@ -35,6 +35,7 @@
     "test": "vp test run --maxWorkers=2 --passWithNoTests"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "tslib": "^2.8.1",
     "tsx": "^4.23.1"
   },
@@ -83,6 +84,7 @@
       "category": "Development"
     },
     "mac": {
+      "x64ArchFiles": "**/esbuild",
       "target": [
         "dmg",
         "zip"
@@ -94,6 +96,13 @@
         "nsis",
         "zip"
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vertexade",
+        "repo": "vertexade"
+      }
+    ]
   }
 }

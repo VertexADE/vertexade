@@ -56,6 +56,13 @@ describe('outbound request policy', () => {
     expect(transport).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps its receiver when fetch is passed as a callback', async () => {
+    const { instance, transport } = policy([{ address: '93.184.216.34', family: 4 }])
+    const detachedFetch = instance.fetch
+    await expect(detachedFetch('https://example.com/api')).resolves.toBeInstanceOf(Response)
+    expect(transport).toHaveBeenCalledTimes(1)
+  })
+
   it('revalidates DNS on every request and fails closed after a rebinding change', async () => {
     const resolver = vi
       .fn()

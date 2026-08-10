@@ -1,9 +1,15 @@
-import { app, BrowserWindow, dialog, shell } from 'electron'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { app, BrowserWindow, dialog, shell, type MessageBoxOptions } from 'electron'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { desktopServiceEnvironment } from './desktop-environment.ts'
+import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
+import { autoUpdater } from 'electron-updater'
 
 const services = new Set<ChildProcess>()
+let desktopWindow: BrowserWindow | null = null
+let windowStartup: Promise<void> | null = null
+let stopUpdater: (() => void) | null = null
 
 function resourcePath(...parts: string[]) {
   return join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'dist'), ...parts)
@@ -65,8 +71,11 @@ async function createDesktopWindow() {
   const webPort = await availablePort()
   const apiUrl = `http://127.0.0.1:${apiPort}`
   const webUrl = `http://127.0.0.1:${webPort}`
-  const vertexHome = process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, 'vertex-ade') : join(app.getPath('home'), '.vertex-ade')
+  const home = app.getPath('home')
+  const serviceEnvironment = desktopServiceEnvironment(process.env, process.platform, home)
+  const vertexHome = process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, 'vertex-ade') : join(home, '.vertex-ade')
   const api = startService(resourcePath('api.mjs'), {
+    ...serviceEnvironment,
     APP_ROOT: resourcePath('runtime'),
     API_HOST: '127.0.0.1',
     API_PORT: String(apiPort),
@@ -78,6 +87,7 @@ async function createDesktopWindow() {
   await waitUntilReady(`${apiUrl}/readyz`, api)
 
   const web = startService(resourcePath('web/server/index.mjs'), {
+    ...serviceEnvironment,
     HOST: '127.0.0.1',
     PORT: String(webPort),
     VERTEXADE_API_URL: apiUrl,
@@ -93,6 +103,11 @@ async function createDesktopWindow() {
     backgroundColor: '#09090b',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
+  desktopWindow = window
+  window.once('closed', () => {
+    desktopWindow = null
+    stopServices()
+  })
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (new URL(url).origin !== webUrl) void shell.openExternal(url)
@@ -104,20 +119,77 @@ async function createDesktopWindow() {
   await window.loadURL(webUrl)
 }
 
+function ensureDesktopWindow(): Promise<void> {
+  if (desktopWindow) {
+    if (desktopWindow.isMinimized()) desktopWindow.restore()
+    desktopWindow.focus()
+    return Promise.resolve()
+  }
+  if (windowStartup) return windowStartup
+  windowStartup = createDesktopWindow().finally(() => {
+    windowStartup = null
+  })
+  return windowStartup
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+app.on('activate', () => {
+  void ensureDesktopWindow().catch(showStartupError)
+})
 app.on('before-quit', stopServices)
+
+async function showStartupError(error: unknown): Promise<void> {
+  console.error(error)
+  stopServices()
+  await dialog.showMessageBox({
+    type: 'error',
+    title: 'VertexADE could not start',
+    message: error instanceof Error ? error.message : String(error),
+  })
+  app.quit()
+}
 
 void app
   .whenReady()
-  .then(createDesktopWindow)
-  .catch(async (error) => {
-    console.error(error)
-    await dialog.showMessageBox({
-      type: 'error',
-      title: 'VertexADE could not start',
-      message: error instanceof Error ? error.message : String(error),
+  .then(async () => {
+    await ensureDesktopWindow()
+    const updaterEnabled = canStartDesktopUpdater({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      updatesDisabled: process.env.VERTEXADE_DISABLE_AUTO_UPDATE === '1',
+      verifyMacSignature: () => {
+        try {
+          execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', resolve(process.execPath, '../../..')], { stdio: 'ignore' })
+          return true
+        } catch {
+          return false
+        }
+      },
     })
-    app.quit()
+    if (!updaterEnabled) return
+    stopUpdater = startDesktopUpdater({
+      updater: autoUpdater,
+      logError: (error) => console.error('Desktop update failed', error),
+      confirmInstall: async ({ version }) => {
+        const prompt: MessageBoxOptions = {
+          type: 'info',
+          title: 'VertexADE update ready',
+          message: `VertexADE ${version} has been downloaded.`,
+          detail: `You are currently running ${app.getVersion()}. Restart now to install the update.`,
+          buttons: ['Restart and install', 'Later'],
+          defaultId: 0,
+          cancelId: 1,
+        }
+        const result = desktopWindow ? await dialog.showMessageBox(desktopWindow, prompt) : await dialog.showMessageBox(prompt)
+        return result.response === 0
+      },
+    })
   })
+  .catch(showStartupError)
+
+app.on('will-quit', () => {
+  stopUpdater?.()
+  stopUpdater = null
+})

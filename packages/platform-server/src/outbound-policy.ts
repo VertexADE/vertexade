@@ -149,7 +149,7 @@ export class OutboundRequestPolicy {
       maxOrigins: this.#maxPinnedHosts,
       connect: { lookup: this.#lookup as any },
     })
-    this.fetch = this.#fetch as typeof globalThis.fetch
+    this.fetch = this.#fetch.bind(this) as typeof globalThis.fetch
   }
 
   readonly #lookup = (name: string, options: { all?: boolean }, callback: (...values: any[]) => void) => {
