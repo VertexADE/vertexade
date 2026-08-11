@@ -9,6 +9,10 @@ import type { ImpactAnalysisService, ResolvedImpactAnalysisInput } from './impac
 import type { ValidationIntelligenceService } from './validation-service.ts'
 import type { PullRequestEvidenceService } from './evidence-service.ts'
 import type { ValidationRepairLoopService } from './repair-loop-service.ts'
+import type { DevelopmentIntelligenceService } from './development-intelligence-service.ts'
+import { registerDevelopmentIntelligenceRoutes, type DevelopmentIntelligenceThreadLauncher } from './intelligence-routes.ts'
+
+export type { DevelopmentIntelligenceThreadLauncher } from './intelligence-routes.ts'
 
 export type ValidationRepairLauncher = (input: {
   run: ValidationRun
@@ -28,7 +32,7 @@ function outputRecord(value: CapabilityValue | null): Record<string, CapabilityV
 }
 
 function executionFailure(execution: CapabilityExecution, operation = 'Capability execution'): Response {
-  const status = execution.status === 'cancelled' ? 409 : execution.status === 'timed-out' ? 504 : 422
+  const status = failedExecutionStatus(execution)
   return Response.json(
     {
       error: execution.error || `${operation} failed`,
@@ -38,20 +42,33 @@ function executionFailure(execution: CapabilityExecution, operation = 'Capabilit
   )
 }
 
+function failedExecutionStatus(execution: CapabilityExecution): number {
+  return execution.status === 'cancelled' ? 409 : execution.status === 'timed-out' ? 504 : 422
+}
+
+function requireSuccessfulExecution(execution: CapabilityExecution, message: string): void {
+  if (execution.status !== 'succeeded') throw new HttpError(execution.error || message, failedExecutionStatus(execution))
+}
+
 async function executeValidation(
   validation: ValidationIntelligenceService,
   executions: CapabilityExecutionService,
-  input: { repositoryId: number; impactAnalysisId: number; targetId: string; parentRunId?: number | null },
+  input: {
+    repositoryId: number
+    impactAnalysisId: number
+    targetId: string
+    parentRunId?: number | null
+  },
   requestId: string,
 ): Promise<ValidationRun> {
   const execution = await executions.execute('action', validationCapabilityId, input, {
     idempotencyKey: `validation:${input.repositoryId}:${input.impactAnalysisId}:${input.targetId}:${input.parentRunId || 'root'}:${requestId}`,
-    context: { entityKind: 'repository', entityKey: String(input.repositoryId) },
+    context: {
+      entityKind: 'repository',
+      entityKey: String(input.repositoryId),
+    },
   })
-  if (execution.status !== 'succeeded') {
-    const status = execution.status === 'cancelled' ? 409 : execution.status === 'timed-out' ? 504 : 422
-    throw new HttpError(execution.error || 'Validation failed', status)
-  }
+  requireSuccessfulExecution(execution, 'Validation failed')
   const output = outputRecord(execution.output)
   const runId = Number(output?.runId)
   if (!Number.isSafeInteger(runId) || runId <= 0) throw new HttpError('Validation returned an invalid result', 500)
@@ -82,10 +99,7 @@ async function executeImpactValue(
           : String(input.subject.repositoryId),
     },
   })
-  if (execution.status !== 'succeeded') {
-    const status = execution.status === 'cancelled' ? 409 : execution.status === 'timed-out' ? 504 : 422
-    throw new HttpError(execution.error || 'Impact analysis failed', status)
-  }
+  requireSuccessfulExecution(execution, 'Impact analysis failed')
   const output = outputRecord(execution.output)
   const analysisId = Number(output?.analysisId)
   if (!Number.isSafeInteger(analysisId) || analysisId <= 0) throw new HttpError('Impact analysis returned an invalid result', 500)
@@ -99,12 +113,12 @@ async function executeArchitectureIndex(
 ): Promise<ArchitectureIndex> {
   const execution = await executions.execute('query', architectureIndexCapabilityId, input, {
     idempotencyKey: architecture.idempotencyKey(input),
-    context: { entityKind: 'repository', entityKey: String(input.repositoryId) },
+    context: {
+      entityKind: 'repository',
+      entityKey: String(input.repositoryId),
+    },
   })
-  if (execution.status !== 'succeeded') {
-    const status = execution.status === 'cancelled' ? 409 : execution.status === 'timed-out' ? 504 : 422
-    throw new HttpError(execution.error || 'Architecture indexing failed', status)
-  }
+  requireSuccessfulExecution(execution, 'Architecture indexing failed')
   const output = outputRecord(execution.output)
   const indexId = Number(output?.indexId)
   if (!Number.isSafeInteger(indexId) || indexId <= 0) throw new HttpError('Architecture indexing returned an invalid result', 500)
@@ -119,13 +133,24 @@ export function createDevelopmentRoutes(
   executions: CapabilityExecutionService,
   launchRepair: ValidationRepairLauncher,
   repairLoops?: ValidationRepairLoopService,
+  intelligence?: DevelopmentIntelligenceService,
+  launchIntelligenceThread?: DevelopmentIntelligenceThreadLauncher,
 ): HttpRouter {
   const router = new HttpRouter()
+
+  registerDevelopmentIntelligenceRoutes(router, {
+    impact,
+    architecture,
+    intelligence,
+    launchThread: launchIntelligenceThread,
+  })
 
   router.get('/api/repositories/:repositoryId/impact-analyses', (request, { params }) => {
     const repositoryId = positiveInteger(params.repositoryId, 'Repository ID')
     const limit = Number(new URL(request.url).searchParams.get('limit') || 20)
-    return Response.json({ analyses: impact.list(repositoryId, Number.isFinite(limit) ? limit : 20) })
+    return Response.json({
+      analyses: impact.list(repositoryId, Number.isFinite(limit) ? limit : 20),
+    })
   })
 
   router.get('/api/repositories/:repositoryId/impact-analyses/:analysisId', (_request, { params }) => {
@@ -176,7 +201,9 @@ export function createDevelopmentRoutes(
   })
 
   router.get('/api/work-items/:workItemId/impact-analysis', (_request, { params }) => {
-    return Response.json({ analysis: impact.latestForWorkItem(positiveInteger(params.workItemId, 'Work item ID')) })
+    return Response.json({
+      analysis: impact.latestForWorkItem(positiveInteger(params.workItemId, 'Work item ID')),
+    })
   })
 
   router.post('/api/work-items/:workItemId/impact-analysis', async (request, { params }) => {
@@ -210,7 +237,9 @@ export function createDevelopmentRoutes(
       positiveInteger(params.pullRequestNumber, 'Pull-request number'),
       request.signal,
     )
-    return Response.json({ packet: architecture.latestContextPacket(subject) })
+    return Response.json({
+      packet: architecture.latestContextPacket(subject),
+    })
   })
 
   router.post('/api/pulls/:repositoryId/:pullRequestNumber/architecture-context', async (request, { params }) => {
@@ -223,7 +252,14 @@ export function createDevelopmentRoutes(
     const existing = architecture.indexForRevision(subject.repositoryId, subject.headRevision)
     const index =
       existing ||
-      (await executeArchitectureIndex({ repositoryId: subject.repositoryId, revision: subject.headRevision }, architecture, executions))
+      (await executeArchitectureIndex(
+        {
+          repositoryId: subject.repositoryId,
+          revision: subject.headRevision,
+        },
+        architecture,
+        executions,
+      ))
     const focusPaths = architecture.focusPathsForSubject(subject, input.focusPaths)
     return Response.json(
       architecture.createContextPacket({
@@ -237,12 +273,16 @@ export function createDevelopmentRoutes(
   })
 
   router.get('/api/repositories/:repositoryId/test-target-overrides', (_request, { params }) => {
-    return Response.json({ targets: validation.overrides(positiveInteger(params.repositoryId, 'Repository ID')) })
+    return Response.json({
+      targets: validation.overrides(positiveInteger(params.repositoryId, 'Repository ID')),
+    })
   })
 
   router.post('/api/repositories/:repositoryId/test-target-overrides', async (request, { params }) => {
     const input = await readJsonObject(request)
-    return Response.json({ targets: validation.replaceOverrides(positiveInteger(params.repositoryId, 'Repository ID'), input.targets) })
+    return Response.json({
+      targets: validation.replaceOverrides(positiveInteger(params.repositoryId, 'Repository ID'), input.targets),
+    })
   })
 
   router.get('/api/pulls/:repositoryId/:pullRequestNumber/test-intelligence', async (request, { params }) => {
@@ -283,12 +323,19 @@ export function createDevelopmentRoutes(
           await executeValidation(
             validation,
             executions,
-            { repositoryId, impactAnalysisId: intelligence.analysis.id, targetId },
+            {
+              repositoryId,
+              impactAnalysisId: intelligence.analysis.id,
+              targetId,
+            },
             requestId,
           ),
         )
       } catch (error) {
-        errors.push({ targetId, message: error instanceof Error ? error.message : String(error || 'Validation failed') })
+        errors.push({
+          targetId,
+          message: error instanceof Error ? error.message : String(error || 'Validation failed'),
+        })
       }
     }
     return Response.json({ runs, errors }, { status: runs.length ? 201 : 422 })
@@ -321,7 +368,9 @@ export function createDevelopmentRoutes(
         ...repair,
         linkedWorkItemId: validation.linkedWorkItemId(repair.run.id),
       })
-      return Response.json(validation.attachRepair(repair.run.id, job), { status: 201 })
+      return Response.json(validation.attachRepair(repair.run.id, job), {
+        status: 201,
+      })
     } catch (error) {
       if (error instanceof HttpError) throw error
       throw new HttpError(error instanceof Error ? error.message : 'Repair Work could not be started', 422)
@@ -380,7 +429,12 @@ export function createDevelopmentRoutes(
       const first = await executeValidation(
         validation,
         executions,
-        { repositoryId, impactAnalysisId: analysis.id, targetId: rerunTarget.id, parentRunId: original.id },
+        {
+          repositoryId,
+          impactAnalysisId: analysis.id,
+          targetId: rerunTarget.id,
+          parentRunId: original.id,
+        },
         `${requestId}:failed-target`,
       )
       runs.push(first)
@@ -395,7 +449,12 @@ export function createDevelopmentRoutes(
           const validationRun = await executeValidation(
             validation,
             executions,
-            { repositoryId, impactAnalysisId: analysis.id, targetId: target.id, parentRunId: original.id },
+            {
+              repositoryId,
+              impactAnalysisId: analysis.id,
+              targetId: target.id,
+              parentRunId: original.id,
+            },
             `${requestId}:${target.id}`,
           )
           runs.push(validationRun)

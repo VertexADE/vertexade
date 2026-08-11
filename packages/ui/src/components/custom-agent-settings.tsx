@@ -96,7 +96,7 @@ export function CustomAgentSettings({
     }
   }
   return (
-    <Card className="gap-0 overflow-hidden py-0 lg:col-span-2">
+    <Card className="gap-0 overflow-hidden py-0">
       <CardHeader className="border-b p-4">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Bot className="size-4 text-cyan-400" />
@@ -106,7 +106,7 @@ export function CustomAgentSettings({
           Build a reusable agent from a native runtime, fixed model and reasoning level, optional prompt, skills, and MCP servers.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,.9fr)]">
+      <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4 p-4">
         <CustomAgentForm
           key={editing?.id || 'new'}
           profile={editing}

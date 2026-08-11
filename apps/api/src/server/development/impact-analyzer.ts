@@ -11,8 +11,9 @@ import type {
   ImpactValidationTarget,
   ImpactWarning,
 } from '@vertexade/platform-contracts'
+import { buildRepositorySourceGraph, type RepositorySourceGraph } from './repository-source-graph.ts'
 
-export const impactAnalyzerVersion = '1.0.0'
+export const impactAnalyzerVersion = '1.1.0'
 
 const maximumChangedFiles = 5_000
 const maximumTrackedFiles = 100_000
@@ -302,6 +303,109 @@ function addDependencyEdges(projects: Project[], affected: Map<string, boolean>,
   }
 }
 
+type SourceImpactContext = {
+  changedFiles: ImpactChangedFile[]
+  projects: Project[]
+  affected: Map<string, boolean>
+  nodes: Map<string, ImpactNode>
+  edges: ImpactReasonEdge[]
+}
+
+function reverseSourceEdges(graph: RepositorySourceGraph): Map<string, RepositorySourceGraph['edges']> {
+  const reverse = new Map<string, RepositorySourceGraph['edges']>()
+  for (const edge of graph.edges) reverse.set(edge.toPath, [...(reverse.get(edge.toPath) || []), edge])
+  return reverse
+}
+
+function addSourceProvider(context: SourceImpactContext, providerPath: string): void {
+  const direct = context.changedFiles.some((file) => file.path === providerPath || file.previousPath === providerPath)
+  addNode(context.nodes, {
+    key: fileKey(providerPath),
+    kind: 'file',
+    label: providerPath,
+    path: providerPath,
+    direct,
+    confidence: confidence(direct),
+  })
+}
+
+function addSourceConsumer(context: SourceImpactContext, providerPath: string, relation: RepositorySourceGraph['edges'][number]): string {
+  const consumerPath = relation.fromPath
+  const consumerProject = projectForPath(context.projects, consumerPath)
+  addNode(context.nodes, {
+    key: fileKey(consumerPath),
+    kind: 'file',
+    label: consumerPath,
+    path: consumerPath,
+    direct: false,
+    confidence: relation.confidence,
+  })
+  addNode(context.nodes, {
+    key: consumerProject.key,
+    kind: consumerProject.name ? 'package' : 'project',
+    label: consumerProject.label,
+    path: consumerProject.rootPath || '.',
+    direct: false,
+    confidence: relation.confidence,
+  })
+  context.edges.push(
+    {
+      from: fileKey(providerPath),
+      to: fileKey(consumerPath),
+      relation: 'consumed_by',
+      summary: `${consumerPath}:${relation.line} ${relation.kind.replaceAll('_', ' ')}s ${relation.specifier}`,
+      sourcePath: consumerPath,
+      confidence: relation.confidence,
+    },
+    {
+      from: fileKey(consumerPath),
+      to: consumerProject.key,
+      relation: 'owned_by',
+      summary: `${consumerPath} belongs to ${consumerProject.label}`,
+      sourcePath: consumerProject.manifestPath,
+      confidence: 'high',
+    },
+  )
+  if (!context.affected.has(consumerProject.key)) context.affected.set(consumerProject.key, false)
+  return consumerPath
+}
+
+function addSourceImpact(
+  graph: RepositorySourceGraph,
+  changedFiles: ImpactChangedFile[],
+  projects: Project[],
+  affected: Map<string, boolean>,
+  nodes: Map<string, ImpactNode>,
+  edges: ImpactReasonEdge[],
+  warnings: ImpactWarning[],
+): void {
+  const context: SourceImpactContext = { changedFiles, projects, affected, nodes, edges }
+  const reverse = reverseSourceEdges(graph)
+  const queue = changedFiles.flatMap((file) => [file.path, file.previousPath].filter((path): path is string => Boolean(path)))
+  const visited = new Set(queue)
+  const maximumSourceConsumers = 2_000
+  let discovered = 0
+  while (queue.length && discovered < maximumSourceConsumers) {
+    const providerPath = queue.shift()!
+    addSourceProvider(context, providerPath)
+    for (const relation of reverse.get(providerPath) || []) {
+      const consumerPath = addSourceConsumer(context, providerPath, relation)
+      if (visited.has(consumerPath)) continue
+      visited.add(consumerPath)
+      queue.push(consumerPath)
+      discovered += 1
+      if (discovered >= maximumSourceConsumers) break
+    }
+  }
+  if (discovered >= maximumSourceConsumers) {
+    warnings.push({
+      code: 'source_impact_truncated',
+      message: `Source-level consumer traversal was limited to ${maximumSourceConsumers} files`,
+      path: null,
+    })
+  }
+}
+
 function validationTargets(
   projects: Project[],
   affected: Map<string, boolean>,
@@ -324,7 +428,9 @@ function validationTargets(
     for (const target of projectTargets) {
       const id = `${project.key}:script:${target.script}`
       const direct = affected.get(project.key) === true
-      const reason = direct ? `${project.label} owns changed files` : `${project.label} consumes an affected workspace package`
+      const reason = direct
+        ? `${project.label} owns changed files`
+        : `${project.label} has source or manifest dependencies on affected code`
       targets.push({
         id,
         projectKey: project.key,
@@ -451,6 +557,16 @@ export async function analyzeRepositoryImpact({
   }))
   const directKeys = new Set(changedFiles.map((file) => file.projectKey))
   const affected = affectedProjects(projects, directKeys)
+  const sourceGraph = await buildRepositorySourceGraph({
+    repository,
+    revision: subject.headRevision,
+    paths: tracked.paths,
+    resolutionPaths: changedFiles.flatMap((file) => [file.path, file.previousPath].filter((path): path is string => Boolean(path))),
+    boundaries: projects.map((project) => ({ key: project.key, rootPath: project.rootPath, packageName: project.name })),
+    run,
+    signal,
+  })
+  warnings.push(...sourceGraph.warnings)
   const nodes = new Map<string, ImpactNode>()
   const edges: ImpactReasonEdge[] = []
   for (const file of changedFiles) {
@@ -480,6 +596,7 @@ export async function analyzeRepositoryImpact({
       confidence: 'high',
     })
   }
+  addSourceImpact(sourceGraph, changedFiles, projects, affected, nodes, edges, warnings)
   for (const project of projects.filter((candidate) => affected.has(candidate.key))) {
     const direct = affected.get(project.key) === true
     addNode(nodes, {
@@ -504,6 +621,13 @@ export async function analyzeRepositoryImpact({
         : 'low'
   return {
     analyzerVersion: impactAnalyzerVersion,
+    sourceGraph: {
+      version: sourceGraph.version,
+      revision: sourceGraph.revision,
+      digest: sourceGraph.digest,
+      sourceFileCount: sourceGraph.sourceFileCount,
+      edgeCount: sourceGraph.edgeCount,
+    },
     repositoryName: repository.fullName,
     changedFiles,
     nodes: [...nodes.values()].sort((left, right) => left.key.localeCompare(right.key)),

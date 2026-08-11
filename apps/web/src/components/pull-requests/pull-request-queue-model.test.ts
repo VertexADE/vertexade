@@ -7,6 +7,7 @@ import {
   parseStoredPullRequestFilters,
   pullRequestFilterCounts,
   pullRequestFilterSearch,
+  pullRequestFilterSearchMatches,
   pullRequestFiltersFromSearch,
   pullRequestsForView,
 } from './pull-request-queue-model'
@@ -59,6 +60,14 @@ describe('pull request queue model', () => {
 
     expect(search).toEqual({ q: 'fix me', repos: 'acme%2Fwidget,space%2Fname', reviewer: 'mine', checks: 'failed' })
     expect(pullRequestFiltersFromSearch(search, defaultPullRequestFilters())).toEqual(filters)
+  })
+
+  it('recognizes when filter search state is already canonical', () => {
+    const filters = { ...defaultPullRequestFilters(), query: 'release', status: 'ready' as const }
+    const search = pullRequestFilterSearch(filters)
+
+    expect(pullRequestFilterSearchMatches(search, filters)).toBe(true)
+    expect(pullRequestFilterSearchMatches({ ...search, q: 'different' }, filters)).toBe(false)
   })
 
   it('combines repository, reviewer, check, age, label, branch, conventional, and text filters', () => {

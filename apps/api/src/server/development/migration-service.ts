@@ -24,6 +24,8 @@ export type MigrationWorkLauncher = (input: {
   baseRevision: string
   createPullRequest: boolean
   linkedWorkItemId: number | null
+  campaignId: number
+  targetId: number
 }) => Promise<{ id: number; work_item_id?: number | null; linked_pr_number?: number | null; linked_pr_url?: string | null }>
 
 export type MigrationTargetVerifier = (input: {
@@ -564,6 +566,8 @@ ${evidence}
         baseRevision: target.baseRevision,
         createPullRequest: campaign.createPullRequests,
         linkedWorkItemId: target.workItemId,
+        campaignId: campaign.id,
+        targetId: target.id,
       })
       this.database
         .update(migrationTargets)

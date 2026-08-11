@@ -20,6 +20,8 @@ async function fixture(): Promise<{ path: string; revision: string }> {
   directories.push(path)
   await Promise.all([
     mkdir(join(path, 'apps', 'web'), { recursive: true }),
+    mkdir(join(path, 'apps', 'worker', 'src'), { recursive: true }),
+    mkdir(join(path, 'packages', 'contracts', 'src'), { recursive: true }),
     mkdir(join(path, 'packages', 'contracts', 'openapi'), { recursive: true }),
     mkdir(join(path, 'docs', 'adrs'), { recursive: true }),
     mkdir(join(path, '.github', 'workflows'), { recursive: true }),
@@ -34,6 +36,12 @@ async function fixture(): Promise<{ path: string; revision: string }> {
       join(path, 'apps', 'web', 'package.json'),
       JSON.stringify({ name: '@fixture/web', dependencies: { '@fixture/contracts': 'workspace:*' } }),
     ),
+    writeFile(join(path, 'apps', 'worker', 'package.json'), JSON.stringify({ name: '@fixture/worker' })),
+    writeFile(
+      join(path, 'apps', 'worker', 'src', 'index.ts'),
+      "import { contract } from '../../../packages/contracts/src/index'\nvoid contract\n",
+    ),
+    writeFile(join(path, 'packages', 'contracts', 'src', 'index.ts'), "export const contract = 'fixture'\n"),
     writeFile(join(path, 'packages', 'contracts', 'openapi', 'service.yaml'), 'openapi: 3.1.0\ninfo:\n  title: Fixture\n'),
     writeFile(join(path, 'docs', 'architecture.md'), '# Fixture architecture\n\nThe web service consumes the shared public contracts.\n'),
     writeFile(
@@ -74,10 +82,26 @@ describe('architecture analyzer', () => {
         citation: expect.objectContaining({ path: 'apps/web/package.json' }),
       }),
     )
+    expect(result.relations).toContainEqual(
+      expect.objectContaining({
+        from: 'architecture:service:apps/worker',
+        to: 'architecture:package:packages/contracts',
+        relation: 'depends_on',
+        citation: expect.objectContaining({ path: 'apps/worker/src/index.ts', startLine: 1 }),
+      }),
+    )
+    expect(result.relations).toContainEqual(
+      expect.objectContaining({
+        from: 'architecture:package:packages/contracts',
+        relation: 'exposes',
+        to: 'architecture:api:packages/contracts/openapi/service.yaml',
+      }),
+    )
     expect(result.decisions).toContainEqual(
       expect.objectContaining({ id: 'adr-001', title: 'ADR-001 Contract ownership', status: 'accepted' }),
     )
-    expect(result.summary).toMatchObject({ packages: 2, services: 1, deployments: 1, decisions: 1 })
+    expect(result.summary).toMatchObject({ packages: 2, services: 2, deployments: 1, decisions: 1 })
     expect(result.summary.contracts).toBeGreaterThanOrEqual(1)
+    expect(result.sourceGraph).toMatchObject({ revision: repository.revision, edgeCount: expect.any(Number) })
   })
 })

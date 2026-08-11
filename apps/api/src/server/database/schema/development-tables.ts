@@ -129,6 +129,46 @@ export const architectureContextPackets = sqliteTable(
   ],
 )
 
+export const repositoryKnowledgeEntries = sqliteTable(
+  'repository_knowledge_entries',
+  {
+    id: integer().primaryKey(),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    kind: text().notNull(),
+    scope: text().notNull(),
+    title: text().notNull(),
+    summary: text().notNull(),
+    path: text(),
+    boundaryKey: text('boundary_key'),
+    confidence: text().notNull(),
+    status: text().default('accepted').notNull(),
+    sourceArtifactKind: text('source_artifact_kind').notNull(),
+    sourceArtifactId: integer('source_artifact_id').notNull(),
+    sourceRevision: text('source_revision').notNull(),
+    sourceDigest: text('source_digest').notNull(),
+    sourceJobId: integer('source_job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    sourceWorkItemId: integer('source_work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
+    supersedesEntryId: integer('supersedes_entry_id').references((): AnySQLiteColumn => repositoryKnowledgeEntries.id, {
+      onDelete: 'set null',
+    }),
+    actor: text().notNull(),
+    createdAt: text('created_at')
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: text('updated_at')
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    archivedAt: text('archived_at'),
+  },
+  (table) => [
+    index('repository_knowledge_repository_status').on(table.repositoryId, table.status, table.updatedAt, table.id),
+    index('repository_knowledge_artifact').on(table.repositoryId, table.sourceArtifactKind, table.sourceArtifactId, table.createdAt),
+    index('repository_knowledge_source_job').on(table.sourceJobId),
+  ],
+)
+
 export const repositoryTestTargets = sqliteTable(
   'repository_test_targets',
   {

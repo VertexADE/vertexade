@@ -4,6 +4,7 @@ import { repositoryRecord } from '../database/contract-records.ts'
 import { pullRequests, repositories } from '../database/schema/tables.ts'
 import type { PlatformCapabilityRegistries } from '../platform/capability-registry.ts'
 import type { CommandResult, RunOptions } from '../process.ts'
+import type { WorkResourceInput } from '../work/work-model.ts'
 import { createCapabilityRoutes } from '../workflows/capability-routes.ts'
 import { CapabilityExecutionService } from '../workflows/capability-execution.ts'
 import { ArchitectureContextService } from './architecture-service.ts'
@@ -19,6 +20,7 @@ import { createMigrationRoutes } from './migration-routes.ts'
 import { MigrationCampaignService } from './migration-service.ts'
 import { ValidationRepairLoopService, type RepairLoopLauncher } from './repair-loop-service.ts'
 import { createDevelopmentRoutes } from './routes.ts'
+import { DevelopmentIntelligenceService } from './development-intelligence-service.ts'
 import { ValidationIntelligenceService } from './validation-service.ts'
 
 export type DevelopmentTaskLauncher = (
@@ -28,8 +30,22 @@ export type DevelopmentTaskLauncher = (
   createPullRequest: boolean,
   branchType: 'chore' | 'fix',
   workspace: { revision: string },
-  options: { workItemId?: number; workKind: 'implementation'; workSource?: string },
-) => Promise<{ id: number; work_item_id?: number | null; linked_pr_number?: number | null; linked_pr_url?: string | null }>
+  options: {
+    workItemId?: number
+    workKind: 'implementation' | 'investigation'
+    workSource?: WorkResourceInput
+    readOnly?: boolean
+  },
+) => Promise<{
+  id: number
+  work_item_id?: number | null
+  thread_id?: string | null
+  agent_id?: string
+  agent_model?: string | null
+  agent_reasoning_effort?: string | null
+  linked_pr_number?: number | null
+  linked_pr_url?: string | null
+}>
 
 export function createDevelopmentRuntime(input: {
   database: DrizzleDashboardDatabase
@@ -44,12 +60,13 @@ export function createDevelopmentRuntime(input: {
   const { database, run, runResult, contributions, launchTask, notify, notifyExecutionFailure, runtimeDefaults } = input
   const impact = new ImpactAnalysisService(database, run, notify)
   const architecture = new ArchitectureContextService(database, run, notify)
+  const intelligence = new DevelopmentIntelligenceService(database, notify)
   const validation = new ValidationIntelligenceService(database, impact, runResult, notify)
   const evidence = new PullRequestEvidenceService(database, impact, architecture, validation, notify)
   const migration = new MigrationCampaignService(
     database,
     run,
-    async ({ repository, title, prompt, baseRevision, createPullRequest, linkedWorkItemId }) => {
+    async ({ repository, title, prompt, baseRevision, createPullRequest, linkedWorkItemId, campaignId, targetId }) => {
       const storedRepository = database.select().from(repositories).where(eq(repositories.id, repository.id)).get()
       if (!storedRepository) throw new Error('Repository not found')
       return launchTask(
@@ -62,7 +79,17 @@ export function createDevelopmentRuntime(input: {
         {
           workItemId: linkedWorkItemId || undefined,
           workKind: 'implementation',
-          workSource: 'migration_campaign',
+          workSource: {
+            provider: 'core',
+            kind: 'migration_target',
+            externalId: `${campaignId}:${targetId}`,
+            role: 'subject',
+            label: `Migration campaign #${campaignId} target #${targetId}`,
+            repositoryId: repository.id,
+            state: 'running',
+            metadata: { campaignId, targetId, baseRevision },
+            primary: true,
+          },
         },
       )
     },
@@ -144,10 +171,55 @@ export function createDevelopmentRuntime(input: {
   }
   const repairLoops = new ValidationRepairLoopService(database, impact, validation, executions, launchRepair, notify)
   repairLoops.startScheduler()
+  const launchIntelligenceThread = async (thread: {
+    workflow: 'impact' | 'architecture'
+    repositoryId: number
+    artifactId: number
+    title: string
+    prompt: string
+    revision: string
+    digest: string
+  }) => {
+    const storedRepository = database.select().from(repositories).where(eq(repositories.id, thread.repositoryId)).get()
+    if (!storedRepository) throw new Error('Repository not found')
+    return launchTask(
+      repositoryRecord(storedRepository),
+      thread.title,
+      thread.prompt,
+      false,
+      'chore',
+      { revision: thread.revision },
+      {
+        workKind: 'investigation',
+        workSource: {
+          provider: 'core',
+          kind: thread.workflow === 'impact' ? 'impact_analysis' : 'architecture_index',
+          externalId: String(thread.artifactId),
+          role: 'subject',
+          label: `${thread.workflow === 'impact' ? 'Impact analysis' : 'Architecture index'} #${thread.artifactId}`,
+          repositoryId: thread.repositoryId,
+          state: 'current',
+          metadata: { artifactId: thread.artifactId, revision: thread.revision, digest: thread.digest },
+          primary: true,
+        },
+        readOnly: true,
+      },
+    )
+  }
   return {
     executions,
     capabilityRoutes: createCapabilityRoutes(executions),
-    developmentRoutes: createDevelopmentRoutes(impact, architecture, validation, evidence, executions, launchRepair, repairLoops),
+    developmentRoutes: createDevelopmentRoutes(
+      impact,
+      architecture,
+      validation,
+      evidence,
+      executions,
+      launchRepair,
+      repairLoops,
+      intelligence,
+      launchIntelligenceThread,
+    ),
     migrationRoutes: createMigrationRoutes(migration),
   }
 }

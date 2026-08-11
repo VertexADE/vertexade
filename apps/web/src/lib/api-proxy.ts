@@ -289,7 +289,12 @@ function rewritePath(pathname: string, backend: ApiBackend) {
     rewritten = rewritten.replace(match[1], String(localId(match[1])))
     break
   }
-  for (const pattern of [/\/validation-runs\/(\d+)/, /\/impact-analyses\/(\d+)/, /\/architecture-index\/(\d+)/]) {
+  for (const pattern of [
+    /\/validation-runs\/(\d+)/,
+    /\/impact-analyses\/(\d+)/,
+    /\/architecture-index\/(\d+)/,
+    /\/development-knowledge\/(\d+)/,
+  ]) {
     const match = rewritten.match(pattern)
     if (match) rewritten = rewritten.replace(match[1], String(localId(match[1])))
   }

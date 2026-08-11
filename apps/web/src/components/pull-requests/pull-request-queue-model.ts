@@ -108,6 +108,25 @@ export function pullRequestFilterSearch(
   }
 }
 
+const pullRequestFilterSearchKeys = [
+  'q',
+  'repos',
+  'status',
+  'author',
+  'reviewer',
+  'checks',
+  'age',
+  'label',
+  'branch',
+  'type',
+  'service',
+] as const satisfies ReadonlyArray<keyof PullRequestDashboardSearch>
+
+export function pullRequestFilterSearchMatches(search: PullRequestDashboardSearch, filters: Filters): boolean {
+  const expected = pullRequestFilterSearch(filters)
+  return pullRequestFilterSearchKeys.every((key) => search[key] === expected[key])
+}
+
 export function filterPullRequests(pullRequests: PullRequest[], filters: Filters, currentUser: GithubReviewer | null, renderedAt: number) {
   return pullRequests.filter((pullRequest) => pullRequestMatches(pullRequest, filters, currentUser, renderedAt))
 }

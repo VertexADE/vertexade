@@ -19,8 +19,15 @@ import { FilterBar, FilterBarControls, FilterBarToggle, FilterChip, ToolbarGroup
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { age, api } from '@vertexade/ui/lib/dashboard-api'
 import type { DeploymentService } from '@vertexade/ui/lib/dashboard-types'
+import { backendApiPath, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import { ServiceCard } from '../components/deployments/deployment-components'
-import { normalizeDeploymentOverview, type RoutedDeploymentOverview, type RoutedDeploymentPayload } from '../lib/deployment-overview'
+import {
+  mergeDeploymentOverviews,
+  routeDeploymentOverview,
+  type RoutedDeploymentOverview,
+  type RoutedDeploymentPayload,
+  type RoutedDeploymentService,
+} from '../lib/deployment-overview'
 
 export const Route = createFileRoute('/deployments')({
   ssr: false,
@@ -42,18 +49,25 @@ const deliveryStates: Record<DeliveryStatus, Set<DeploymentService['state']>> = 
   current: new Set(['deployed']),
 }
 
-function matchesTarget(service: DeploymentService, target: string) {
+function matchesTarget(service: RoutedDeploymentService, target: string) {
   return target.length === 0 || service.target.id === target
 }
 
-function serviceSearchText(service: DeploymentService) {
+function serviceSearchText(service: RoutedDeploymentService) {
   const latest = service.latest
-  return [service.name, service.target.label, service.target.repository, latest ? latest.title : '', latest ? latest.sha : '']
+  return [
+    service.name,
+    service.backend_name,
+    service.target.label,
+    service.target.repository,
+    latest ? latest.title : '',
+    latest ? latest.sha : '',
+  ]
     .join(' ')
     .toLowerCase()
 }
 
-function serviceMatches(service: DeploymentService, status: DeliveryStatus, query: string, target: string) {
+function serviceMatches(service: RoutedDeploymentService, status: DeliveryStatus, query: string, target: string) {
   if (!matchesTarget(service, target)) return false
   if (!deliveryStates[status].has(service.state)) return false
   return serviceSearchText(service).includes(query)
@@ -170,7 +184,7 @@ function DeliveryOverview({
   target: string
   rerunning: string | null
   onFilter(patch: { status?: DeliveryStatus; q?: string; target?: string }): void
-  onRerun(service: DeploymentService): void
+  onRerun(service: RoutedDeploymentService): void
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const selectedTarget = data.targets.some((item) => item.id === target) ? target : ''
@@ -211,7 +225,8 @@ function DeliveryOverview({
         </Empty>
       )}
       <p className="mt-4 text-right text-xs text-muted-foreground">
-        Live from {data.provider.name} · refreshed {age(data.refreshed_at)}
+        Live from {data.provider.name} on {data.backends.length} server{data.backends.length === 1 ? '' : 's'} · refreshed{' '}
+        {age(data.refreshed_at)}
       </p>
     </>
   )
@@ -227,7 +242,12 @@ function deliveryFilters(search: { status?: DeliveryStatus; q?: string; target?:
 
 function deliveryEyebrow(data: RoutedDeploymentOverview | null) {
   if (!data) return 'Service deployments'
+  return availableDeliveryEyebrow(data)
+}
+
+function availableDeliveryEyebrow(data: RoutedDeploymentOverview) {
   if (!data.targets.length) return 'No enabled deployment targets'
+  if (data.backends.length > 1) return `${data.targets.length} deployment targets · ${data.backends.length} servers`
   return data.targets.length === 1 ? `${data.repository} · ${data.workflow}` : `${data.targets.length} deployment targets`
 }
 
@@ -239,7 +259,7 @@ function NoDeploymentTargets() {
           <Settings2 />
         </EmptyMedia>
         <EmptyTitle>No deployment targets enabled</EmptyTitle>
-        <EmptyDescription>Configure one or more GitHub Actions targets on this server to populate Delivery.</EmptyDescription>
+        <EmptyDescription>Configure one or more GitHub Actions targets on a connected server to populate Delivery.</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button asChild>
@@ -282,7 +302,7 @@ function DeliveryContent({
   target: string
   rerunning: string | null
   onFilter(patch: { status?: DeliveryStatus; q?: string; target?: string }): void
-  onRerun(service: DeploymentService): void
+  onRerun(service: RoutedDeploymentService): void
 }) {
   if (!data) return <DeliveryLoading loading={loading} />
   if (!data.targets.length) return <NoDeploymentTargets />
@@ -299,6 +319,57 @@ function DeliveryContent({
   )
 }
 
+type BackendDeploymentResult = {
+  backend: BackendDescriptor
+  overview: RoutedDeploymentOverview | null
+  error: string
+}
+
+function unavailableBackendResult(backend: BackendDescriptor): BackendDeploymentResult | null {
+  if (backend.connected || backend.isDefault) return null
+  return { backend, overview: null, error: backend.error || 'Server unavailable' }
+}
+
+function deploymentsPath(force: boolean): string {
+  return force ? '/api/deployments?refresh=1' : '/api/deployments'
+}
+
+async function loadBackendDeployment(backend: BackendDescriptor, force: boolean): Promise<BackendDeploymentResult> {
+  const unavailable = unavailableBackendResult(backend)
+  if (unavailable) return unavailable
+  try {
+    const overview = await api<RoutedDeploymentPayload>(backendApiPath(deploymentsPath(force), backend.id))
+    return { backend, overview: routeDeploymentOverview(overview, backend), error: '' }
+  } catch (error) {
+    return { backend, overview: null, error: (error as Error).message }
+  }
+}
+
+function deploymentLoadError(results: BackendDeploymentResult[]): string {
+  return results
+    .filter((result) => result.error)
+    .map((result) => `${result.backend.label}: ${result.error}`)
+    .join(' · ')
+}
+
+function rerunPresentation(service: RoutedDeploymentService) {
+  if (service.latest?.conclusion === 'failure') {
+    return { mode: 'failed' as const, title: `Retry failed jobs for ${service.name}?`, confirmLabel: 'Retry failed jobs' }
+  }
+  return { mode: 'all' as const, title: `Rerun ${service.name}?`, confirmLabel: 'Rerun workflow' }
+}
+
+async function requestDeploymentRerun(service: RoutedDeploymentService, runId: number, mode: 'all' | 'failed') {
+  await api(backendApiPath(`/api/deployments/runs/${runId}/rerun`, service.backend_id), {
+    method: 'POST',
+    body: JSON.stringify({
+      mode,
+      provider: service.provider_id,
+      target_id: service.target.backend_target_id,
+    }),
+  })
+}
+
 function DeploymentsPage() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -311,8 +382,10 @@ function DeploymentsPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const overview = await api<RoutedDeploymentPayload>(`/api/deployments${force ? '?refresh=1' : ''}`)
-      setData(normalizeDeploymentOverview(overview))
+      const registry = await api<{ backends: BackendDescriptor[] }>('/api/backends')
+      const results = await Promise.all(registry.backends.map((backend) => loadBackendDeployment(backend, force)))
+      setData(mergeDeploymentOverviews(results.flatMap((result) => (result.overview ? [result.overview] : []))))
+      setLoadError(deploymentLoadError(results))
     } catch (error) {
       setLoadError((error as Error).message)
     } finally {
@@ -330,21 +403,18 @@ function DeploymentsPage() {
       resetScroll: false,
     })
 
-  async function rerun(service: DeploymentService) {
+  async function rerun(service: RoutedDeploymentService) {
     if (!service.latest) return
-    const failedOnly = service.latest.conclusion === 'failure'
+    const presentation = rerunPresentation(service)
     const confirmed = await confirmAction({
-      title: failedOnly ? `Retry failed jobs for ${service.name}?` : `Rerun ${service.name}?`,
+      title: presentation.title,
       description: `This requests a new workflow run for commit ${service.latest.sha.slice(0, 7)}. Existing deployment history is retained.`,
-      confirmLabel: failedOnly ? 'Retry failed jobs' : 'Rerun workflow',
+      confirmLabel: presentation.confirmLabel,
     })
     if (!confirmed) return
     setRerunning(service.key)
     try {
-      await api(`/api/deployments/runs/${service.latest.run_id}/rerun`, {
-        method: 'POST',
-        body: JSON.stringify({ mode: failedOnly ? 'failed' : 'all', provider: data?.provider.id, target_id: service.target.id }),
-      })
+      await requestDeploymentRerun(service, service.latest.run_id, presentation.mode)
       toast.success(`Deployment rerun requested for ${service.name}`)
       await load(true)
     } catch (error) {
@@ -359,7 +429,7 @@ function DeploymentsPage() {
       <WorkspaceHeader
         eyebrow={deliveryEyebrow(data)}
         title="Delivery"
-        description="Track independently configured workflows, services, and promotion environments on this server."
+        description="Track independently configured workflows, services, and promotion environments across connected servers."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>

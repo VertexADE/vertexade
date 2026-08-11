@@ -3,12 +3,8 @@ import { ensureWorkSchema } from './work-schema.ts'
 import { baseSchema } from './base-schema.ts'
 import { migrateCanonicalPaths } from './canonical-paths-migration.ts'
 import { developmentMigrations } from './development-migrations.ts'
-
-export type Migration = {
-  version: number
-  name: string
-  migrate(database: DatabaseSync): void
-}
+import { developmentIntelligenceMigration } from './development-intelligence-migration.ts'
+import type { Migration } from './migration.ts'
 
 function columns(database: DatabaseSync, table: string) {
   return new Set(
@@ -765,6 +761,7 @@ const migrations: Migration[] = [
       `)
     },
   },
+  developmentIntelligenceMigration,
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

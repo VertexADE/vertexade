@@ -90,7 +90,7 @@ export function AgentResourceSettings({ section = 'all' }: { section?: 'all' | '
     }
   }
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-3">
       {section !== 'agents' && (
         <>
           <SkillSettings skills={catalog.skills} reload={load} onDefault={setDefault} onRemove={remove} />
@@ -98,7 +98,7 @@ export function AgentResourceSettings({ section = 'all' }: { section?: 'all' | '
         </>
       )}
       {section !== 'context' && (
-        <div className={section === 'agents' ? 'lg:col-span-2' : ''}>
+        <div className="col-span-full min-w-0">
           <CustomAgentSettings profiles={catalog.profiles} skills={catalog.skills} mcpServers={catalog.mcpServers} reload={load} />
         </div>
       )}

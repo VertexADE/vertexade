@@ -59,6 +59,7 @@ describe('dashboard database migrations', () => {
       { version: 39, name: 'development-validation-artifacts-and-migration-evidence' },
       { version: 40, name: 'development-bounded-repair-loops' },
       { version: 41, name: 'single-active-work-item-worktree' },
+      { version: 42, name: 'development-repository-knowledge' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',

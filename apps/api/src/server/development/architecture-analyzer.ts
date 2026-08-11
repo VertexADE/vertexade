@@ -8,8 +8,9 @@ import type {
   ImpactWarning,
 } from '@vertexade/platform-contracts'
 import type { ImpactCommandRunner } from './impact-analyzer.ts'
+import { buildRepositorySourceGraph, type RepositorySourceGraph } from './repository-source-graph.ts'
 
-export const architectureIndexVersion = '1.0.0'
+export const architectureIndexVersion = '1.1.0'
 
 const maximumTrackedFiles = 100_000
 const maximumIndexedDocuments = 500
@@ -35,6 +36,7 @@ type PackageEntry = {
   dependencies: string[]
   citation: ArchitectureSourceCitation
   nodeKind: 'package' | 'service'
+  packageName: string | null
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -133,7 +135,8 @@ async function packages(
       const value = record(JSON.parse(await readSource(repository, revision, entry.path, run, signal)))
       if (!value) throw new Error('manifest must be a JSON object')
       const rootPath = directory(entry.path)
-      const name = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : rootPath || repository.fullName
+      const packageName = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : null
+      const name = packageName || rootPath || repository.fullName
       result.push({
         key: `architecture:${rootPath.startsWith('apps/') ? 'service' : 'package'}:${rootPath || '.'}`,
         label: name.slice(0, 300),
@@ -142,6 +145,7 @@ async function packages(
         dependencies: packageDependencies(value),
         citation: source(entry.path, entry.digest),
         nodeKind: rootPath.startsWith('apps/') ? 'service' : 'package',
+        packageName,
       })
     } catch (error) {
       warnings.push({
@@ -234,27 +238,78 @@ function addNode(nodes: Map<string, ArchitectureNode>, node: ArchitectureNode): 
   if (!nodes.has(node.key)) nodes.set(node.key, node)
 }
 
+function specialOwner(entry: TreeEntry, packageEntries: PackageEntry[]): PackageEntry | null {
+  return (
+    packageEntries
+      .filter((candidate) => !candidate.rootPath || entry.path.startsWith(`${candidate.rootPath}/`))
+      .sort((left, right) => right.rootPath.length - left.rootPath.length)[0] || null
+  )
+}
+
+function specialRelation(kind: ArchitectureNodeKind, path: string): ArchitectureRelation['relation'] {
+  if (kind === 'deployment') return 'deploys_as'
+  if (kind === 'datastore') return 'persists_to'
+  if (kind !== 'event') return 'exposes'
+  return /(^|\/)(consumers?|handlers?|subscribers?)(\/|\.|-)/i.test(path) ? 'consumes' : 'publishes'
+}
+
+function specialBoundary(
+  entry: TreeEntry,
+  repositoryKey: string,
+  packageEntries: PackageEntry[],
+): { node: ArchitectureNode; relation: ArchitectureRelation } | null {
+  const kind = specialKind(entry.path)
+  if (!kind) return null
+  const key = `architecture:${kind}:${entry.path}`
+  const citation = source(entry.path, entry.digest)
+  const owner = specialOwner(entry, packageEntries)
+  return {
+    node: { key, kind, label: entry.path, summary: null, path: entry.path, citations: [citation] },
+    relation: {
+      from: owner?.key || repositoryKey,
+      to: key,
+      relation: specialRelation(kind, entry.path),
+      summary: `${owner?.label || 'Repository'} declares ${entry.path} as a ${kind} boundary`,
+      confidence: kind === 'extension' ? 'medium' : 'high',
+      citation,
+    },
+  }
+}
+
 function specialNodes(
   entries: TreeEntry[],
   repositoryKey: string,
+  packageEntries: PackageEntry[],
   nodes: Map<string, ArchitectureNode>,
   relations: ArchitectureRelation[],
 ): void {
   for (const entry of entries) {
-    const kind = specialKind(entry.path)
-    if (!kind) continue
-    const key = `architecture:${kind}:${entry.path}`
-    const citation = source(entry.path, entry.digest)
-    addNode(nodes, { key, kind, label: entry.path, summary: null, path: entry.path, citations: [citation] })
-    relations.push({
-      from: repositoryKey,
-      to: key,
-      relation: kind === 'deployment' ? 'deploys_as' : kind === 'event' ? 'publishes' : kind === 'datastore' ? 'persists_to' : 'exposes',
-      summary: `${entry.path} declares a ${kind} boundary`,
-      confidence: kind === 'extension' ? 'medium' : 'high',
-      citation,
+    const boundary = specialBoundary(entry, repositoryKey, packageEntries)
+    if (!boundary) continue
+    addNode(nodes, boundary.node)
+    relations.push(boundary.relation)
+  }
+}
+
+function sourceRelations(graph: RepositorySourceGraph, entries: TreeEntry[], existing: ArchitectureRelation[]): ArchitectureRelation[] {
+  const digests = new Map(entries.map((entry) => [entry.path, entry.digest]))
+  const identities = new Set(existing.map((relation) => `${relation.from}:${relation.to}:${relation.relation}`))
+  const result: ArchitectureRelation[] = []
+  for (const edge of graph.edges) {
+    if (edge.fromBoundaryKey === edge.toBoundaryKey) continue
+    const identity = `${edge.fromBoundaryKey}:${edge.toBoundaryKey}:depends_on`
+    if (identities.has(identity)) continue
+    identities.add(identity)
+    result.push({
+      from: edge.fromBoundaryKey,
+      to: edge.toBoundaryKey,
+      relation: 'depends_on',
+      summary: `${edge.fromPath}:${edge.line} ${edge.kind.replaceAll('_', ' ')}s ${edge.specifier}`,
+      confidence: edge.confidence,
+      citation: source(edge.fromPath, digests.get(edge.fromPath) || graph.digest, edge.line, edge.line),
     })
   }
+  return result
 }
 
 function packageRelations(packageEntries: PackageEntry[], repositoryKey: string): ArchitectureRelation[] {
@@ -342,7 +397,20 @@ export async function analyzeRepositoryArchitecture({
     })
   }
   const relations = packageRelations(packageEntries, repositoryKey)
-  specialNodes(tree.entries, repositoryKey, nodes, relations)
+  const sourceGraph = await buildRepositorySourceGraph({
+    repository,
+    revision,
+    paths: tree.entries.map((entry) => entry.path),
+    boundaries: [
+      ...packageEntries.map((entry) => ({ key: entry.key, rootPath: entry.rootPath, packageName: entry.packageName })),
+      ...(packageEntries.some((entry) => entry.rootPath === '') ? [] : [{ key: repositoryKey, rootPath: '', packageName: null }]),
+    ],
+    run,
+    signal,
+  })
+  warnings.push(...sourceGraph.warnings)
+  relations.push(...sourceRelations(sourceGraph, tree.entries, relations))
+  specialNodes(tree.entries, repositoryKey, packageEntries, nodes, relations)
 
   const documentEntries = tree.entries
     .filter(({ path }) => /(^|\/)(readme|architecture|adr|adrs|decisions?)[^/]*\.md$/i.test(path) || /^(docs|design)\/.*\.md$/i.test(path))
@@ -392,6 +460,13 @@ export async function analyzeRepositoryArchitecture({
   const values = [...nodes.values()].sort((left, right) => left.key.localeCompare(right.key))
   return {
     indexVersion: architectureIndexVersion,
+    sourceGraph: {
+      version: sourceGraph.version,
+      revision: sourceGraph.revision,
+      digest: sourceGraph.digest,
+      sourceFileCount: sourceGraph.sourceFileCount,
+      edgeCount: sourceGraph.edgeCount,
+    },
     repositoryName: repository.fullName,
     revision,
     nodes: values,

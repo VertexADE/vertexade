@@ -8,10 +8,12 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
+import { DevelopmentIntelligencePanel } from '../components/development/development-intelligence-panel'
+import { DevelopmentRepositorySelect } from '../components/development/development-repository-select'
+import { useDevelopmentRepositorySelection } from '../lib/development-intelligence'
 import { useRxDashboardCollection } from '../lib/rxdb-dashboard-cache'
 
 export const Route = createFileRoute('/architecture')({
@@ -20,6 +22,8 @@ export const Route = createFileRoute('/architecture')({
 })
 
 type ArchitectureNode = ArchitectureIndex['result']['nodes'][number]
+type ArchitectureRelation = ArchitectureIndex['result']['relations'][number]
+type ArchitectureDecision = ArchitectureIndex['result']['decisions'][number]
 
 function architectureNodeSource(node: ArchitectureNode): string {
   return node.citations[0]?.path ?? node.path ?? 'Repository root'
@@ -31,7 +35,7 @@ function architectureNodeDigest(node: ArchitectureNode): string {
 }
 
 function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
-  const columns = useMemo<DataTableColumn<ArchitectureNode>[]>(
+  const nodeColumns = useMemo<DataTableColumn<ArchitectureNode>[]>(
     () => [
       {
         id: 'boundary',
@@ -61,8 +65,72 @@ function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
     ],
     [],
   )
+  const relationColumns = useMemo<DataTableColumn<ArchitectureRelation>[]>(
+    () => [
+      {
+        id: 'from',
+        header: 'Consumer / owner',
+        cell: ({ row }) => <span className="block max-w-80 truncate font-mono text-xs">{row.original.from}</span>,
+      },
+      {
+        id: 'relation',
+        header: 'Relation',
+        cell: ({ row }) => <Badge variant="outline">{row.original.relation.replaceAll('_', ' ')}</Badge>,
+      },
+      {
+        id: 'to',
+        header: 'Provider / boundary',
+        cell: ({ row }) => <span className="block max-w-80 truncate font-mono text-xs">{row.original.to}</span>,
+      },
+      {
+        id: 'evidence',
+        header: 'Observed evidence',
+        cell: ({ row }) => (
+          <div className="max-w-[38rem] text-xs">
+            <p>{row.original.summary}</p>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {row.original.citation.path}
+              {row.original.citation.startLine ? `:${row.original.citation.startLine}` : ''} · {row.original.confidence}
+            </p>
+          </div>
+        ),
+      },
+    ],
+    [],
+  )
+  const decisionColumns = useMemo<DataTableColumn<ArchitectureDecision>[]>(
+    () => [
+      {
+        id: 'decision',
+        header: 'Decision',
+        cell: ({ row }) => (
+          <div className="max-w-[34rem]">
+            <strong className="text-sm">{row.original.title}</strong>
+            <p className="font-mono text-[11px] text-muted-foreground">{row.original.id}</p>
+          </div>
+        ),
+      },
+      { id: 'status', header: 'Status', cell: ({ row }) => <Badge variant="outline">{row.original.status}</Badge> },
+      {
+        id: 'scope',
+        header: 'Scope and lineage',
+        cell: ({ row }) => (
+          <div className="max-w-72 text-xs text-muted-foreground">
+            <p>{row.original.scope || 'Repository-wide or unspecified'}</p>
+            {row.original.supersedes && <p>Supersedes {row.original.supersedes}</p>}
+          </div>
+        ),
+      },
+      {
+        id: 'citation',
+        header: 'Source',
+        cell: ({ row }) => <span className="font-mono text-[11px] text-muted-foreground">{row.original.citation.path}</span>,
+      },
+    ],
+    [],
+  )
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
@@ -89,7 +157,7 @@ function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
             <CardTitle>Stale, conflicting, or incomplete sources</CardTitle>
             <CardDescription>Warnings remain visible and are never silently resolved.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="flex flex-col gap-2">
             {index.result.warnings.map((warning, position) => (
               <p key={`${warning.code}:${warning.path || position}`} className="text-sm">
                 {warning.message} {warning.path && <span className="font-mono text-xs text-muted-foreground">{warning.path}</span>}
@@ -104,61 +172,49 @@ function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
           <CardDescription>Every displayed fact retains a path and captured-revision digest.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable columns={columns} data={index.result.nodes} getRowId={(node) => node.key} />
+          <DataTable columns={nodeColumns} data={index.result.nodes} getRowId={(node) => node.key} />
         </CardContent>
       </Card>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Card size="sm" layout="divided">
-          <CardHeader>
-            <CardTitle>Architecture decisions</CardTitle>
-            <CardDescription>ADR status and supersession remain source-backed.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {index.result.decisions.map((decision) => (
-              <div key={decision.id} className="rounded-md border p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="text-sm">{decision.title}</strong>
-                  <Badge variant="outline">{decision.status}</Badge>
-                </div>
-                <p className="truncate font-mono text-xs text-muted-foreground">{decision.citation.path}</p>
-              </div>
-            ))}
-            {!index.result.decisions.length && <p className="text-xs text-muted-foreground">No ADR-style decisions were discovered.</p>}
-          </CardContent>
-        </Card>
-        <Card size="sm" layout="divided">
-          <CardHeader>
-            <CardTitle>Dependency direction</CardTitle>
-            <CardDescription>Observed relations with confidence and exact evidence paths.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {index.result.relations.slice(0, 100).map((relation, position) => (
-              <div key={`${relation.from}:${relation.to}:${relation.relation}:${position}`} className="rounded-md border p-2 text-sm">
-                <span className="font-medium">{relation.from}</span> {relation.relation.replaceAll('_', ' ')}{' '}
-                <span className="font-medium">{relation.to}</span>
-                <p className="truncate font-mono text-xs text-muted-foreground">{relation.citation.path}</p>
-              </div>
-            ))}
-            {!index.result.relations.length && (
-              <p className="text-xs text-muted-foreground">No cross-boundary relations were discovered.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card size="sm" layout="divided">
+        <CardHeader>
+          <CardTitle>Architecture decisions</CardTitle>
+          <CardDescription>Complete ADR status, scope, supersession lineage, and source citations.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {index.result.decisions.length ? (
+            <DataTable columns={decisionColumns} data={index.result.decisions} getRowId={(decision) => decision.id} />
+          ) : (
+            <p className="p-4 text-xs text-muted-foreground">No ADR-style decisions were discovered.</p>
+          )}
+        </CardContent>
+      </Card>
+      <Card size="sm" layout="divided">
+        <CardHeader>
+          <CardTitle>Dependency direction</CardTitle>
+          <CardDescription>
+            Every observed manifest and source-level relation, including confidence, exact path, line, and direction. Results are not
+            silently capped.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {index.result.relations.length ? (
+            <DataTable
+              columns={relationColumns}
+              data={index.result.relations}
+              getRowId={(relation, position) => `${relation.from}:${relation.to}:${relation.relation}:${position}`}
+            />
+          ) : (
+            <p className="p-4 text-xs text-muted-foreground">No cross-boundary relations were discovered.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-function ArchitecturePage() {
-  const repositories = useRxDashboardCollection<Repository>('repositories').values
-  const [repositoryId, setRepositoryId] = useState<number | null>(null)
+function useRepositoryArchitecture(repositoryId: number | null) {
   const [index, setIndex] = useState<ArchitectureIndex | null>(null)
   const [loading, setLoading] = useState(false)
-  const selected = useMemo(() => repositories.find((repository) => repository.id === repositoryId) || null, [repositories, repositoryId])
-
-  useEffect(() => {
-    if (!repositoryId && repositories[0]) setRepositoryId(repositories[0].id)
-  }, [repositories, repositoryId])
 
   const load = useCallback(async () => {
     if (!repositoryId) return
@@ -196,6 +252,97 @@ function ArchitecturePage() {
     }
   }, [repositoryId])
 
+  return { index, loading, rebuild }
+}
+
+function ArchitectureActions({
+  repositories,
+  repositoryId,
+  selected,
+  index,
+  loading,
+  onRepositoryChange,
+  onRebuild,
+}: {
+  repositories: Repository[]
+  repositoryId: number | null
+  selected: Repository | null
+  index: ArchitectureIndex | null
+  loading: boolean
+  onRepositoryChange(value: number | null): void
+  onRebuild(): void
+}) {
+  const actionLabel = loading ? 'Indexing…' : index ? 'Rebuild' : 'Build index'
+  return (
+    <div className="flex flex-wrap gap-2">
+      <DevelopmentRepositorySelect
+        repositories={repositories}
+        value={repositoryId}
+        onValueChange={onRepositoryChange}
+        className="w-64 max-w-full"
+      />
+      <Button variant="outline" disabled={loading || !selected} onClick={onRebuild}>
+        <RefreshCw data-icon="inline-start" /> {actionLabel}
+      </Button>
+    </div>
+  )
+}
+
+function ArchitectureContent({
+  index,
+  selected,
+  loading,
+  onRebuild,
+}: {
+  index: ArchitectureIndex | null
+  selected: Repository | null
+  loading: boolean
+  onRebuild(): void
+}) {
+  if (index) {
+    return (
+      <div className="flex flex-col gap-3">
+        <RepositoryArchitectureView index={index} />
+        <DevelopmentIntelligencePanel
+          kind="architecture_index"
+          repositoryId={index.subject.repositoryId}
+          artifactId={index.id}
+          sourceGraph={index.result.sourceGraph}
+        />
+      </div>
+    )
+  }
+  return <ArchitectureEmpty selected={selected} loading={loading} onRebuild={onRebuild} />
+}
+
+function ArchitectureEmpty({ selected, loading, onRebuild }: { selected: Repository | null; loading: boolean; onRebuild(): void }) {
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Boxes />
+        </EmptyMedia>
+        <EmptyTitle>{loading ? 'Loading architecture…' : 'No architecture index yet'}</EmptyTitle>
+        <EmptyDescription>
+          Build an immutable index from manifests, contracts, deployments, extensions, documentation, and ADRs on the repository owner.
+        </EmptyDescription>
+      </EmptyHeader>
+      {!loading && selected && (
+        <EmptyContent>
+          <Button onClick={onRebuild}>
+            <FileText data-icon="inline-start" /> Build {selected.full_name}
+          </Button>
+        </EmptyContent>
+      )}
+    </Empty>
+  )
+}
+
+function ArchitecturePage() {
+  const repositories = useRxDashboardCollection<Repository>('repositories').values
+  const { repositoryId, setRepositoryId, selected } = useDevelopmentRepositorySelection(repositories)
+  const { index, loading, rebuild } = useRepositoryArchitecture(repositoryId)
+
   return (
     <WorkspacePage>
       <WorkspaceHeader
@@ -207,50 +354,18 @@ function ArchitecturePage() {
         title="Architecture"
         description="Browse deterministic repository boundaries, contracts, decisions, dependency direction, and documentation conflicts."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Select
-              value={repositoryId ? String(repositoryId) : ''}
-              onValueChange={(value) => setRepositoryId(value ? Number(value) : null)}
-            >
-              <SelectTrigger className="w-64 max-w-full">
-                <SelectValue placeholder="Select repository" />
-              </SelectTrigger>
-              <SelectContent>
-                {repositories.map((repository) => (
-                  <SelectItem key={repository.id} value={String(repository.id)}>
-                    {repository.full_name} · {repository.backend_name || 'Local'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" disabled={loading || !selected} onClick={() => void rebuild()}>
-              <RefreshCw data-icon="inline-start" /> {loading ? 'Indexing…' : index ? 'Rebuild' : 'Build index'}
-            </Button>
-          </div>
+          <ArchitectureActions
+            repositories={repositories}
+            repositoryId={repositoryId}
+            selected={selected}
+            index={index}
+            loading={loading}
+            onRepositoryChange={setRepositoryId}
+            onRebuild={() => void rebuild()}
+          />
         }
       />
-      {index ? (
-        <RepositoryArchitectureView index={index} />
-      ) : (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Boxes />
-            </EmptyMedia>
-            <EmptyTitle>{loading ? 'Loading architecture…' : 'No architecture index yet'}</EmptyTitle>
-            <EmptyDescription>
-              Build an immutable index from manifests, contracts, deployments, extensions, documentation, and ADRs on the repository owner.
-            </EmptyDescription>
-          </EmptyHeader>
-          {!loading && selected && (
-            <EmptyContent>
-              <Button onClick={() => void rebuild()}>
-                <FileText data-icon="inline-start" /> Build {selected.full_name}
-              </Button>
-            </EmptyContent>
-          )}
-        </Empty>
-      )}
+      <ArchitectureContent index={index} selected={selected} loading={loading} onRebuild={() => void rebuild()} />
     </WorkspacePage>
   )
 }

@@ -181,22 +181,21 @@ function ImpactReasons({ analysis }: { analysis: ImpactAnalysis }) {
     ],
     [labels],
   )
-  const rows = analysis.result.edges.slice(0, 100)
   return (
     <Card size="sm" layout="divided">
       <CardHeader>
         <CardTitle>Reason chain</CardTitle>
-        <CardDescription>Why each project, validation, or delivery surface is included.</CardDescription>
+        <CardDescription>
+          Every captured source, ownership, validation, contract, and delivery edge; results are not silently capped.
+        </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <DataTable
           columns={columns}
-          data={rows}
+          data={analysis.result.edges}
           getRowId={(edge) => `${edge.from}:${edge.to}:${edge.relation}:${edge.sourcePath || edge.summary}`}
+          caption={`${analysis.result.edges.length} revision-bound reason edges`}
         />
-        {analysis.result.edges.length > 100 && (
-          <p className="p-3 text-xs text-muted-foreground">Showing the first 100 of {analysis.result.edges.length} reason edges.</p>
-        )}
       </CardContent>
     </Card>
   )

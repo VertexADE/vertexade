@@ -355,6 +355,22 @@ export class ImpactAnalysisService {
     return row ? this.record(row) : null
   }
 
+  latestForRevision(repositoryId: number, headRevision: string): ImpactAnalysis | null {
+    const row = this.database
+      .select()
+      .from(impactAnalyses)
+      .where(
+        and(
+          eq(impactAnalyses.repositoryId, positiveInteger(repositoryId, 'Repository ID')),
+          eq(impactAnalyses.headRevision, revision(headRevision, 'Head revision')),
+        ),
+      )
+      .orderBy(desc(impactAnalyses.id))
+      .limit(1)
+      .get()
+    return row ? this.record(row) : null
+  }
+
   latestForWorkItem(workItemId: number): ImpactAnalysis | null {
     const id = positiveInteger(workItemId, 'Work item ID')
     const row = this.database

@@ -4,6 +4,106 @@ export type DevelopmentExecutionStatus = 'queued' | 'running' | 'succeeded' | 'f
 
 export type DevelopmentConfidence = 'high' | 'medium' | 'low'
 
+export type DevelopmentArtifactKind = 'impact_analysis' | 'architecture_index'
+
+export type DevelopmentSourceGraphSummary = {
+  version: string
+  revision: string
+  digest: string
+  sourceFileCount: number
+  edgeCount: number
+}
+
+export type DevelopmentKnowledgeKind = 'fact' | 'decision' | 'constraint' | 'risk' | 'pattern' | 'ownership'
+
+export type DevelopmentKnowledgeScope = 'repository' | 'path' | 'boundary'
+
+export type DevelopmentKnowledgeStatus = 'accepted' | 'superseded' | 'archived'
+
+export type DevelopmentArtifactReference = {
+  kind: DevelopmentArtifactKind
+  id: number
+  repositoryId: number
+  revision: string
+  digest: string
+  label: string
+}
+
+export type DevelopmentKnowledgeEntry = {
+  id: number
+  repositoryId: number
+  kind: DevelopmentKnowledgeKind
+  scope: DevelopmentKnowledgeScope
+  title: string
+  summary: string
+  path: string | null
+  boundaryKey: string | null
+  confidence: DevelopmentConfidence
+  status: DevelopmentKnowledgeStatus
+  source: DevelopmentArtifactReference & {
+    jobId: number | null
+    workItemId: number | null
+  }
+  supersedesEntryId: number | null
+  actor: string
+  freshness: DevelopmentFreshness
+  createdAt: string
+  updatedAt: string
+  archivedAt: string | null
+}
+
+export type DevelopmentInvestigation = {
+  jobId: number
+  workItemId: number
+  workItemKey: string
+  title: string
+  status: string
+  agentId: string
+  model: string | null
+  reasoningEffort: string | null
+  latestActivity: string | null
+  resultSummary: string | null
+  revision: string
+  digest: string
+  createdAt: string
+  finishedAt: string | null
+}
+
+export type DevelopmentRelatedArtifact = {
+  kind: DevelopmentArtifactKind
+  id: number
+  repositoryId: number
+  revision: string
+  digest: string
+  freshness: DevelopmentFreshness
+  summary: string
+}
+
+export type DevelopmentIntelligenceOverview = {
+  artifact: DevelopmentArtifactReference
+  investigations: DevelopmentInvestigation[]
+  knowledge: DevelopmentKnowledgeEntry[]
+  relatedArtifacts: DevelopmentRelatedArtifact[]
+  acceptedKnowledgeDigest: string
+}
+
+export type CreateDevelopmentKnowledgeRequest = {
+  kind: DevelopmentKnowledgeKind
+  scope: DevelopmentKnowledgeScope
+  title: string
+  summary: string
+  path?: string | null
+  boundaryKey?: string | null
+  confidence: DevelopmentConfidence
+  actor?: string
+  sourceJobId?: number | null
+  supersedesEntryId?: number | null
+}
+
+export type LaunchDevelopmentInvestigationRequest = {
+  question?: string
+}
+
 export type DevelopmentSubject =
   | {
       kind: 'repository_comparison'
@@ -126,6 +226,7 @@ export type ImpactWarning = {
 
 export type ImpactAnalysisResult = {
   analyzerVersion: string
+  sourceGraph?: DevelopmentSourceGraphSummary
   repositoryName: string
   changedFiles: ImpactChangedFile[]
   nodes: ImpactNode[]
@@ -231,6 +332,7 @@ export type ArchitectureDecision = {
 
 export type ArchitectureIndexResult = {
   indexVersion: string
+  sourceGraph?: DevelopmentSourceGraphSummary
   repositoryName: string
   revision: string
   nodes: ArchitectureNode[]

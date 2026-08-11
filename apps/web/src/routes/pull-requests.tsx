@@ -27,6 +27,7 @@ import {
   pullRequestFilterCounts,
   pullRequestFilterOptions,
   pullRequestFilterSearch,
+  pullRequestFilterSearchMatches,
   pullRequestFiltersFromSearch,
   pullRequestFilterStorageKey,
   pullRequestsForView,
@@ -181,8 +182,11 @@ function usePullRequestFilterState(
   useEffect(() => applyRepositorySearch(search, repositories, setFilters), [repositories, search.pr, search.repo])
   useEffect(() => {
     storeFilters(filters)
+  }, [filters])
+  useEffect(() => {
+    if (pullRequestFilterSearchMatches(search, filters)) return
     void navigate({ search: (current) => ({ ...current, ...pullRequestFilterSearch(filters) }), replace: true, resetScroll: false })
-  }, [filters, navigate])
+  }, [filters, navigate, search])
   useEffect(() => setLimit(12), [filters, view])
 
   const changeView = (next: typeof view) =>
@@ -207,7 +211,11 @@ function applyRepositorySearch(
 ) {
   const repository = repositoryFromSearch(search, repositories)
   if (!repository) return
-  setFilters((current) => ({ ...current, repositories: [repository.full_name] }))
+  setFilters((current) =>
+    current.repositories.length === 1 && current.repositories[0] === repository.full_name
+      ? current
+      : { ...current, repositories: [repository.full_name] },
+  )
 }
 
 function repositoryFromSearch(search: DashboardSearch, repositories: DashboardData['repositories']) {

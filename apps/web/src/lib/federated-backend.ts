@@ -196,6 +196,7 @@ export function normalizeEntity(value: unknown, backend: BackendStatus): unknown
     'campaignId',
     'targetId',
     'recipeId',
+    'supersedesEntryId',
   ]) {
     if (typeof normalized[key] === 'number') normalized[key] = federatedId(backend, normalized[key])
   }
@@ -294,6 +295,7 @@ const idBodyFields = new Set([
   'campaignId',
   'targetId',
   'recipeId',
+  'supersedesEntryId',
 ])
 
 export function denormalizePayload(value: unknown, backend: ApiBackend): unknown {

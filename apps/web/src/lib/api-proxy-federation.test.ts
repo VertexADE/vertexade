@@ -286,6 +286,28 @@ describe('multi-backend API proxy', () => {
       if (url.host === 'team.internal' && url.pathname === '/api/pulls/7/17/impact-analysis') {
         return Response.json({ id: 4, subject: { repositoryId: 7, pullRequestNumber: 17 }, freshness: 'current' })
       }
+      if (url.host === 'team.internal' && url.pathname === '/api/repositories/7/impact-analyses/4/intelligence') {
+        return Response.json({
+          artifact: { kind: 'impact_analysis', id: 4, repositoryId: 7, revision: 'abc', digest: 'artifact', label: 'Impact #4' },
+          investigations: [{ jobId: 8, workItemId: 9, workItemKey: 'W-0009', status: 'completed' }],
+          knowledge: [
+            {
+              id: 6,
+              repositoryId: 7,
+              title: 'Remote knowledge',
+              source: { kind: 'impact_analysis', id: 4, repositoryId: 7, jobId: 8, workItemId: 9 },
+              supersedesEntryId: null,
+            },
+          ],
+          relatedArtifacts: [{ kind: 'architecture_index', id: 5, repositoryId: 7, revision: 'abc', digest: 'related' }],
+        })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/repositories/7/impact-analyses/4/knowledge') {
+        return Response.json({ id: 10, repositoryId: 7, supersedesEntryId: 6 })
+      }
+      if (url.host === 'team.internal' && url.pathname === '/api/repositories/7/development-knowledge/6/archive') {
+        return Response.json({ id: 6, repositoryId: 7, status: 'archived' })
+      }
       if (url.host === 'team.internal' && url.pathname === '/api/pulls/7/17/validation-runs') {
         return Response.json({ runs: [{ id: 9, repositoryId: 7 }], errors: [] })
       }
@@ -382,6 +404,54 @@ describe('multi-backend API proxy', () => {
     })
     expect(fetch).toHaveBeenLastCalledWith(
       new URL('http://team.internal/api/pulls/7/17/impact-analysis'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    const intelligenceResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/repositories/1000000007/impact-analyses/1000000004/intelligence'),
+    })
+    expect(await intelligenceResponse.json()).toMatchObject({
+      artifact: { id: 1_000_000_004, repositoryId: 1_000_000_007 },
+      investigations: [{ jobId: 1_000_000_008, workItemId: 1_000_000_009 }],
+      knowledge: [
+        {
+          id: 1_000_000_006,
+          repositoryId: 1_000_000_007,
+          source: { id: 1_000_000_004, repositoryId: 1_000_000_007, jobId: 1_000_000_008, workItemId: 1_000_000_009 },
+        },
+      ],
+      relatedArtifacts: [{ id: 1_000_000_005, repositoryId: 1_000_000_007 }],
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/repositories/7/impact-analyses/4/intelligence'),
+      expect.objectContaining({ method: 'GET' }),
+    )
+
+    const knowledgeResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/repositories/1000000007/impact-analyses/1000000004/knowledge', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ supersedesEntryId: 1_000_000_006 }),
+      }),
+    })
+    expect(await knowledgeResponse.json()).toMatchObject({
+      id: 1_000_000_010,
+      repositoryId: 1_000_000_007,
+      supersedesEntryId: 1_000_000_006,
+    })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/repositories/7/impact-analyses/4/knowledge'),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ supersedesEntryId: 6 }) }),
+    )
+
+    const archiveKnowledgeResponse = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/repositories/1000000007/development-knowledge/1000000006/archive', {
+        method: 'POST',
+      }),
+    })
+    expect(await archiveKnowledgeResponse.json()).toMatchObject({ id: 1_000_000_006, repositoryId: 1_000_000_007 })
+    expect(fetch).toHaveBeenLastCalledWith(
+      new URL('http://team.internal/api/repositories/7/development-knowledge/6/archive'),
       expect.objectContaining({ method: 'POST' }),
     )
 

@@ -30,6 +30,10 @@ type FieldEditorProps = {
   onChange(value: unknown): void
 }
 
+export function portableSettingsFieldLayoutClassName(type: PortableSettingsField['type']): string | undefined {
+  return ['multiselect', 'string-list', 'object-list', 'textarea'].includes(type) ? 'col-span-full' : undefined
+}
+
 function visible(field: PortableSettingsField, values: unknown) {
   if (!field.visibleWhen) return true
   const value = readPortablePath(values, field.visibleWhen.input)
@@ -53,10 +57,11 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
   if (field.type === 'hidden') return null
   const description = field.description && <FieldDescription>{field.description}</FieldDescription>
   const required = Boolean(field.required && !portableSettingsFieldStored(field, source))
+  const layoutClassName = portableSettingsFieldLayoutClassName(field.type)
 
   if (field.type === 'boolean')
     return (
-      <Field>
+      <Field className={layoutClassName}>
         <FieldLabel className="flex items-center gap-2" htmlFor={id}>
           <Checkbox id={id} checked={Boolean(value)} onCheckedChange={(checked) => onChange(Boolean(checked))} />
           {field.label}
@@ -68,7 +73,7 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
   if (field.type === 'select') {
     const options = optionValues(field, optionSource, actionResults, value)
     return (
-      <Field>
+      <Field className={layoutClassName}>
         <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
         <Select value={String(value || '')} required={required} onValueChange={onChange}>
           <SelectTrigger id={id} className="w-full">
@@ -92,7 +97,7 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
     const options = optionValues(field, optionSource, actionResults, values)
     const atMaximum = values.length >= (field.maxItems || Infinity)
     return (
-      <Field>
+      <Field className={layoutClassName}>
         <FieldLabel>{field.label}</FieldLabel>
         <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border p-3">
           {options.map((option) => (
@@ -117,7 +122,7 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
   if (field.type === 'string-list') {
     const values = Array.isArray(value) ? value.map(String) : []
     return (
-      <Field>
+      <Field className={layoutClassName}>
         <FieldLabel>{field.label}</FieldLabel>
         <div className="space-y-2">
           {values.map((item, index) => (
@@ -163,13 +168,13 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
     const nestedFields = field.fields || []
     const update = (index: number, next: Record<string, unknown>) => onChange(rows.map((row, current) => (current === index ? next : row)))
     return (
-      <Field>
+      <Field className={layoutClassName}>
         <FieldLabel>{field.label}</FieldLabel>
         {description}
         <div className="space-y-3">
           {rows.map((row, index) => (
-            <Card key={index} size="sm" variant="subtle">
-              <CardContent className="grid gap-3 md:grid-cols-2">
+            <Card key={index} size="sm" variant="subtle" className="min-w-0">
+              <CardContent className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
                 {nestedFields.map((nested) => (
                   <FieldEditor
                     key={nested.name}
@@ -181,7 +186,7 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
                     onChange={(next) => update(index, { ...row, [nested.name]: next })}
                   />
                 ))}
-                <div className="flex justify-end gap-1 md:col-span-2">
+                <div className="col-span-full flex justify-end gap-1">
                   {field.allowReorder && (
                     <>
                       <Button
@@ -248,7 +253,7 @@ function FieldEditor({ field, value, source, optionSource, actionResults, onChan
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value),
   }
   return (
-    <Field>
+    <Field className={layoutClassName}>
       <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
       {field.type === 'textarea' ? (
         <Textarea {...common} className="min-h-28" />
@@ -385,7 +390,7 @@ export function PortableSettingsPanel({
                   {section.description && <p className="text-xs text-muted-foreground">{section.description}</p>}
                 </div>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
                 {section.definitions.map((field) => (
                   <FieldEditor
                     key={field.name}

@@ -2,6 +2,7 @@ import type { ExtensionCacheStats, ModuleCatalogEntry } from '@vertexade/platfor
 import { SheetContent } from '@vertexade/ui/components/ui/sheet'
 import { extensionPresentation } from '@vertexade/ui/lib/extension-presentation'
 import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
+import { cn } from '@vertexade/ui/lib/utils'
 import {
   ExtensionCacheSection,
   ExtensionConfiguration,
@@ -34,8 +35,9 @@ export function ExtensionDetails({
 }) {
   const { accent, Icon } = extensionPresentation(module)
   const workspaceRoute = extensionWorkspaceRoute(module)
+  const settingsWidth = module.portable?.settings ? 'sm:!max-w-3xl xl:!max-w-4xl' : 'sm:!max-w-xl'
   return (
-    <SheetContent side="right" className="!w-full max-w-none gap-0 sm:!max-w-xl">
+    <SheetContent side="right" className={cn('!w-full max-w-none gap-0', settingsWidth)}>
       <ExtensionDetailsHeader
         module={module}
         workspaceRoute={workspaceRoute}

@@ -22,6 +22,7 @@ async function fixtureRepository(): Promise<{ path: string; base: string; head: 
   await Promise.all([
     mkdir(join(path, 'packages', 'library', 'src', 'api'), { recursive: true }),
     mkdir(join(path, 'apps', 'web', 'src'), { recursive: true }),
+    mkdir(join(path, 'apps', 'worker', 'src'), { recursive: true }),
     mkdir(join(path, '.github', 'workflows'), { recursive: true }),
   ])
   await Promise.all([
@@ -41,6 +42,11 @@ async function fixtureRepository(): Promise<{ path: string; base: string; head: 
     writeFile(join(path, 'packages', 'library', 'src', 'index.ts'), 'export const value = 1\n'),
     writeFile(join(path, 'packages', 'library', 'src', 'api', 'schema.ts'), 'export type Contract = { value: number }\n'),
     writeFile(join(path, 'apps', 'web', 'src', 'index.ts'), "import { value } from '@fixture/library'\nvoid value\n"),
+    writeFile(join(path, 'apps', 'worker', 'package.json'), JSON.stringify({ name: '@fixture/worker', scripts: { test: 'vitest run' } })),
+    writeFile(
+      join(path, 'apps', 'worker', 'src', 'index.ts'),
+      "import { value } from '../../../packages/library/src/index'\nimport type { Contract } from '@fixture/library/api/schema'\nvoid (0 as unknown as Contract)\nvoid value\n",
+    ),
     writeFile(join(path, '.github', 'workflows', 'verify.yml'), 'name: Verify\n'),
   ])
   await git(path, ['init', '--initial-branch=main'])
@@ -88,16 +94,38 @@ describe('impact analyzer', () => {
       expect.arrayContaining([
         expect.objectContaining({ key: 'project:packages/library', direct: true }),
         expect.objectContaining({ key: 'project:apps/web', direct: false }),
+        expect.objectContaining({ key: 'project:apps/worker', direct: false }),
       ]),
     )
     expect(result.edges).toContainEqual(
       expect.objectContaining({ from: 'project:packages/library', to: 'project:apps/web', relation: 'consumed_by' }),
     )
+    expect(result.edges).toContainEqual(
+      expect.objectContaining({
+        from: 'file:packages/library/src/index.ts',
+        to: 'file:apps/worker/src/index.ts',
+        relation: 'consumed_by',
+      }),
+    )
+    expect(result.edges).toContainEqual(
+      expect.objectContaining({
+        from: 'file:packages/library/src/api/schema.ts',
+        to: 'file:apps/worker/src/index.ts',
+        relation: 'consumed_by',
+      }),
+    )
     expect(result.validationTargets.map((target) => `${target.projectLabel}:${target.script}`)).toEqual(
-      expect.arrayContaining(['@fixture/library:test', '@fixture/library:typecheck', '@fixture/web:test', '@fixture/web:build']),
+      expect.arrayContaining([
+        '@fixture/library:test',
+        '@fixture/library:typecheck',
+        '@fixture/web:test',
+        '@fixture/web:build',
+        '@fixture/worker:test',
+      ]),
     )
     expect(result.deliveryEffects).toContainEqual(expect.objectContaining({ kind: 'workflow', path: '.github/workflows/verify.yml' }))
-    expect(result.summary).toMatchObject({ directProjects: 2, transitiveProjects: 1, risk: 'high' })
+    expect(result.summary).toMatchObject({ directProjects: 2, transitiveProjects: 2, risk: 'high' })
+    expect(result.sourceGraph).toMatchObject({ revision: fixture.head, edgeCount: expect.any(Number) })
     expect(result.summary.contractChanges).toBeGreaterThan(0)
   })
 })

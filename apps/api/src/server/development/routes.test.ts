@@ -14,9 +14,10 @@ import {
 } from './capabilities.ts'
 import { ArchitectureContextService } from './architecture-service.ts'
 import { ImpactAnalysisService } from './impact-service.ts'
-import { createDevelopmentRoutes, type ValidationRepairLauncher } from './routes.ts'
+import { createDevelopmentRoutes, type DevelopmentIntelligenceThreadLauncher, type ValidationRepairLauncher } from './routes.ts'
 import { ValidationIntelligenceService } from './validation-service.ts'
 import { PullRequestEvidenceService } from './evidence-service.ts'
+import { DevelopmentIntelligenceService } from './development-intelligence-service.ts'
 
 const directories: string[] = []
 const databases: Array<{ close(): void }> = []
@@ -53,6 +54,8 @@ function developmentRoutes(
   repairLauncher: ValidationRepairLauncher = async () => {
     throw new Error('Repair launcher is not used by this fixture')
   },
+  intelligence?: DevelopmentIntelligenceService,
+  intelligenceLauncher?: DevelopmentIntelligenceThreadLauncher,
 ) {
   const registries = new PlatformCapabilityRegistries()
   const validation = new ValidationIntelligenceService(database, impact, runCommandResult)
@@ -61,10 +64,108 @@ function developmentRoutes(
   registerCoreValidationCapabilities(registries, validation)
   const executions = new CapabilityExecutionService(database, registries)
   const evidence = new PullRequestEvidenceService(database, impact, architecture, validation)
-  return createDevelopmentRoutes(impact, architecture, validation, evidence, executions, repairLauncher)
+  return createDevelopmentRoutes(
+    impact,
+    architecture,
+    validation,
+    evidence,
+    executions,
+    repairLauncher,
+    undefined,
+    intelligence,
+    intelligenceLauncher,
+  )
 }
 
 describe('development impact routes', () => {
+  it('exposes persistent intelligence, read-only investigation launch, explicit promotion, and archival', async () => {
+    const fixture = await repositoryFixture()
+    const database = openDashboardDatabase(':memory:')
+    databases.push(database)
+    const repositoryId = Number(
+      database.insert(repositories).values({ fullName: 'fixture/repository', cloneUrl: fixture.path, localPath: fixture.path }).run()
+        .lastInsertRowid,
+    )
+    const impact = new ImpactAnalysisService(database, runCommand)
+    const architecture = new ArchitectureContextService(database, runCommand)
+    const intelligence = new DevelopmentIntelligenceService(database)
+    const launches: Parameters<DevelopmentIntelligenceThreadLauncher>[0][] = []
+    const routes = developmentRoutes(database, impact, architecture, undefined, intelligence, async (input) => {
+      launches.push(input)
+      return { id: 88, work_item_id: 44 }
+    })
+
+    const analysisResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ baseRevision: fixture.base, headRevision: fixture.head }),
+      }),
+      {},
+    )
+    const analysis = (await analysisResponse!.json()) as { id: number; digest: string }
+
+    const overviewResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses/${analysis.id}/intelligence`),
+      {},
+    )
+    expect(await overviewResponse!.json()).toEqual(
+      expect.objectContaining({
+        artifact: expect.objectContaining({ kind: 'impact_analysis', id: analysis.id, digest: analysis.digest }),
+        investigations: [],
+        knowledge: [],
+      }),
+    )
+
+    const launchResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses/${analysis.id}/agent-thread`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: 'Which consumer is most exposed?' }),
+      }),
+      {},
+    )
+    expect(launchResponse?.status).toBe(202)
+    expect(await launchResponse!.json()).toEqual(expect.objectContaining({ id: 88, work_item_id: 44 }))
+    expect(launches).toEqual([
+      expect.objectContaining({
+        workflow: 'impact',
+        artifactId: analysis.id,
+        revision: fixture.head,
+        digest: analysis.digest,
+        prompt: expect.stringContaining('Which consumer is most exposed?'),
+      }),
+    ])
+
+    const knowledgeResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses/${analysis.id}/knowledge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'risk',
+          scope: 'path',
+          title: 'Public entry point risk',
+          summary: 'Changes to the public entry point require consumer validation.',
+          path: 'src/index.ts',
+          confidence: 'high',
+          actor: 'fixture-operator',
+        }),
+      }),
+      {},
+    )
+    expect(knowledgeResponse?.status).toBe(201)
+    const knowledge = (await knowledgeResponse!.json()) as { id: number; status: string }
+    expect(knowledge).toEqual(expect.objectContaining({ status: 'accepted' }))
+
+    const archiveResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/development-knowledge/${knowledge.id}/archive`, {
+        method: 'POST',
+      }),
+      {},
+    )
+    expect(await archiveResponse!.json()).toEqual(expect.objectContaining({ status: 'archived' }))
+  })
+
   it('creates an idempotent revision-bound analysis and marks old PR evidence stale', async () => {
     const fixture = await repositoryFixture()
     const database = openDashboardDatabase(':memory:')
