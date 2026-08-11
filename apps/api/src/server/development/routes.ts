@@ -206,6 +206,13 @@ export function createDevelopmentRoutes(
     })
   })
 
+  router.get('/api/work-items/:workItemId/impact-analyses', (request, { params }) => {
+    const limit = Number(new URL(request.url).searchParams.get('limit') || 50)
+    return Response.json({
+      analyses: impact.listForWorkItem(positiveInteger(params.workItemId, 'Work item ID'), Number.isFinite(limit) ? limit : 50),
+    })
+  })
+
   router.post('/api/work-items/:workItemId/impact-analysis', async (request, { params }) => {
     const prepared = await impact.prepareWorkItem(positiveInteger(params.workItemId, 'Work item ID'), request.signal)
     return executeImpact(prepared, impact, executions)

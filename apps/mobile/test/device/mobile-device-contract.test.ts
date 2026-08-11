@@ -33,7 +33,7 @@ describe('mobile device smoke contract', () => {
       'workspace-tab-threads',
       'thread-fixture-1',
       'open-thread-fixture-1',
-      'detail-tab-info',
+      'detail-tab-context',
       'workspace-tab-more',
       'extension-work',
       'Agent execution',

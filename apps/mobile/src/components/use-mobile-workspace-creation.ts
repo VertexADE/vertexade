@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { defaultMobileAgentOptions, type MobileAgentOptions } from '@/mobile-agent-options'
 import type { MobileBackend } from '@/platform-service'
 import {
   createMobileWorkItem,
@@ -16,6 +17,7 @@ type CreationState = {
   workItemId: number | null
   repositoryId: number | null
   createPullRequest: boolean
+  agentOptions: MobileAgentOptions
   busy: boolean
   error: string
 }
@@ -81,6 +83,7 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     setPrompt: (prompt: string) => update({ prompt }),
     setRepositoryId: (repositoryId: number) => update({ repositoryId }),
     setCreatePullRequest: (createPullRequest: boolean) => update({ createPullRequest }),
+    setAgentOptions: (agentOptions: MobileAgentOptions) => update({ agentOptions }),
     chooseBackend,
     chooseWorkItem,
     submit,
@@ -95,6 +98,7 @@ function initialCreationState(options: CreationOptions): CreationState {
     workItemId: options.initialWorkItem?.id || null,
     repositoryId: options.initialWorkItem?.primaryRepositoryId || null,
     createPullRequest: options.mode === 'pullRequest',
+    agentOptions: defaultMobileAgentOptions(),
     busy: false,
     error: '',
   }
@@ -148,6 +152,7 @@ async function startExistingWorkThread(
     repositoryId: state.repositoryId,
     prompt: state.prompt,
     createPullRequest: state.createPullRequest,
+    agentOptions: state.agentOptions,
   })
   return `${selectedWorkItem.key} agent thread started${state.createPullRequest ? ' with draft PR delivery enabled' : ''}.`
 }
@@ -164,6 +169,7 @@ async function draftPullRequestLaunchFailure(
       repositoryId: state.repositoryId,
       prompt: state.prompt,
       createPullRequest: true,
+      agentOptions: state.agentOptions,
     })
     return ''
   } catch (reason) {

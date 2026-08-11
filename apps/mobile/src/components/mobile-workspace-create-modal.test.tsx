@@ -62,6 +62,13 @@ describe('MobileWorkspaceCreateModal', () => {
       repositoryId: 1,
       prompt: 'Implement and verify it',
       createPullRequest: true,
+      agentOptions: {
+        agentId: '',
+        allowSubagents: false,
+        model: '',
+        reasoningEffort: '',
+        serviceTier: '',
+      },
     })
     expect(onCompleted).toHaveBeenCalledWith('W-0003 created. Its agent will publish the draft PR when the work is ready.')
   })
@@ -80,6 +87,13 @@ describe('MobileWorkspaceCreateModal', () => {
       repositoryId: 1,
       prompt: 'Finish the existing outcome',
       createPullRequest: true,
+      agentOptions: {
+        agentId: '',
+        allowSubagents: false,
+        model: '',
+        reasoningEffort: '',
+        serviceTier: '',
+      },
     }))
     expect(createWork).not.toHaveBeenCalled()
     expect(onCompleted).toHaveBeenCalledWith('W-0002 agent thread started with draft PR delivery enabled.')

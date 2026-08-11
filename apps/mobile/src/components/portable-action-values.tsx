@@ -1,9 +1,10 @@
 
 import type { PortableActionInput, PortableActionValue } from '@vertexade/platform-contracts'
 import { readPortablePath, type PortableCollectionItem } from '@vertexade/platform-contracts/portable'
+import type { MobileAgentOptions } from '@/mobile-agent-options'
 
 export type SourceData = Record<string, unknown>
-export type AgentOptions = { agentId: string; model: string; reasoningEffort: string }
+export type AgentOptions = MobileAgentOptions
 
 function records(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []

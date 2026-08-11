@@ -1,24 +1,11 @@
 import type { ReactNode } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 
 export type MobileDetailTab<Tab extends string> = { id: Tab; label: string }
 
-export function MobileDetailShell<Tab extends string>({
-  eyebrow,
-  title,
-  subtitle,
-  tabs,
-  activeTab,
-  loading,
-  error,
-  children,
-  onTab,
-  onBack,
-  onClose,
-  onRetry,
-}: {
+type MobileDetailShellProps<Tab extends string> = {
   eyebrow: string
   title: string
   subtitle: string
@@ -26,57 +13,113 @@ export function MobileDetailShell<Tab extends string>({
   activeTab: Tab
   loading: boolean
   error: string
+  headerContent?: ReactNode
+  banner?: ReactNode
+  footer?: ReactNode
   children: ReactNode
   onTab(tab: Tab): void
   onBack?: () => void
   onClose(): void
   onRetry(): void
-}) {
+}
+
+export function MobileDetailShell<Tab extends string>(props: MobileDetailShellProps<Tab>) {
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={onClose}>
+    <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={props.onClose}>
       <View testID="workspace-detail-modal" style={styles.modal}>
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            {onBack ? (
-              <Pressable testID="workspace-detail-back" accessibilityRole="button" onPress={onBack}>
-                <Text style={styles.close}>Back</Text>
-              </Pressable>
-            ) : null}
-            <View style={styles.heading}>
-              <Text style={styles.eyebrow}>{eyebrow}</Text>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.subtitle}>{subtitle}</Text>
-            </View>
-            <Pressable testID="workspace-detail-close" accessibilityRole="button" onPress={onClose}>
-              <Text style={styles.close}>Close</Text>
-            </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-            {tabs.map((tab) => (
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected: activeTab === tab.id }}
-                key={tab.id}
-                testID={`detail-tab-${tab.id}`}
-                onPress={() => onTab(tab.id)}
-                style={({ pressed }) => [styles.tab, activeTab === tab.id && styles.tabActive, pressed && styles.pressed]}
-              >
-                <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tab.label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-        {loading ? (
-          <DetailState loading title="Loading details…" text="Reading the owning VertexADE server." />
-        ) : error ? (
-          <DetailState title="Details unavailable" text={error} action="Retry" onAction={onRetry} />
-        ) : (
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        )}
+        <MobileDetailHeader {...props} />
+        {props.banner}
+        <MobileDetailBody {...props} />
       </View>
     </Modal>
+  )
+}
+
+function MobileDetailHeader<Tab extends string>({
+  eyebrow,
+  title,
+  subtitle,
+  tabs,
+  activeTab,
+  headerContent,
+  onTab,
+  onBack,
+  onClose,
+}: MobileDetailShellProps<Tab>) {
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerTop}>
+        <DetailBackButton onBack={onBack} />
+        <View style={styles.heading}>
+          <Text style={styles.eyebrow}>{eyebrow}</Text>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+          {headerContent}
+        </View>
+        <Pressable testID="workspace-detail-close" accessibilityRole="button" onPress={onClose}>
+          <Text style={styles.close}>Close</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        {tabs.map((tab) => <DetailTab key={tab.id} tab={tab} active={activeTab === tab.id} onTab={onTab} />)}
+      </ScrollView>
+    </View>
+  )
+}
+
+function DetailBackButton({ onBack }: { onBack?: () => void }) {
+  if (!onBack) return null
+  return (
+    <Pressable testID="workspace-detail-back" accessibilityRole="button" onPress={onBack}>
+      <Text style={styles.close}>Back</Text>
+    </Pressable>
+  )
+}
+
+function DetailTab<Tab extends string>({
+  tab,
+  active,
+  onTab,
+}: {
+  tab: MobileDetailTab<Tab>
+  active: boolean
+  onTab(tab: Tab): void
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      testID={`detail-tab-${tab.id}`}
+      onPress={() => onTab(tab.id)}
+      style={({ pressed }) => [styles.tab, active && styles.tabActive, pressed && styles.pressed]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+    </Pressable>
+  )
+}
+
+function MobileDetailBody<Tab extends string>({ loading, error, footer, children, onRetry }: MobileDetailShellProps<Tab>) {
+  const ready = !loading && !error
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.detailBody}>
+      <MobileDetailContent loading={loading} error={error} onRetry={onRetry}>{children}</MobileDetailContent>
+      {ready ? footer : null}
+    </KeyboardAvoidingView>
+  )
+}
+
+function MobileDetailContent({
+  loading,
+  error,
+  children,
+  onRetry,
+}: Pick<MobileDetailShellProps<string>, 'loading' | 'error' | 'children' | 'onRetry'>) {
+  if (loading) return <DetailState loading title="Loading details…" text="Reading the owning VertexADE server." />
+  if (error) return <DetailState title="Details unavailable" text={error} action="Retry" onAction={onRetry} />
+  return (
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {children}
+    </ScrollView>
   )
 }
 

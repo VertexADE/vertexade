@@ -2,7 +2,6 @@ import {
   Blocks,
   Boxes,
   BriefcaseBusiness,
-  GitCompareArrows,
   GitFork,
   GitPullRequest,
   Inbox,
@@ -34,13 +33,6 @@ export const coreItems = [
     label: 'Agents',
     description: 'Follow active runs, decisions, and results',
     icon: MessagesSquare,
-    group: 'Workspace',
-  },
-  {
-    to: '/impact',
-    label: 'Impact',
-    description: 'Trace affected projects, checks, contracts, and delivery paths',
-    icon: GitCompareArrows,
     group: 'Workspace',
   },
   {

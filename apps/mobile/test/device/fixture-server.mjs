@@ -282,7 +282,13 @@ const workItemDetails = {
 const threadLog = {
   ...workspaceReadModel.updates.agentThreads.entries[0].value,
   thread_id: 'fixture-thread-1',
+  thread_url: 'https://example.test/agent/thread/1',
   can_steer: true,
+  kind: 'task',
+  kind_label: 'Task',
+  agent_model: 'gpt-5.6',
+  agent_reasoning_effort: 'high',
+  worktree_path: '/fixture/.vertexade/worktrees/mobile-delivery',
   prompt: 'Make mobile delivery effortless and verify it.',
   result_text: '',
   review_details: '',

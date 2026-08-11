@@ -54,6 +54,8 @@ export const portableCollectionStyles = StyleSheet.create({
   inputGroup: { gap: spacing.sm },
   inputLabel: { color: colors.text, fontSize: 13, fontWeight: '800' },
   booleanInput: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  switchRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  switchCopy: { flex: 1, gap: 3 },
   optionList: { gap: spacing.sm },
   option: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, padding: spacing.md },
   optionSelected: { backgroundColor: colors.accentSoft, borderColor: colors.accent },

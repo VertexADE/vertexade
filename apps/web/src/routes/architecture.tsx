@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Boxes, FileText, Network, RefreshCw } from 'lucide-react'
+import { BookOpen, Boxes, FileText, Map, Network, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ArchitectureIndex } from '@vertexade/platform-contracts'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
@@ -9,6 +9,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
 import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { DevelopmentIntelligencePanel } from '../components/development/development-intelligence-panel'
@@ -301,15 +302,30 @@ function ArchitectureContent({
 }) {
   if (index) {
     return (
-      <div className="flex flex-col gap-3">
-        <RepositoryArchitectureView index={index} />
-        <DevelopmentIntelligencePanel
-          kind="architecture_index"
-          repositoryId={index.subject.repositoryId}
-          artifactId={index.id}
-          sourceGraph={index.result.sourceGraph}
-        />
-      </div>
+      <Tabs defaultValue="system-map" className="gap-3">
+        <TabsList variant="line" className="w-fit max-w-full overflow-x-auto">
+          <TabsTrigger value="system-map">
+            <Map data-icon="inline-start" /> System map
+          </TabsTrigger>
+          <TabsTrigger value="knowledge">
+            <BookOpen data-icon="inline-start" /> Knowledge base
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="system-map" className="mt-0">
+          <RepositoryArchitectureView index={index} />
+        </TabsContent>
+        <TabsContent value="knowledge" className="mt-0">
+          <DevelopmentIntelligencePanel
+            kind="architecture_index"
+            repositoryId={index.subject.repositoryId}
+            artifactId={index.id}
+            sourceGraph={index.result.sourceGraph}
+            defaultTab="knowledge"
+            title="Repository knowledge base"
+            description="Shared, repository-scoped facts, decisions, constraints, risks, patterns, and ownership notes. Every entry remains linked to immutable source evidence and can be superseded without losing history."
+          />
+        </TabsContent>
+      </Tabs>
     )
   }
   return <ArchitectureEmpty selected={selected} loading={loading} onRebuild={onRebuild} />
@@ -352,7 +368,7 @@ function ArchitecturePage() {
           </>
         }
         title="Architecture"
-        description="Browse deterministic repository boundaries, contracts, decisions, dependency direction, and documentation conflicts."
+        description="Understand the current system map and maintain shared, source-backed knowledge for the selected repository."
         actions={
           <ArchitectureActions
             repositories={repositories}

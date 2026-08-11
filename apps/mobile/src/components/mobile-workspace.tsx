@@ -78,6 +78,26 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
     setCreateRequest({ mode: 'thread', workItem: item })
   }
 
+  function openWorkItem(backendId: string, workItemId: number) {
+    const item = state.workspace.workItems.find((candidate) => candidate.backendId === backendId && candidate.id === workItemId)
+    if (item) setDetailStack((current) => [...current, { kind: 'work', value: item }])
+    else state.setNotice('The related Work item is no longer available in this workspace.')
+  }
+
+  function openThreadById(backendId: string, threadId: number) {
+    const item = state.workspace.threads.find((candidate) => candidate.backendId === backendId && candidate.id === threadId)
+    if (item) setDetailStack((current) => [...current, { kind: 'thread', value: item }])
+    else state.setNotice('The related thread is no longer available in this workspace.')
+  }
+
+  function openPullRequest(backendId: string, fullName: string, number: number) {
+    const item = state.workspace.pullRequests.find((candidate) =>
+      candidate.backendId === backendId && candidate.fullName === fullName && candidate.number === number,
+    )
+    if (item) setDetailStack((current) => [...current, { kind: 'pullRequest', value: item }])
+    else state.setNotice('The related pull request is no longer available in this workspace.')
+  }
+
   return <View style={styles.screen}>
     <View style={styles.header}>
       <View style={styles.topRow}>
@@ -146,6 +166,9 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
       onClose={() => setDetailStack([])}
       onChanged={changed}
       onOpenThread={(thread) => setDetailStack((current) => [...current, { kind: 'thread', value: thread }])}
+      onOpenWorkId={openWorkItem}
+      onOpenThreadId={openThreadById}
+      onOpenPullRequest={openPullRequest}
       onStartThread={startThread}
     />
   </View>

@@ -14,6 +14,7 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
+import { MarkdownContent } from '@vertexade/ui/components/markdown-content'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
@@ -149,7 +150,7 @@ export function KnowledgeTable({
               <Badge variant={row.original.freshness === 'current' ? 'secondary' : 'destructive'}>{row.original.freshness}</Badge>
               {row.original.status !== 'accepted' && <Badge variant="outline">{row.original.status}</Badge>}
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{row.original.summary}</p>
+            <MarkdownContent content={row.original.summary} className="mt-1 text-xs text-muted-foreground" />
           </div>
         ),
       },
@@ -326,6 +327,7 @@ function ContextSnapshot({
 function IntelligenceTabs({
   overview,
   sourceGraph,
+  defaultTab,
   archivingId,
   onOpenInvestigation,
   onPromoteInvestigation,
@@ -334,6 +336,7 @@ function IntelligenceTabs({
 }: {
   overview: DevelopmentIntelligenceOverview
   sourceGraph?: DevelopmentSourceGraphSummary
+  defaultTab: 'investigations' | 'knowledge' | 'context'
   archivingId: number | null
   onOpenInvestigation(investigation: DevelopmentInvestigation): void
   onPromoteInvestigation(investigation: DevelopmentInvestigation): void
@@ -341,7 +344,7 @@ function IntelligenceTabs({
   onArchiveKnowledge(entry: DevelopmentKnowledgeEntry): void
 }) {
   return (
-    <Tabs defaultValue="investigations" className="gap-0">
+    <Tabs defaultValue={defaultTab} className="gap-0">
       <TabsList className="mx-3 mt-2 max-w-[calc(100%-1.5rem)] overflow-x-auto" variant="line">
         <TabsTrigger value="investigations">
           <History data-icon="inline-start" /> Investigations
@@ -374,6 +377,7 @@ function IntelligenceTabs({
 function IntelligenceContent({
   overview,
   sourceGraph,
+  defaultTab,
   loading,
   error,
   archivingId,
@@ -385,6 +389,7 @@ function IntelligenceContent({
 }: {
   overview: DevelopmentIntelligenceOverview | undefined
   sourceGraph?: DevelopmentSourceGraphSummary
+  defaultTab: 'investigations' | 'knowledge' | 'context'
   loading: boolean
   error: Error | null
   archivingId: number | null
@@ -417,6 +422,7 @@ function IntelligenceContent({
     <IntelligenceTabs
       overview={overview}
       sourceGraph={sourceGraph}
+      defaultTab={defaultTab}
       archivingId={archivingId}
       onOpenInvestigation={onOpenInvestigation}
       onPromoteInvestigation={onPromoteInvestigation}
@@ -431,11 +437,17 @@ export function DevelopmentIntelligencePanel({
   repositoryId,
   artifactId,
   sourceGraph,
+  defaultTab = 'investigations',
+  title = 'Development intelligence',
+  description = 'Investigate immutable evidence in persistent read-only Work, then explicitly promote reviewed findings into reusable repository knowledge.',
 }: {
   kind: DevelopmentArtifactKind
   repositoryId: number
   artifactId: number
   sourceGraph?: DevelopmentSourceGraphSummary
+  defaultTab?: 'investigations' | 'knowledge' | 'context'
+  title?: string
+  description?: string
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -481,16 +493,13 @@ export function DevelopmentIntelligencePanel({
     <Card layout="divided">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <Network className="size-4" /> Development intelligence
+          <Network className="size-4" /> {title}
           {overview && (
             <Badge variant="secondary">{overview.knowledge.filter((entry) => entry.status === 'accepted').length} accepted</Badge>
           )}
           {overview && <Badge variant="outline">{overview.investigations.length} investigations</Badge>}
         </CardTitle>
-        <CardDescription>
-          Investigate immutable evidence in persistent read-only Work, then explicitly promote reviewed findings into reusable repository
-          knowledge.
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
         <CardAction className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => setInvestigationOpen(true)}>
             <Bot data-icon="inline-start" /> Investigate
@@ -504,6 +513,7 @@ export function DevelopmentIntelligencePanel({
         <IntelligenceContent
           overview={overview}
           sourceGraph={sourceGraph}
+          defaultTab={defaultTab}
           loading={query.isLoading}
           error={query.error}
           archivingId={archiveMutation.isPending ? archiveMutation.variables : null}

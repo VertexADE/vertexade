@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ImpactAnalysis, ImpactAnalysisFeedback, ImpactNode } from '@vertexade/platform-contracts'
+import type { ImpactAnalysis, ImpactAnalysisFeedback, ImpactAnalysisListItem, ImpactNode } from '@vertexade/platform-contracts'
+import { ImpactAnalysisHistory } from '@vertexade/ui/components/impact-analysis-history'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
@@ -13,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
+import { platformQueryKey } from '@vertexade/ui/lib/platform-query'
 
 type ImpactAnalysisPanelProps = {
   repositoryId: number
@@ -23,6 +26,12 @@ type ImpactAnalysisPanelProps = {
 type WorkImpactAnalysisPanelProps = {
   workItemId: number
   className?: string
+  onAnalysisChange?(analysis: ImpactAnalysis | null): void
+}
+
+type WorkImpactSelection = {
+  workItemId: number
+  analysisId: number
 }
 
 const riskVariant = {
@@ -57,7 +66,17 @@ function ImpactLoading({ className }: { className?: string }) {
   )
 }
 
-function ImpactEmpty({ running, onAnalyze, className }: { running: boolean; onAnalyze(): void; className?: string }) {
+function ImpactEmpty({
+  subject,
+  running,
+  onAnalyze,
+  className,
+}: {
+  subject: 'pull request' | 'work item'
+  running: boolean
+  onAnalyze(): void
+  className?: string
+}) {
   return (
     <Empty className={className}>
       <EmptyHeader>
@@ -66,7 +85,7 @@ function ImpactEmpty({ running, onAnalyze, className }: { running: boolean; onAn
         </EmptyMedia>
         <EmptyTitle>No impact analysis for this revision</EmptyTitle>
         <EmptyDescription>
-          Analyze the pull request to find affected projects, downstream consumers, required validations, contracts, and delivery changes.
+          Analyze the {subject} to find affected projects, downstream consumers, required validations, contracts, and delivery changes.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
@@ -400,7 +419,7 @@ export function ImpactAnalysisPanel({ repositoryId, pullRequestNumber, className
   }, [endpoint])
 
   if (loading && !analysis) return <ImpactLoading className={className} />
-  if (!analysis) return <ImpactEmpty className={className} running={running} onAnalyze={() => void analyze()} />
+  if (!analysis) return <ImpactEmpty subject="pull request" className={className} running={running} onAnalyze={() => void analyze()} />
   return (
     <div className={className}>
       <ImpactAnalysisView analysis={analysis} running={running} onRefresh={() => void analyze()} />
@@ -408,46 +427,99 @@ export function ImpactAnalysisPanel({ repositoryId, pullRequestNumber, className
   )
 }
 
-export function WorkImpactAnalysisPanel({ workItemId, className }: WorkImpactAnalysisPanelProps) {
-  const [analysis, setAnalysis] = useState<ImpactAnalysis | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [running, setRunning] = useState(false)
-  const endpoint = useMemo(() => `/api/work-items/${workItemId}/impact-analysis`, [workItemId])
+function selectedImpactId(selection: WorkImpactSelection | null, workItemId: number): number | null {
+  return selection?.workItemId === workItemId ? selection.analysisId : null
+}
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const result = await api<{ analysis: ImpactAnalysis | null }>(endpoint)
-      setAnalysis(result.analysis)
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [endpoint])
+function selectedHistoryItem(history: ImpactAnalysisListItem[], selectedId: number | null): ImpactAnalysisListItem | null {
+  if (selectedId === null) return null
+  return history.find((item) => item.id === selectedId) ?? null
+}
 
-  useEffect(() => {
-    setAnalysis(null)
-    void load()
-  }, [load])
+function selectedAnalysisEndpoint(workItemId: number, selected: ImpactAnalysisListItem | null): string {
+  if (selected) return `/api/repositories/${selected.subject.repositoryId}/impact-analyses/${selected.id}`
+  return `/api/work-items/${workItemId}/impact-analysis/selected`
+}
 
-  const analyze = useCallback(async () => {
-    setRunning(true)
-    try {
-      setAnalysis(await api<ImpactAnalysis>(endpoint, { method: 'POST' }))
+function displayedWorkImpact(
+  selectedId: number | null,
+  latest: ImpactAnalysis | null | undefined,
+  selected: ImpactAnalysis | undefined,
+): ImpactAnalysis | null {
+  return selectedId === null ? (latest ?? null) : (selected ?? null)
+}
+
+function workImpactIsLoading(selectedId: number | null, latestLoading: boolean, selectedLoading: boolean): boolean {
+  return selectedId === null ? latestLoading : selectedLoading
+}
+
+function useWorkImpactQueries(workItemId: number, selectedId: number | null) {
+  const endpoint = `/api/work-items/${workItemId}/impact-analysis`
+  const historyEndpoint = `/api/work-items/${workItemId}/impact-analyses?limit=50`
+  const latestQueryKey = platformQueryKey(endpoint)
+  const historyQueryKey = platformQueryKey(historyEndpoint)
+  const latestQuery = useQuery({
+    queryKey: latestQueryKey,
+    queryFn: ({ signal }) => api<{ analysis: ImpactAnalysis | null }>(endpoint, { signal }),
+  })
+  const historyQuery = useQuery({
+    queryKey: historyQueryKey,
+    queryFn: ({ signal }) => api<{ analyses: ImpactAnalysisListItem[] }>(historyEndpoint, { signal }),
+  })
+  const history = historyQuery.data?.analyses ?? []
+  const selectedItem = selectedHistoryItem(history, selectedId)
+  const selectedEndpoint = selectedAnalysisEndpoint(workItemId, selectedItem)
+  const selectedQuery = useQuery({
+    queryKey: platformQueryKey(selectedEndpoint),
+    queryFn: ({ signal }) => api<ImpactAnalysis>(selectedEndpoint, { signal }),
+    enabled: selectedItem !== null,
+  })
+  return { endpoint, latestQueryKey, historyQueryKey, latestQuery, historyQuery, selectedQuery, history }
+}
+
+export function WorkImpactAnalysisPanel({ workItemId, className, onAnalysisChange }: WorkImpactAnalysisPanelProps) {
+  const queryClient = useQueryClient()
+  const [selection, setSelection] = useState<WorkImpactSelection | null>(null)
+  const selectedId = selectedImpactId(selection, workItemId)
+  const queries = useWorkImpactQueries(workItemId, selectedId)
+  const analysis = displayedWorkImpact(selectedId, queries.latestQuery.data?.analysis, queries.selectedQuery.data)
+  const loading = workImpactIsLoading(selectedId, queries.latestQuery.isLoading, queries.selectedQuery.isLoading)
+  const error = queries.latestQuery.error ?? queries.historyQuery.error ?? queries.selectedQuery.error
+  const analyzeMutation = useMutation({
+    mutationFn: () => api<ImpactAnalysis>(queries.endpoint, { method: 'POST' }),
+    onSuccess: async (value) => {
+      setSelection(null)
+      queryClient.setQueryData(queries.latestQueryKey, { analysis: value })
+      await queryClient.invalidateQueries({ queryKey: queries.historyQueryKey })
       toast.success('Work impact analysis completed')
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setRunning(false)
-    }
-  }, [endpoint])
+    },
+    onError: (mutationError) => toast.error(mutationError.message),
+  })
+
+  useEffect(() => onAnalysisChange?.(analysis), [analysis, onAnalysisChange])
+  useEffect(() => {
+    if (error) toast.error(error.message)
+  }, [error])
 
   if (loading && !analysis) return <ImpactLoading className={className} />
-  if (!analysis) return <ImpactEmpty className={className} running={running} onAnalyze={() => void analyze()} />
+  if (!analysis)
+    return (
+      <ImpactEmpty
+        subject="work item"
+        className={className}
+        running={analyzeMutation.isPending}
+        onAnalyze={() => analyzeMutation.mutate()}
+      />
+    )
   return (
-    <div className={className}>
-      <ImpactAnalysisView analysis={analysis} running={running} onRefresh={() => void analyze()} />
+    <div className={`flex flex-col gap-3 ${className || ''}`}>
+      <ImpactAnalysisHistory
+        analyses={queries.history}
+        selectedId={analysis.id}
+        loading={queries.selectedQuery.isFetching || analyzeMutation.isPending}
+        onSelect={(analysisId) => setSelection({ workItemId, analysisId })}
+      />
+      <ImpactAnalysisView analysis={analysis} running={analyzeMutation.isPending} onRefresh={() => analyzeMutation.mutate()} />
     </div>
   )
 }

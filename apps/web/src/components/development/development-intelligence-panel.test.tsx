@@ -26,7 +26,7 @@ const knowledge: DevelopmentKnowledgeEntry = {
   kind: 'ownership',
   scope: 'boundary',
   title: 'API owns the public contract',
-  summary: 'The API service is accountable for compatibility of the public contract.',
+  summary: 'The **API service** is accountable for compatibility of the public contract.',
   path: null,
   boundaryKey: 'architecture:service:apps/api',
   confidence: 'high',
@@ -63,6 +63,7 @@ describe('development intelligence tables', () => {
       <KnowledgeTable knowledge={[knowledge]} archivingId={null} onSupersede={vi.fn()} onArchive={vi.fn()} />,
     )
     expect(html).toContain('API owns the public contract')
+    expect(html).toContain('<strong>API service</strong>')
     expect(html).toContain('architecture:service:apps/api')
     expect(html).toContain('thread #42')
     expect(html).toContain('Supersede')

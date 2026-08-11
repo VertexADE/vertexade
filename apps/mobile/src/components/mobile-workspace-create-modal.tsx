@@ -3,6 +3,7 @@ import type { MobileBackend } from '@/platform-service'
 import type { MobileWorkItem, MobileWorkspace } from '@/mobile-workspace-service'
 import { colors } from '@/theme'
 import { mobileWorkspaceStyles as styles } from './mobile-workspace-styles'
+import { MobileAgentOptions } from './mobile-agent-options'
 import { useMobileWorkspaceCreation, type MobileCreateMode } from './use-mobile-workspace-creation'
 
 export type { MobileCreateMode } from './use-mobile-workspace-creation'
@@ -52,6 +53,14 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
           <CreationTarget mode={props.mode} creation={creation} />
           <RepositoryTarget mode={props.mode} creation={creation} />
           <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
+          {props.mode !== 'work' && creation.backendId ? (
+            <MobileAgentOptions
+              serviceUrl={props.serviceUrl}
+              backendId={creation.backendId}
+              value={creation.agentOptions}
+              onChange={creation.setAgentOptions}
+            />
+          ) : null}
           {props.mode === 'thread' ? (
             <DraftPullRequestSwitch value={creation.createPullRequest} onChange={creation.setCreatePullRequest} />
           ) : null}

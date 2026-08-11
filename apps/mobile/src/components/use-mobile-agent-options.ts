@@ -26,7 +26,7 @@ export function useMobileAgentOptions(serviceUrl: string, backendId: string, val
     let current = true
     setLoading(true)
     setError('')
-    void requestAgentOptions(serviceUrl, backendId)
+    void requestAgentOptions(serviceUrl, backendId, value.agentId)
       .then((result) => applyAgentOptions(result, current, valueRef.current, onChangeRef.current, setAgents, setModels))
       .catch((reason: unknown) => applyAgentOptionsFailure(reason, current, setAgents, setModels, setError))
       .finally(() => {
@@ -35,13 +35,14 @@ export function useMobileAgentOptions(serviceUrl: string, backendId: string, val
     return () => {
       current = false
     }
-  }, [backendId, serviceUrl, revision])
+  }, [backendId, serviceUrl, value.agentId, revision])
 
   return { agents, models, loading, error, retry: () => setRevision((current) => current + 1) }
 }
 
-function requestAgentOptions(serviceUrl: string, backendId: string) {
-  return createMobilePlatformClient(serviceUrl, backendId).request<AgentOptionsResponse>('/api/agent/options')
+function requestAgentOptions(serviceUrl: string, backendId: string, agentId: string) {
+  const query = agentId ? `?agent=${encodeURIComponent(agentId)}` : ''
+  return createMobilePlatformClient(serviceUrl, backendId).request<AgentOptionsResponse>(`/api/agent/options${query}`)
 }
 
 function applyAgentOptions(

@@ -68,7 +68,7 @@ appId: com.vertexade.mobile
     id: open-thread-fixture-1
 - assertVisible: Checking the iOS release flow.
 - tapOn:
-    id: detail-tab-info
+    id: detail-tab-context
 - assertVisible: Original prompt
 - tapOn:
     id: workspace-detail-close

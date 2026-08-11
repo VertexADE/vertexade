@@ -10,6 +10,7 @@ export const colors = {
   ink: '#061412',
   warning: '#eab866',
   danger: '#ff7c86',
+  info: '#79a9ff',
 }
 
 export const spacing = { xs: 5, sm: 9, md: 15, lg: 21, xl: 30 }

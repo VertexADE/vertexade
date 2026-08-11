@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import type { ModuleCatalog, WorkItemWorkspaceMode, WorkResourcePresentation } from '@vertexade/platform-contracts'
+import type { ImpactAnalysis, ModuleCatalog, WorkItemWorkspaceMode, WorkResourcePresentation } from '@vertexade/platform-contracts'
 import {
   Archive,
   ArrowLeft,
@@ -100,6 +100,7 @@ import {
 } from '../components/work/work-detail-overview'
 import { WorkActivityTimeline } from '../components/work/work-activity-timeline'
 import { DeleteWorkDialog, StartThreadDialog, UpfrontReviewDialog, WorkMemoryCard } from '../components/work/work-detail-panels'
+import { DevelopmentIntelligencePanel } from '../components/development/development-intelligence-panel'
 import { LazyPrDetailsDialog, LazyThreadDialog } from '../lib/lazy-dialogs'
 import { preventBlockedWorkCompletion } from '../lib/work-completion'
 
@@ -108,6 +109,32 @@ export const Route = createFileRoute('/work/$workKey')({
   validateSearch: workDetailSearch,
   component: WorkDetail,
 })
+
+function WorkImpactWorkspace({
+  workItemId,
+  analysis,
+  onAnalysisChange,
+}: {
+  workItemId: number
+  analysis: ImpactAnalysis | null
+  onAnalysisChange(analysis: ImpactAnalysis | null): void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <WorkImpactAnalysisPanel workItemId={workItemId} onAnalysisChange={onAnalysisChange} />
+      {analysis && (
+        <DevelopmentIntelligencePanel
+          kind="impact_analysis"
+          repositoryId={analysis.subject.repositoryId}
+          artifactId={analysis.id}
+          sourceGraph={analysis.result.sourceGraph}
+          title="Impact knowledge & investigations"
+          description="Investigate this work-item impact snapshot in a persistent thread, then promote verified findings into the shared repository knowledge base."
+        />
+      )}
+    </div>
+  )
+}
 
 function WorkDetail() {
   const { workKey } = Route.useParams()
@@ -122,6 +149,7 @@ function WorkDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [workImpactAnalysis, setWorkImpactAnalysis] = useState<ImpactAnalysis | null>(null)
   const [resourcePresentations, setResourcePresentations] = useState<Record<string, WorkResourcePresentation>>({})
 
   const load = useCallback(async () => {
@@ -308,13 +336,24 @@ function WorkDetail() {
         </TabsContent>
         <TabsContent value="impact" className="mt-0">
           {primaryPr ? (
-            <div className="flex flex-col gap-3">
-              <ImpactAnalysisPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
-              <ArchitectureContextPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
-              <TestIntelligencePanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
-            </div>
+            <Tabs defaultValue="work-item" className="gap-3">
+              <TabsList variant="line" className="w-fit max-w-full overflow-x-auto">
+                <TabsTrigger value="work-item">Work item</TabsTrigger>
+                <TabsTrigger value="pull-request">Pull request &amp; validation</TabsTrigger>
+              </TabsList>
+              <TabsContent value="work-item" className="mt-0">
+                <WorkImpactWorkspace workItemId={item.id} analysis={workImpactAnalysis} onAnalysisChange={setWorkImpactAnalysis} />
+              </TabsContent>
+              <TabsContent value="pull-request" className="mt-0">
+                <div className="flex flex-col gap-3">
+                  <ImpactAnalysisPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+                  <ArchitectureContextPanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+                  <TestIntelligencePanel repositoryId={primaryPr.repo_id} pullRequestNumber={primaryPr.number} />
+                </div>
+              </TabsContent>
+            </Tabs>
           ) : (
-            <WorkImpactAnalysisPanel workItemId={item.id} />
+            <WorkImpactWorkspace workItemId={item.id} analysis={workImpactAnalysis} onAnalysisChange={setWorkImpactAnalysis} />
           )}
         </TabsContent>
         <TabsContent value="memory" className="mt-0">

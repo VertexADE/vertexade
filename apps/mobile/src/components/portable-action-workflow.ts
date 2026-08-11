@@ -20,6 +20,8 @@ export function actionAgentHeaders(action: PortableItemAction, agent: AgentOptio
       ...(agent.agentId ? { 'x-agent-provider': agent.agentId } : {}),
       ...(agent.model ? { 'x-agent-model': agent.model } : {}),
       ...(agent.reasoningEffort ? { 'x-agent-reasoning-effort': agent.reasoningEffort } : {}),
+      ...(agent.serviceTier ? { 'x-agent-service-tier': agent.serviceTier } : {}),
+      'x-agent-subagents': agent.allowSubagents ? 'true' : 'false',
     },
   }
 }

@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
 import {
+  cancelMobileQueuedMessage,
   deliverMobileThreadMessage,
   loadMobilePullRequestDetails,
   loadMobileThreadDetails,
   loadMobileWorkItemDetails,
+  postMobileReviewSuggestions,
+  steerMobileQueuedMessage,
   type MobilePullRequestDetails,
   type MobileThreadDetails,
   type MobileWorkItemDetails,
@@ -14,14 +17,22 @@ import { MobileThreadDetail } from './mobile-thread-detail'
 import { MobileWorkDetail } from './mobile-work-detail'
 
 jest.mock('@/mobile-detail-service', () => ({
+  cancelMobileQueuedMessage: jest.fn(),
   deliverMobileThreadMessage: jest.fn(),
   ensureMobilePullRequestWork: jest.fn(),
   interruptMobileThread: jest.fn(),
   loadMobilePullRequestDetails: jest.fn(),
   loadMobileThreadDetails: jest.fn(),
   loadMobileWorkItemDetails: jest.fn(),
+  loadMobileThreadTransferTargets: jest.fn(),
+  forkMobileThread: jest.fn(),
+  postMobileReviewSuggestions: jest.fn(),
+  reReviewMobileThread: jest.fn(),
   retryMobileThread: jest.fn(),
+  saveMobileThreadTasks: jest.fn(),
+  steerMobileQueuedMessage: jest.fn(),
   submitMobileThreadInput: jest.fn(),
+  transferMobileThreadContext: jest.fn(),
   updateMobileWorkState: jest.fn(),
 }))
 
@@ -175,7 +186,19 @@ const workDetails: MobileWorkItemDetails = {
 const threadDetails: MobileThreadDetails = {
   ...thread,
   threadId: 'provider-thread-7',
+  threadUrl: 'https://example.test/thread/7',
+  agentId: 'codex',
   canSteer: true,
+  kind: 'task',
+  kindLabel: 'Task',
+  model: 'gpt-5.6',
+  reasoningEffort: 'high',
+  worktreePath: '/tmp/vertexade-mobile',
+  createdAt: '2026-08-11T09:00:00Z',
+  finishedAt: '',
+  sourceJobId: null,
+  ephemeral: false,
+  reviewPhase: '',
   prompt: 'Implement the full view.',
   resultText: '',
   reviewDetails: '',
@@ -189,6 +212,7 @@ const threadDetails: MobileThreadDetails = {
       text: 'Building full thread details',
       time: '2026-08-11T10:00:00Z',
       status: 'running',
+      event: '',
     },
   ],
   queuedFollowUps: [],
@@ -206,6 +230,7 @@ const threadDetails: MobileThreadDetails = {
   deletions: 2,
   diff: '+thread details',
   diffError: '',
+  suggestions: [],
 }
 
 describe('mobile full detail views', () => {
@@ -214,6 +239,9 @@ describe('mobile full detail views', () => {
     jest.mocked(loadMobileWorkItemDetails).mockResolvedValue(workDetails)
     jest.mocked(loadMobileThreadDetails).mockResolvedValue(threadDetails)
     jest.mocked(deliverMobileThreadMessage).mockResolvedValue(undefined)
+    jest.mocked(steerMobileQueuedMessage).mockResolvedValue(undefined)
+    jest.mocked(cancelMobileQueuedMessage).mockResolvedValue(undefined)
+    jest.mocked(postMobileReviewSuggestions).mockResolvedValue(1)
   })
 
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {
@@ -274,11 +302,71 @@ describe('mobile full detail views', () => {
     fireEvent.changeText(screen.getByLabelText('Thread message'), 'Continue with tests')
     fireEvent.press(screen.getByText('Queue next turn'))
     await waitFor(() =>
-      expect(deliverMobileThreadMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 'Continue with tests', 'queue'),
+      expect(deliverMobileThreadMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 'Continue with tests', 'queue', {
+        agentId: 'codex',
+        allowSubagents: false,
+        model: 'gpt-5.6',
+        reasoningEffort: 'high',
+        serviceTier: '',
+      }),
     )
     fireEvent.press(screen.getByTestId('detail-tab-changes'))
     expect(screen.getByText('apps/mobile/src/thread.tsx')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('detail-tab-info'))
+    fireEvent.press(screen.getByTestId('detail-tab-context'))
     expect(screen.getByText('Implement the full view.')).toBeOnTheScreen()
+  })
+
+  test('steers or removes queued messages from the full activity flow', async () => {
+    jest.mocked(loadMobileThreadDetails).mockResolvedValue({
+      ...threadDetails,
+      queuedFollowUps: [{ id: 4, prompt: 'Prioritize the failing test', model: 'gpt-5.6', reasoningEffort: 'high', queuedAt: '2026-08-11T10:10:00Z' }],
+    })
+    render(
+      <MobileThreadDetail
+        serviceUrl="http://fixture:4173"
+        thread={thread}
+        onClose={jest.fn()}
+        onChanged={jest.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(await screen.findByText('Prioritize the failing test')).toBeOnTheScreen()
+    fireEvent.press(screen.getByText('Use to steer now'))
+    await waitFor(() => expect(steerMobileQueuedMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 4))
+    fireEvent.press(screen.getByText('Remove'))
+    await waitFor(() => expect(cancelMobileQueuedMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 4))
+  })
+
+  test('renders review summary, findings, and editable suggestions before posting', async () => {
+    const review = {
+      ...threadDetails,
+      status: 'completed',
+      kind: 'review',
+      reviewSummary: 'The pull request is sound.',
+      reviewDetails: 'One focused improvement remains.',
+      resultText: 'Review complete.',
+      suggestions: [{ id: 9, path: 'src/app.ts', line: 14, side: 'RIGHT' as const, description: 'Use the validated value', replacement: 'return value', selected: true, postedAt: '' }],
+    }
+    jest.mocked(loadMobileThreadDetails).mockResolvedValue(review)
+    render(
+      <MobileThreadDetail
+        serviceUrl="http://fixture:4173"
+        thread={thread}
+        onClose={jest.fn()}
+        onChanged={jest.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(await screen.findByText('The pull request is sound.')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('detail-tab-findings'))
+    expect(screen.getByText('One focused improvement remains.')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('detail-tab-suggestions'))
+    fireEvent.changeText(screen.getByLabelText('Review comment for src/app.ts:14'), 'Guard the validated value')
+    fireEvent.press(screen.getByText('Post 1 as one review'))
+    await waitFor(() => expect(postMobileReviewSuggestions).toHaveBeenCalledWith(
+      'http://fixture:4173',
+      thread,
+      [expect.objectContaining({ id: 9, description: 'Guard the validated value', selected: true })],
+    ))
   })
 })

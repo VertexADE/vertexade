@@ -313,27 +313,20 @@ export class ImpactAnalysisService {
       .orderBy(desc(impactAnalyses.id))
       .limit(boundedLimit)
       .all()
-      .map((row) => {
-        const analysis = this.record(row)
-        return {
-          id: analysis.id,
-          executionId: analysis.executionId,
-          subject: analysis.subject,
-          status: analysis.status,
-          freshness: analysis.freshness,
-          progress: analysis.progress,
-          resultVersion: analysis.resultVersion,
-          digest: analysis.digest,
-          warningCount: analysis.warningCount,
-          createdAt: analysis.createdAt,
-          updatedAt: analysis.updatedAt,
-          finishedAt: analysis.finishedAt,
-          repositoryName: analysis.result.repositoryName,
-          changedFileCount: analysis.result.changedFiles.length,
-          affectedProjectCount: analysis.result.summary.directProjects + analysis.result.summary.transitiveProjects,
-          risk: analysis.result.summary.risk,
-        }
-      })
+      .map((row) => this.listItem(row))
+  }
+
+  listForWorkItem(workItemId: number, limit = 50): ImpactAnalysisListItem[] {
+    const id = positiveInteger(workItemId, 'Work item ID')
+    const boundedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100)
+    return this.database
+      .select()
+      .from(impactAnalyses)
+      .where(and(eq(impactAnalyses.subjectKind, 'work_item'), eq(impactAnalyses.workItemId, id)))
+      .orderBy(desc(impactAnalyses.id))
+      .limit(boundedLimit)
+      .all()
+      .map((row) => this.listItem(row))
   }
 
   latestForPullRequest(repositoryId: number, pullRequestNumber: number): ImpactAnalysis | null {
@@ -436,6 +429,28 @@ export class ImpactAnalysisService {
       .get()
     if (!current?.headSha) return 'unknown'
     return current.headSha === row.headRevision ? 'current' : 'stale'
+  }
+
+  private listItem(row: ImpactAnalysisRow): ImpactAnalysisListItem {
+    const analysis = this.record(row)
+    return {
+      id: analysis.id,
+      executionId: analysis.executionId,
+      subject: analysis.subject,
+      status: analysis.status,
+      freshness: analysis.freshness,
+      progress: analysis.progress,
+      resultVersion: analysis.resultVersion,
+      digest: analysis.digest,
+      warningCount: analysis.warningCount,
+      createdAt: analysis.createdAt,
+      updatedAt: analysis.updatedAt,
+      finishedAt: analysis.finishedAt,
+      repositoryName: analysis.result.repositoryName,
+      changedFileCount: analysis.result.changedFiles.length,
+      affectedProjectCount: analysis.result.summary.directProjects + analysis.result.summary.transitiveProjects,
+      risk: analysis.result.summary.risk,
+    }
   }
 
   private record(row: ImpactAnalysisRow): ImpactAnalysis {

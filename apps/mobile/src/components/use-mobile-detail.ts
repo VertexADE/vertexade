@@ -6,18 +6,19 @@ export function useMobileDetail<Value>(key: string, loader: () => Promise<Value>
   const [error, setError] = useState('')
   const sequence = useRef(0)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     const request = sequence.current + 1
     sequence.current = request
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError('')
     try {
       const next = await loader()
       if (sequence.current === request) setValue(next)
     } catch (reason) {
-      if (sequence.current === request) setError(reason instanceof Error ? reason.message : 'Could not load details')
+      if (sequence.current === request && !silent)
+        setError(reason instanceof Error ? reason.message : 'Could not load details')
     } finally {
-      if (sequence.current === request) setLoading(false)
+      if (sequence.current === request && !silent) setLoading(false)
     }
   }, [loader])
 

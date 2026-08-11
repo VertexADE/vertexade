@@ -88,7 +88,7 @@ describe('portable action workflow', () => {
     expect(actionAgentHeaders(action(), { agentId: 'codex', model: 'gpt', reasoningEffort: 'high' })).toBeUndefined()
     expect(
       actionAgentHeaders(action({ intent: 'launch-work' }), { agentId: 'codex', model: '', reasoningEffort: 'high' }),
-    ).toEqual({ headers: { 'x-agent-provider': 'codex', 'x-agent-reasoning-effort': 'high' } })
+    ).toEqual({ headers: { 'x-agent-provider': 'codex', 'x-agent-reasoning-effort': 'high', 'x-agent-subagents': 'false' } })
   })
 
   test('builds a completion action with result mapping and declared defaults', () => {

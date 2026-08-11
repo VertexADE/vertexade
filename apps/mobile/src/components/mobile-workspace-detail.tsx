@@ -15,6 +15,9 @@ export function MobileWorkspaceDetail({
   onClose,
   onChanged,
   onOpenThread,
+  onOpenWorkId,
+  onOpenThreadId,
+  onOpenPullRequest,
   onStartThread,
 }: {
   serviceUrl: string
@@ -23,6 +26,9 @@ export function MobileWorkspaceDetail({
   onClose(): void
   onChanged(message: string): Promise<void>
   onOpenThread(thread: MobileThread): void
+  onOpenWorkId(backendId: string, workItemId: number): void
+  onOpenThreadId(backendId: string, threadId: number): void
+  onOpenPullRequest(backendId: string, fullName: string, number: number): void
   onStartThread(item: MobileWorkItem): void
 }) {
   const selection = stack.at(-1)
@@ -46,10 +52,15 @@ export function MobileWorkspaceDetail({
     onStartThread={onStartThread}
   />
   return <MobileThreadDetail
+    key={`${selection.value.backendId}:${selection.value.id}`}
     serviceUrl={serviceUrl}
     thread={selection.value}
     onBack={back}
     onClose={onClose}
     onChanged={onChanged}
+    onOpenThread={onOpenThread}
+    onOpenWork={selection.value.workItemId ? () => onOpenWorkId(selection.value.backendId, selection.value.workItemId!) : undefined}
+    onOpenThreadId={(threadId) => onOpenThreadId(selection.value.backendId, threadId)}
+    onOpenPullRequest={(fullName, number) => onOpenPullRequest(selection.value.backendId, fullName, number)}
   />
 }

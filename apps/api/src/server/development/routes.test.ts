@@ -445,11 +445,23 @@ describe('development impact routes', () => {
       {},
     )
     expect(response?.status).toBe(201)
-    expect(await response!.json()).toEqual(
+    const analysis = await response!.json()
+    expect(analysis).toEqual(
       expect.objectContaining({
         subject: expect.objectContaining({ kind: 'work_item', workItemId, jobId, baseRevision: fixture.base, headRevision: fixture.head }),
         result: expect.objectContaining({ changedFiles: [expect.objectContaining({ path: 'src/index.ts' })] }),
       }),
     )
+
+    const historyResponse = await routes.dispatch(new Request(`http://vertexade.test/api/work-items/${workItemId}/impact-analyses`), {})
+    expect(await historyResponse!.json()).toEqual({
+      analyses: [
+        expect.objectContaining({
+          id: analysis.id,
+          subject: expect.objectContaining({ kind: 'work_item', workItemId, jobId }),
+          changedFileCount: 1,
+        }),
+      ],
+    })
   })
 })

@@ -86,11 +86,32 @@ describe('mobile workspace service', () => {
       repositoryId: 1_000_000_002,
       prompt: ' Implement it ',
       createPullRequest: true,
+      agentOptions: {
+        agentId: 'codex',
+        model: 'gpt-5.6',
+        reasoningEffort: 'high',
+        serviceTier: 'priority',
+        allowSubagents: true,
+      },
     })
 
     expect(request).toHaveBeenCalledWith('/api/work-items/1000000009/threads', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ repository_ids: [1_000_000_002], prompt: 'Implement it', create_pr: true }),
+      headers: expect.objectContaining({
+        'x-agent-provider': 'codex',
+        'x-agent-model': 'gpt-5.6',
+        'x-agent-reasoning-effort': 'high',
+        'x-agent-service-tier': 'priority',
+        'x-agent-subagents': 'true',
+      }),
+      body: JSON.stringify({
+        repository_ids: [1_000_000_002],
+        prompt: 'Implement it',
+        create_pr: true,
+        agent_id: 'codex',
+        model: 'gpt-5.6',
+        reasoning_effort: 'high',
+      }),
     }))
   })
 })

@@ -3,6 +3,7 @@ import type { PortableActionValue, PortableItemAction } from '@vertexade/platfor
 import { readPortablePath, type PortableCollectionItem } from '@vertexade/platform-contracts/portable'
 import { type PlatformExtensionClient } from '@vertexade/platform-client'
 import { actionValueMissing, visibleInputs, type AgentOptions, type SourceData } from './portable-action-values'
+import { defaultMobileAgentOptions } from '@/mobile-agent-options'
 import { actionAgentHeaders, completionAction, initialActionValues } from './portable-action-workflow'
 export function usePortableAction({ action, item, data, extension, onClose, onCompleted }: {
   action: PortableItemAction
@@ -13,7 +14,7 @@ export function usePortableAction({ action, item, data, extension, onClose, onCo
   onCompleted: () => Promise<void>
 }) {
   const [values, setValues] = useState<Record<string, PortableActionValue>>({})
-  const [agent, setAgent] = useState<AgentOptions>({ agentId: '', model: '', reasoningEffort: '' })
+  const [agent, setAgent] = useState<AgentOptions>(defaultMobileAgentOptions)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [jobId, setJobId] = useState('')

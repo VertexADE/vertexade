@@ -3,7 +3,7 @@
     "name": "VertexADE",
     "slug": "vertexade",
     "scheme": "vertexade",
-    "version": "0.1.0",
+    "version": "0.0.21",
     "runtimeVersion": {
       "policy": "appVersion"
     },

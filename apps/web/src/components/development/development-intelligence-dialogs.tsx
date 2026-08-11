@@ -12,6 +12,7 @@ import type {
 } from '@vertexade/platform-contracts'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
+import { MarkdownEditor } from '@vertexade/ui/components/markdown-editor'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
@@ -205,7 +206,7 @@ export function KnowledgePromotionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-5xl">
         <form
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
@@ -303,14 +304,12 @@ export function KnowledgePromotionDialog({
               <FieldLabel htmlFor="development-knowledge-summary">Reviewed knowledge</FieldLabel>
               <form.Field name="summary" validators={{ onChange: ({ value }) => (value.trim() ? undefined : 'Summary is required') }}>
                 {(field) => (
-                  <Textarea
+                  <MarkdownEditor
                     id="development-knowledge-summary"
-                    className="min-h-40 resize-y"
                     maxLength={10_000}
-                    required
                     value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
+                    onBlur={() => field.handleBlur()}
+                    onChange={(value) => field.handleChange(value)}
                     placeholder="State what is known, why it matters, and the limits of the evidence."
                   />
                 )}

@@ -5,6 +5,7 @@ import {
   requiredPositiveInteger,
   requiredRecord,
 } from './mobile-value-parsers'
+import { mobileAgentHeaders, type MobileAgentOptions } from './mobile-agent-options'
 
 type MobileSource = {
   backendId: string
@@ -85,6 +86,7 @@ export type StartMobileThreadInput = {
   repositoryId: number
   prompt: string
   createPullRequest: boolean
+  agentOptions?: MobileAgentOptions
 }
 
 export type CreatedMobileWorkItem = MobileSource & {
@@ -156,11 +158,14 @@ export async function startMobileThread(serviceUrl: string, input: StartMobileTh
     `/api/work-items/${encodeURIComponent(String(input.workItemId))}/threads`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(input.agentOptions ? mobileAgentHeaders(input.agentOptions) : {}) },
       body: JSON.stringify({
         repository_ids: [input.repositoryId],
         prompt,
         create_pr: input.createPullRequest,
+        ...(input.agentOptions?.agentId ? { agent_id: input.agentOptions.agentId } : {}),
+        ...(input.agentOptions?.model ? { model: input.agentOptions.model } : {}),
+        ...(input.agentOptions?.reasoningEffort ? { reasoning_effort: input.agentOptions.reasoningEffort } : {}),
       }),
     },
   )

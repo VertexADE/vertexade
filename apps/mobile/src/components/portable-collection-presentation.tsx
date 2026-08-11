@@ -13,8 +13,8 @@ import type { PortableCollectionItem, PortableField } from '@vertexade/platform-
 import { colors, spacing } from '@/theme'
 import { portableCollectionStyles as styles } from './portable-collection-styles'
 
-export function CollectionChip({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID?: string }) {
-  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && styles.pressed]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>
+export function CollectionChip({ active, disabled = false, label, onPress, testID }: { active: boolean; disabled?: boolean; label: string; onPress: () => void; testID?: string }) {
+  return <Pressable disabled={disabled} testID={testID} accessibilityRole="button" accessibilityState={{ selected: active, disabled }} onPress={onPress} style={({ pressed }) => [styles.chip, active && styles.chipActive, disabled && styles.disabled, pressed && styles.pressed]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>
 }
 
 export function CollectionRecordCard({ item, actions, compact = false, onDetails, onAction }: {
