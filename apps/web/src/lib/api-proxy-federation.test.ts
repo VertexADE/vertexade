@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { maxFederatedReadModelResponseBytes } from './dashboard-cache-model'
 
@@ -11,6 +12,7 @@ vi.mock('@vertexade/platform-server/outbound-policy', () => ({
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.resetModules()
 })
 
@@ -103,6 +105,50 @@ describe('multi-backend API proxy', () => {
     expect(payload.updates.repositories.entries).toHaveLength(2)
     expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'team', connected: false, error: 'Response body is too large' })]),
+    )
+  })
+
+  it('keeps syncing remaining backends when normalization exceeds the aggregate budget', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async (input) => {
+        const url = new URL(String(input))
+        if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
+        if (url.pathname === '/api/read-model') {
+          return Response.json(url.host === 'local.internal' ? readModel(1, 'local') : readModel(2, 'team'))
+        }
+        return Response.json({ error: 'Unexpected test request' }, { status: 404 })
+      }),
+    )
+    const byteLength = Buffer.byteLength
+    vi.spyOn(Buffer, 'byteLength').mockImplementation((value, encoding) => {
+      if (typeof value === 'string' && value.includes('"key":"local:1"') && value.includes('"key":"team:2"')) {
+        return maxFederatedReadModelResponseBytes + 1
+      }
+      return byteLength(value, encoding)
+    })
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/read-model?since=0') })
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.updates.repositories.entries).toHaveLength(1)
+    expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'team',
+          connected: false,
+          error: 'Normalized read model exceeds the federated response budget',
+        }),
+      ]),
     )
   })
 
