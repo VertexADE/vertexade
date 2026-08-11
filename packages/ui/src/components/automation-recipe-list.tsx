@@ -4,6 +4,7 @@ import { conditionText } from '@vertexade/ui/components/automation-recipe-editor
 import { scheduleCadence } from '@vertexade/ui/components/automation-schedule-editor'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
+import { VirtualList } from '@vertexade/ui/components/ui/virtual-list'
 import { cn } from '@vertexade/ui/lib/utils'
 
 function RecipeCard({
@@ -221,10 +222,14 @@ export function RecipeList(props: {
         <strong className="text-xs">Recipes</strong>
         <Badge variant="secondary">{props.recipes.length}</Badge>
       </header>
-      <div className="max-h-[28rem] overflow-y-auto">
-        {props.recipes.map((recipe) => (
+      <VirtualList
+        items={props.recipes}
+        getItemKey={(recipe) => recipe.id}
+        estimateSize={112}
+        className="max-h-[28rem]"
+        empty={<p className="border-t p-8 text-center text-xs text-muted-foreground">No automations yet.</p>}
+        renderItem={(recipe) => (
           <RecipeCard
-            key={recipe.id}
             recipe={recipe}
             selected={props.editingId === recipe.id}
             busy={props.busy}
@@ -234,9 +239,8 @@ export function RecipeList(props: {
             onToggle={props.onToggle}
             onRemove={props.onRemove}
           />
-        ))}
-        {!props.recipes.length && <p className="border-t p-8 text-center text-xs text-muted-foreground">No automations yet.</p>}
-      </div>
+        )}
+      />
     </section>
   )
 }

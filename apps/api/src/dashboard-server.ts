@@ -78,6 +78,7 @@ import { createProviderSelectionRuntime } from './server/dashboard/provider-sele
 import { createJobLogQuery } from './server/dashboard/job-log-query.ts'
 import { createExtensionMigrationStore } from './server/dashboard/extension-migration-store.ts'
 import { EncryptedSettingsStore, JsonSettingsStore } from './server/settings/settings-store.ts'
+import { MobilePairingService } from './server/settings/mobile-pairing.ts'
 import { RepositoryEnvironmentProfileService } from './server/repository-environment-profiles.ts'
 import { SystemConfiguration } from './server/settings/system-configuration.ts'
 import { createPlatformManagementRoutes } from './server/platform/management-routes.ts'
@@ -243,6 +244,7 @@ const drainingJobFollowUps = new Set<number>()
 const jobLogStatement = createJobLogQuery(db)
 const jobLifecycle = new JobLifecycle(db)
 const encryptedSettings = new EncryptedSettingsStore(db, SETTINGS_KEY)
+const mobilePairing = new MobilePairingService(encryptedSettings)
 const appSettings = new JsonSettingsStore(db)
 const worktreePreviewSettings = () => readWorktreePreviewSettings(appSettings)
 const systemConfiguration = new SystemConfiguration(appSettings)
@@ -706,6 +708,7 @@ configureDashboardRuntime({
   launchWorktreeReview,
   linkImplementationBranch,
   monitorJobProcess,
+  mobilePairing,
   notifyClients,
   parseRepo,
   pathWithin,

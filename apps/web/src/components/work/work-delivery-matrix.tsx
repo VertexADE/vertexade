@@ -1,7 +1,8 @@
+import { useMemo } from 'react'
 import { GitBranch } from 'lucide-react'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@vertexade/ui/components/ui/table'
+import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { agentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import type { WorkItem } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
@@ -22,35 +23,6 @@ function MatrixStatus({ value, empty = 'Not started' }: { value?: string | null;
     >
       <span className="truncate">{value.replaceAll('_', ' ')}</span>
     </Badge>
-  )
-}
-
-function DeliveryMatrixRow({ row }: { row: DeliveryRow }) {
-  return (
-    <TableRow>
-      <TableCell className="min-w-0">
-        <strong className="block truncate text-xs" title={row.repository}>
-          {row.repository}
-        </strong>
-      </TableCell>
-      <TableCell className="min-w-0">
-        <MatrixStatus value={row.work ? agentThreadState(row.work) : null} />
-      </TableCell>
-      <TableCell className="hidden min-w-0 2xl:table-cell">
-        <span className="block truncate font-mono text-[11px] text-muted-foreground" title={row.work?.branch_name || ''}>
-          {row.work?.branch_name || 'Not created'}
-        </span>
-      </TableCell>
-      <TableCell className="min-w-0">
-        <MatrixStatus value={row.pullRequest?.state} empty="Not opened" />
-      </TableCell>
-      <TableCell className="min-w-0">
-        <MatrixStatus value={row.review ? agentThreadState(row.review) : null} />
-      </TableCell>
-      <TableCell className="min-w-0">
-        <MatrixStatus value={row.deployment?.state} empty={row.pullRequest?.state === 'merged' ? 'Waiting' : 'Not ready'} />
-      </TableCell>
-    </TableRow>
   )
 }
 
@@ -89,6 +61,54 @@ function MobileDeliveryRow({ row }: { row: DeliveryRow }) {
 
 export function DeliveryMatrix({ item }: { item: WorkItem }) {
   const rows = buildDeliveryRows(item)
+  const columns = useMemo<DataTableColumn<DeliveryRow>[]>(
+    () => [
+      {
+        id: 'repository',
+        header: 'Repository',
+        cell: ({ row }) => (
+          <strong className="block truncate text-xs" title={row.original.repository}>
+            {row.original.repository}
+          </strong>
+        ),
+      },
+      {
+        id: 'work',
+        header: 'Work',
+        cell: ({ row }) => <MatrixStatus value={row.original.work ? agentThreadState(row.original.work) : null} />,
+      },
+      {
+        id: 'branch',
+        header: 'Branch',
+        cell: ({ row }) => (
+          <span className="block truncate font-mono text-[11px] text-muted-foreground" title={row.original.work?.branch_name || ''}>
+            {row.original.work?.branch_name || 'Not created'}
+          </span>
+        ),
+      },
+      {
+        id: 'pull-request',
+        header: 'PR',
+        cell: ({ row }) => <MatrixStatus value={row.original.pullRequest?.state} empty="Not opened" />,
+      },
+      {
+        id: 'review',
+        header: 'Review',
+        cell: ({ row }) => <MatrixStatus value={row.original.review ? agentThreadState(row.original.review) : null} />,
+      },
+      {
+        id: 'deployment',
+        header: 'Deploy',
+        cell: ({ row }) => (
+          <MatrixStatus
+            value={row.original.deployment?.state}
+            empty={row.original.pullRequest?.state === 'merged' ? 'Waiting' : 'Not ready'}
+          />
+        ),
+      },
+    ],
+    [],
+  )
   if (!rows.length) return null
   return (
     <Card>
@@ -107,25 +127,17 @@ export function DeliveryMatrix({ item }: { item: WorkItem }) {
             <MobileDeliveryRow key={row.repository} row={row} />
           ))}
         </div>
-        <TableContainer className="hidden [scrollbar-gutter:stable] md:block">
-          <Table className="min-w-[36rem] table-fixed 2xl:min-w-[44rem]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[28%]">Repository</TableHead>
-                <TableHead className="w-[18%]">Work</TableHead>
-                <TableHead className="hidden w-[18%] 2xl:table-cell">Branch</TableHead>
-                <TableHead className="w-[18%]">PR</TableHead>
-                <TableHead className="w-[18%]">Review</TableHead>
-                <TableHead className="w-[18%]">Deploy</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <DeliveryMatrixRow key={row.repository} row={row} />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <DataTable
+          columns={columns}
+          data={rows}
+          getRowId={(row) => row.repository}
+          containerClassName="hidden [scrollbar-gutter:stable] md:block"
+          tableClassName="min-w-[36rem] table-fixed 2xl:min-w-[44rem]"
+          headerClassName={(columnId) =>
+            cn(columnId === 'repository' ? 'w-[28%]' : 'w-[18%]', columnId === 'branch' && 'hidden 2xl:table-cell')
+          }
+          cellClassName={(columnId) => cn('min-w-0', columnId === 'branch' && 'hidden 2xl:table-cell')}
+        />
       </CardContent>
     </Card>
   )

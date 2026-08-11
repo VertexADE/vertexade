@@ -1,8 +1,11 @@
 import {
   readServerListenerConfiguration,
+  normalizeServerListenerConfiguration,
   writeServerListenerConfiguration,
   type ListenerAddress,
 } from '@vertexade/platform-server/listener-configuration'
+import { networkInterfaces } from 'node:os'
+import { isIP } from 'node:net'
 
 export type ListenerConfigurationStatus = ListenerAddress & {
   currentHost: string
@@ -14,7 +17,25 @@ export type ListenerConfigurationStatus = ListenerAddress & {
 export type ServerRuntimeStatus = {
   web: ListenerConfigurationStatus
   api: ListenerConfigurationStatus
+  webOrigins: string[]
   restartRequired: boolean
+}
+
+type HostInterfaces = ReturnType<typeof networkInterfaces>
+
+function listenerOrigin(host: string, port: number): string {
+  return `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`
+}
+
+export function webListenerOrigins(listener: ListenerAddress, interfaces: HostInterfaces = networkInterfaces()): string[] {
+  if (listener.host !== '0.0.0.0' && listener.host !== '::') {
+    return ['127.0.0.1', '::1', 'localhost'].includes(listener.host) ? [] : [listenerOrigin(listener.host, listener.port)]
+  }
+  const origins = Object.values(interfaces)
+    .flatMap((entries) => entries || [])
+    .filter((entry) => !entry.internal && !entry.address.includes('%'))
+    .map((entry) => listenerOrigin(entry.address, listener.port))
+  return [...new Set(origins)].sort()
 }
 
 function source(value: string | undefined, explicitlyConfigured: boolean): ListenerConfigurationStatus['source'] {
@@ -50,6 +71,7 @@ export async function serverRuntimeStatus(environment: NodeJS.ProcessEnv = proce
   return {
     web,
     api,
+    webOrigins: webListenerOrigins(currentWeb),
     restartRequired:
       (!web.environmentOverride && (web.host !== web.currentHost || web.port !== web.currentPort)) ||
       (!api.environmentOverride && (api.host !== api.currentHost || api.port !== api.currentPort)),
@@ -57,6 +79,10 @@ export async function serverRuntimeStatus(environment: NodeJS.ProcessEnv = proce
 }
 
 export async function updateServerRuntimeConfiguration(input: unknown, environment: NodeJS.ProcessEnv = process.env) {
-  await writeServerListenerConfiguration(input, environment)
+  const configuration = normalizeServerListenerConfiguration(input)
+  if (environment.VERTEXADE_BUNDLED_RUNTIME === '1' && !['127.0.0.1', '::1', 'localhost'].includes(configuration.api.host)) {
+    throw new Error('VertexADE Desktop keeps the API listener on loopback. Expose the authenticated web listener for phone access.')
+  }
+  await writeServerListenerConfiguration(configuration, environment)
   return serverRuntimeStatus(environment)
 }

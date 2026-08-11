@@ -69,7 +69,7 @@ describe('mobile workspace service', () => {
       description: ' Native first ',
       repositoryId: 1_000_000_002,
     })).resolves.toMatchObject({ id: 9, key: 'team~W-0009', backendId: 'team' })
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', headers: { 'x-vertexade-backend': 'team' } })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', getAccessToken: expect.any(Function), headers: { 'x-vertexade-backend': 'team' } })
     expect(request).toHaveBeenCalledWith('/api/work-items', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ title: 'Ship mobile', description: 'Native first', kind: 'implementation', priority: 'normal', repository_ids: [1_000_000_002] }),

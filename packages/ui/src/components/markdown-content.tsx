@@ -2,6 +2,7 @@ import { lazy } from 'react'
 
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { MarkdownRenderer, type MarkdownContentProps } from '@vertexade/ui/components/markdown-renderer'
+import { hasMarkdownMath } from '@vertexade/ui/lib/markdown-profile'
 
 export type { FileReference, MarkdownContentProps } from '@vertexade/ui/components/markdown-renderer'
 
@@ -54,66 +55,8 @@ function markdownText(content: string) {
     .join('')
 }
 
-function escapedAt(content: string, index: number) {
-  let slashes = 0
-  for (let cursor = index - 1; cursor >= 0 && content[cursor] === '\\'; cursor -= 1) slashes += 1
-  return slashes % 2 === 1
-}
-
-function containsBackslashMath(content: string, opening: '\\(' | '\\[', closing: '\\)' | '\\]') {
-  let cursor = 0
-  while (cursor < content.length) {
-    const start = content.indexOf(opening, cursor)
-    if (start < 0) return false
-    if (!escapedAt(content, start)) {
-      const end = content.indexOf(closing, start + opening.length)
-      if (end >= 0 && content.slice(start + opening.length, end).trim()) return true
-    }
-    cursor = start + opening.length
-  }
-  return false
-}
-
-function dollarDelimiter(content: string, start: number) {
-  if (content[start] !== '$' || escapedAt(content, start)) return null
-  const block = content[start + 1] === '$'
-  const delimiter = block ? '$$' : '$'
-  const expressionStart = start + delimiter.length
-  if (!block && (content[expressionStart] === '$' || /\s/.test(content[expressionStart] || ''))) return null
-  return { block, delimiter, expressionStart }
-}
-
-function closingDollar(content: string, delimiter: string, expressionStart: number) {
-  let end = expressionStart
-  while ((end = content.indexOf(delimiter, end)) >= 0) {
-    if (!escapedAt(content, end)) return end
-    end += delimiter.length
-  }
-  return -1
-}
-
-function validDollarExpression(content: string, start: number, end: number, block: boolean) {
-  const expression = content.slice(start, end)
-  if (!expression.trim()) return false
-  if (block) return true
-  if (expression.includes('\n') || /\s$/.test(expression) || expression.endsWith('\\')) return false
-  const currencyRange = /^[\d.,]+[-–—]$/.test(expression) && /\d/.test(content[end + 1] || '')
-  return !currencyRange
-}
-
-function containsDollarMath(content: string) {
-  for (let start = 0; start < content.length; start += 1) {
-    const candidate = dollarDelimiter(content, start)
-    if (!candidate) continue
-    const end = closingDollar(content, candidate.delimiter, candidate.expressionStart)
-    if (end >= 0 && validDollarExpression(content, candidate.expressionStart, end, candidate.block)) return true
-  }
-  return false
-}
-
 export function containsMarkdownMath(content: string) {
-  const text = markdownText(content)
-  return containsDollarMath(text) || containsBackslashMath(text, '\\(', '\\)') || containsBackslashMath(text, '\\[', '\\]')
+  return hasMarkdownMath(markdownText(content))
 }
 
 export function MarkdownContent(props: MarkdownContentProps) {

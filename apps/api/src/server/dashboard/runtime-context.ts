@@ -1,3 +1,5 @@
+import type { MobilePairingService } from '../settings/mobile-pairing.ts'
+
 type DashboardRuntimeBindings = Record<string, any>
 
 export let runtimeAPI_TOKEN: any
@@ -55,6 +57,7 @@ export let runtimeLaunchStackAnalysis: any
 export let runtimeLaunchWorktreeReview: any
 export let runtimeLinkImplementationBranch: any
 export let runtimeMonitorJobProcess: any
+export let runtimeMobilePairing: MobilePairingService
 export let runtimeNotifyClients: any
 export let runtimeParseRepo: any
 export let runtimePersistedThreadContext: any
@@ -153,6 +156,7 @@ export function configureDashboardRuntime(values: DashboardRuntimeBindings) {
   runtimeLaunchWorktreeReview = values.launchWorktreeReview
   runtimeLinkImplementationBranch = values.linkImplementationBranch
   runtimeMonitorJobProcess = values.monitorJobProcess
+  runtimeMobilePairing = values.mobilePairing
   runtimeNotifyClients = values.notifyClients
   runtimeParseRepo = values.parseRepo
   runtimePersistedThreadContext = values.persistedThreadContext

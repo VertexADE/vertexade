@@ -1,9 +1,13 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { useState } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { HeadContent, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import { Toaster } from '@vertexade/ui/components/ui/sonner'
 import { TooltipProvider } from '@vertexade/ui/components/ui/tooltip'
 import { AppNav } from '@vertexade/ui/components/app-nav'
 import { ConfirmProvider } from '@vertexade/ui/components/confirm-provider'
 import { ThemeProvider } from '@vertexade/ui/components/theme-provider'
+import { DashboardDatabaseProvider } from '../lib/tanstack-dashboard-provider'
+import { createPlatformQueryClient } from '../lib/platform-query-client'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -26,20 +30,30 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const standalone = useRouterState({ select: (state) => ['/onboarding', '/pair'].includes(state.location.pathname) })
+  const [queryClient] = useState(createPlatformQueryClient)
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider>
-          <TooltipProvider>
-            <ConfirmProvider>
-              <AppNav>{children}</AppNav>
-            </ConfirmProvider>
-          </TooltipProvider>
-          <Toaster richColors />
-        </ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <TooltipProvider>
+              <ConfirmProvider>
+                {standalone ? (
+                  children
+                ) : (
+                  <DashboardDatabaseProvider>
+                    <AppNav>{children}</AppNav>
+                  </DashboardDatabaseProvider>
+                )}
+              </ConfirmProvider>
+            </TooltipProvider>
+            <Toaster richColors />
+          </ThemeProvider>
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

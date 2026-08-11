@@ -183,8 +183,7 @@ export class OutboundRequestPolicy {
       return this.#reject('Outbound hostname could not be resolved', url)
     }
     if (!addresses.length) return this.#reject('Outbound hostname did not resolve to an address', url)
-    if (!this.allowedOrigins.has(url.origin) && addresses.some(blockedAddress))
-      return this.#reject(NON_PUBLIC_OUTBOUND_REASON, url)
+    if (!this.allowedOrigins.has(url.origin) && addresses.some(blockedAddress)) return this.#reject(NON_PUBLIC_OUTBOUND_REASON, url)
     this.#pin(name, addresses)
     return url
   }

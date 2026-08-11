@@ -7,9 +7,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@vertexade/ui/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import {
   backendApi,
-  AGENT_OPTIONS_EVENT,
   agentLaunchOptions,
   saveAgentLaunchOptions,
+  useAgentLaunchOptions,
   type AgentLaunchOptions,
 } from '@vertexade/ui/lib/dashboard-api'
 
@@ -99,15 +99,12 @@ export function AgentOptionsPicker({
   const controlled = Boolean(value && onChange)
   const [models, setModels] = useState<Model[]>([])
   const [agents, setAgents] = useState<AgentChoice[]>([])
-  const [stored, setStored] = useState<AgentLaunchOptions>(agentLaunchOptions)
+  const stored = useAgentLaunchOptions()
   const current = controlled ? value! : stored
   const [agentName, setAgentName] = useState('Agent')
   function update(next: AgentLaunchOptions) {
     if (controlled) onChange!(next)
-    else {
-      setStored(next)
-      saveAgentLaunchOptions(next)
-    }
+    else saveAgentLaunchOptions(next)
   }
   function changeAgent(agentId: string) {
     const options = agentLaunchOptions(agentId)
@@ -158,16 +155,6 @@ export function AgentOptionsPicker({
       active = false
     }
   }, [backendId, current.agentId, current.model, current.reasoningEffort, current.allowSubagents, lockedAgentId])
-  useEffect(() => {
-    if (controlled) return
-    const sync = () => setStored(agentLaunchOptions())
-    window.addEventListener(AGENT_OPTIONS_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener(AGENT_OPTIONS_EVENT, sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [controlled])
   const selected = useMemo(() => models.find((model) => model.id === current.model), [models, current.model])
   const pendingModel = current.model && !selected ? current.model : ''
   const reasoningEfforts = selected?.reasoning_efforts || []

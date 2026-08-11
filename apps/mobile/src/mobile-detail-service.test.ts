@@ -99,7 +99,7 @@ describe('mobile detail service', () => {
       unresolvedThreads: 1,
       files: [{ path: 'apps/mobile/app/index.tsx' }],
     })
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', headers: { 'x-vertexade-backend': 'team' } })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', getAccessToken: expect.any(Function), headers: { 'x-vertexade-backend': 'team' } })
     expect(request).toHaveBeenCalledWith('/api/pulls/1/299/details', { maxJsonResponseBytes: 32 * 1024 * 1024 })
   })
 

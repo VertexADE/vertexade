@@ -12,6 +12,7 @@ export default function RootLayout() {
       contentStyle: { backgroundColor: colors.background },
     }}>
       <Stack.Screen name="index" options={{ title: 'VertexADE' }} />
+      <Stack.Screen name="pair" options={{ title: 'Pair device', presentation: 'modal' }} />
       <Stack.Screen name="extensions/[moduleId]" options={{ title: 'Extension' }} />
     </Stack>
   </SafeAreaProvider>

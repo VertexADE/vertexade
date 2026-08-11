@@ -14,6 +14,37 @@ export default defineConfig({
       // stay inside the client bundle: a bare `from "tslib"` import cannot be
       // resolved by a browser and prevents the application from hydrating.
       external: ['env', 'wasi_snapshot_preview1'],
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'octane-runtime',
+              test: (moduleId: string) => moduleId.includes('/node_modules/octane/'),
+              includeDependenciesRecursively: false,
+              priority: 30,
+            },
+            {
+              name: 'tanstack-query',
+              test: (moduleId: string) => moduleId.includes('/@tanstack/react-query/') || moduleId.includes('/@tanstack/query-core/'),
+              priority: 20,
+            },
+            {
+              name: 'thread-ui-runtime',
+              test: (moduleId: string) => {
+                const isThreadComponent =
+                  moduleId.includes('/packages/ui/src/components/thread-') &&
+                  !moduleId.endsWith('/packages/ui/src/components/thread-panel.tsx')
+                const isThreadHook = moduleId.includes('/packages/ui/src/hooks/use-thread-')
+                return isThreadComponent || isThreadHook
+              },
+              includeDependenciesRecursively: false,
+              entriesAware: true,
+              maxSize: 200 * 1024,
+              priority: 10,
+            },
+          ],
+        },
+      },
     },
   },
   // The Node build resolves tslib from the packaged server dependencies. Keeping

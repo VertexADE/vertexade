@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { auditTime, BehaviorSubject, filter } from 'rxjs'
 import { platformClient, platformConnectionState, platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
 import {
@@ -9,6 +9,7 @@ import {
   type ReadModelResponse,
 } from './dashboard-cache-model'
 import { readDashboardBootstrap, writeDashboardBootstraps } from './dashboard-bootstrap-cache'
+import { useDashboardModelRows } from './tanstack-dashboard-db'
 
 type ConnectionState = {
   connected: boolean
@@ -133,17 +134,18 @@ function startDashboardSync() {
 }
 
 export function useRxDashboardCollection<T extends object>(collection: DashboardCollection, fallback: T[] = []) {
-  const [values, setValues] = useState<T[]>(() => normalizeDashboardCollectionValues(collection, fallback))
-  const [ready, setReady] = useState(false)
   const [connection, setConnection] = useState(connectionState.value)
+  const models = useDashboardModelRows(collection)
+  const bootstrap = useMemo(() => readDashboardBootstrap<T>(collection), [collection])
+  const fallbackValues = bootstrap?.values ?? fallback
+  const values = normalizeDashboardCollectionValues(
+    collection,
+    models.isReady ? (models.data ?? []).map((document) => document.value as T) : fallbackValues,
+  )
+  const ready = models.isReady || Boolean(bootstrap)
 
   useBrowserLayoutEffect(() => {
-    let active = true
-    let modelSubscription: { unsubscribe(): void } | undefined
-    const bootstrap = readDashboardBootstrap<T>(collection)
     if (bootstrap) {
-      setValues(normalizeDashboardCollectionValues(collection, bootstrap.values))
-      setReady(true)
       setConnection((current) => ({
         ...current,
         lastSyncedAt: current.lastSyncedAt ?? bootstrap.syncedAt,
@@ -156,30 +158,12 @@ export function useRxDashboardCollection<T extends object>(collection: Dashboard
         return
       }
       setConnection(next)
-      if (next.lastSyncedAt) setReady(true)
     })
-    void storage()
-      .then(async (dashboardStorage) => {
-        const cachedSync = await dashboardStorage.readDashboardSyncState()
-        if (!active) return
-        modelSubscription = await dashboardStorage.subscribeDashboardCollection(collection, (nextValues) => {
-          if (!active) return
-          setValues(normalizeDashboardCollectionValues(collection, nextValues as T[]))
-          if (cachedSync) setReady(true)
-        })
-        if (!active) {
-          modelSubscription.unsubscribe()
-          return
-        }
-        startDashboardSync()
-      })
-      .catch(reportSyncError)
+    startDashboardSync()
     return () => {
-      active = false
-      modelSubscription?.unsubscribe()
       connectionSubscription.unsubscribe()
     }
-  }, [collection])
+  }, [bootstrap])
 
   return {
     values,

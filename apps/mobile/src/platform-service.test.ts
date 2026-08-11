@@ -17,6 +17,7 @@ describe('mobile platform service', () => {
     expect(createMobilePlatformClient('http://fixture:4173', 'team')).toBe(client)
     expect(createClient).toHaveBeenCalledWith({
       baseUrl: 'http://fixture:4173',
+      getAccessToken: expect.any(Function),
       headers: { 'x-vertexade-backend': 'team' },
     })
   })

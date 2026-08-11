@@ -1,50 +1,82 @@
-import * as React from 'react'
+import type { ReactNode } from 'react'
+import { tableFeatures, useTable, type ColumnDef, type RowData } from '@tanstack/react-table'
 
 import { cn } from '@vertexade/ui/lib/utils'
 
-function TableContainer({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="table-container" className={cn('w-full overflow-x-auto', className)} {...props} />
+const dataTableFeatures = tableFeatures({})
+
+export type DataTableColumn<TData extends RowData> = ColumnDef<typeof dataTableFeatures, TData>
+
+export type DataTableProps<TData extends RowData> = {
+  columns: DataTableColumn<TData>[]
+  data: TData[]
+  getRowId(row: TData, index: number): string
+  caption?: ReactNode
+  containerClassName?: string
+  tableClassName?: string
+  headerClassName?(columnId: string): string | undefined
+  cellClassName?(columnId: string): string | undefined
+  rowClassName?(row: TData): string | undefined
 }
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
-  return <table data-slot="table" className={cn('w-full min-w-max border-collapse text-sm', className)} {...props} />
-}
+export function DataTable<TData extends RowData>({
+  columns,
+  data,
+  getRowId,
+  caption,
+  containerClassName,
+  tableClassName,
+  headerClassName,
+  cellClassName,
+  rowClassName,
+}: DataTableProps<TData>) {
+  const table = useTable({
+    features: dataTableFeatures,
+    columns,
+    data,
+    getRowId,
+  })
 
-function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
-  return <thead data-slot="table-header" className={cn('border-y bg-muted/25', className)} {...props} />
-}
-
-function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
-  return <tbody data-slot="table-body" className={cn('[&_tr:last-child]:border-b-0', className)} {...props} />
-}
-
-function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
   return (
-    <tr
-      data-slot="table-row"
-      className={cn('border-b transition-colors hover:bg-muted/20 data-[selected=true]:bg-muted/40', className)}
-      {...props}
-    />
+    <div data-slot="table-container" data-table-engine="tanstack" className={cn('w-full overflow-x-auto', containerClassName)}>
+      <table data-slot="table" className={cn('w-full min-w-max border-collapse text-sm', tableClassName)}>
+        {caption ? <caption className="p-3 text-left text-xs text-muted-foreground">{caption}</caption> : null}
+        <thead data-slot="table-header" className="border-y bg-muted/25">
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} data-slot="table-row" className="border-b">
+              {headerGroup.headers.map((header) => (
+                <th
+                  key={header.id}
+                  data-slot="table-head"
+                  scope="col"
+                  colSpan={header.colSpan}
+                  className={cn(
+                    'h-9 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted-foreground',
+                    headerClassName?.(header.column.id),
+                  )}
+                >
+                  {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody data-slot="table-body" className="[&_tr:last-child]:border-b-0">
+          {table.getRowModel().rows.map((row) => (
+            <tr
+              key={row.id}
+              data-slot="table-row"
+              className={cn('border-b transition-colors hover:bg-muted/20', rowClassName?.(row.original))}
+            >
+              {row.getAllCells().map((cell) => (
+                <td key={cell.id} data-slot="table-cell" className={cn('p-2 align-middle', cellClassName?.(cell.column.id))}>
+                  <table.FlexRender cell={cell} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
-
-function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
-  return (
-    <th
-      data-slot="table-head"
-      scope="col"
-      className={cn('h-9 px-3 text-left align-middle text-xs font-medium whitespace-nowrap text-muted-foreground', className)}
-      {...props}
-    />
-  )
-}
-
-function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
-  return <td data-slot="table-cell" className={cn('p-2 align-middle', className)} {...props} />
-}
-
-function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) {
-  return <caption data-slot="table-caption" className={cn('p-3 text-left text-xs text-muted-foreground', className)} {...props} />
-}
-
-export { TableContainer, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption }

@@ -32,52 +32,11 @@ import {
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import { cn } from '@vertexade/ui/lib/utils'
-import {
-  Command,
-  GuideCard,
-  OperationalMetric,
-  StatusDot,
-  StatusLine,
-  StatusList,
-  StepNumber,
-  type SetupTool,
-} from '../components/setup/setup-components'
+import { Command, GuideCard, OperationalMetric, StatusDot, StatusLine, StatusList, StepNumber } from '../components/setup/setup-components'
 import { useDashboardMeta } from '../lib/dashboard-cache'
+import { parseSetupStatus, setupMilestones, type SetupStatus } from '../lib/setup-status'
 
 export const Route = createFileRoute('/setup')({ ssr: false, component: SetupPage })
-
-type SetupStatus = {
-  ready: boolean
-  runtime: { nodeVersion: string; production: boolean }
-  tools: SetupTool[]
-  scm: {
-    id: string
-    name: string
-    ready: boolean
-    source: string
-    connected: boolean
-    error: string
-  }
-  agents: { id: string; name: string; enabled: boolean; ready: boolean; tool: SetupTool | null }[]
-  extensions: {
-    ready: number
-    total: number
-    modules: { id: string; name: string; lifecycle: string; configured?: boolean }[]
-  }
-  operations: {
-    deployment: { commitSha?: string; deployedAt?: string; status?: string } | null
-    process: { pid: number; uptimeSeconds: number; residentMemoryBytes: number }
-    queues: { queuedFollowUps: number; queuedReviews: number; oldestQueuedReview: string | null }
-    activity: { activeJobs: number; failedAutomations: number }
-    automations: {
-      paused: boolean
-      activeRuns: number
-      pendingApprovals: number
-      staleRuns: number
-      oldestActiveAt: string | null
-    }
-  } | null
-}
 
 // fallow-ignore-next-line complexity -- Existing setup checklist intentionally aggregates live health signals in one route.
 function SetupPage() {
@@ -89,7 +48,7 @@ function SetupPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const nextStatus = await api<SetupStatus>('/api/setup/status')
+      const nextStatus = parseSetupStatus(await api<unknown>('/api/setup/status'))
       setStatus(nextStatus)
     } catch (error) {
       const message = (error as Error).message
@@ -103,21 +62,7 @@ function SetupPage() {
     void load()
   }, [load])
 
-  const milestones = useMemo(
-    () =>
-      status
-        ? [
-            { label: 'Application running', ready: true },
-            {
-              label: 'Core tools available',
-              ready: status.tools.filter((tool) => tool.required).every((tool) => tool.ready),
-            },
-            { label: `${status.scm.name} connected`, ready: status.scm.ready },
-            { label: 'Execution agent ready', ready: status.agents.some((agent) => agent.ready) },
-          ]
-        : [],
-    [status],
-  )
+  const milestones = useMemo(() => (status ? setupMilestones(status) : []), [status])
   const completed = milestones.filter((milestone) => milestone.ready).length
   const progress = milestones.length ? (completed / milestones.length) * 100 : 0
   const degraded = Boolean(

@@ -1,6 +1,6 @@
 {
-  "entry": ["apps/mobile/test/setup.ts", "apps/mobile/scripts/device-runtime-probe.mjs"],
-  "ignoreDependencies": ["h3-rules", "jest-junit", "react", "react-native-web", "vite-plus"],
+  "entry": ["apps/mobile/test/setup.ts", "apps/mobile/scripts/device-runtime-probe.mjs", "apps/desktop/src/preload.ts"],
+  "ignoreDependencies": ["babel-plugin-react-compiler", "h3-rules", "jest-junit", "react", "react-native-web", "vite-plus"],
   "duplicates": {
     "ignore": ["**/*.gen.ts"]
   }

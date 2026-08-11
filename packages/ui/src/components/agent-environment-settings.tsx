@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
 import { Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { toast } from 'sonner'
@@ -46,37 +47,42 @@ export function AgentEnvironmentSettingsPanel({
   onChanged: () => void
   saveEnvironment(input: { variables: { name: string; value: string; previous_name: string }[] }): Promise<unknown>
 }) {
-  const [rows, setRows] = useState<EnvironmentRow[]>(() => environmentRows(agent))
-  const [busy, setBusy] = useState(false)
+  const form = useForm({
+    defaultValues: { rows: environmentRows(agent) },
+    onSubmit: async ({ value }) => {
+      try {
+        await saveEnvironment({
+          variables: value.rows.map((row) => ({
+            name: row.name.trim(),
+            value: row.value,
+            previous_name: row.previousName,
+          })),
+        })
+        toast.success(`${agent.name} environment stored encrypted`)
+        onChanged()
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
+  const rows = useStore(form.store, (state) => state.values.rows)
   useEffect(() => {
-    setRows(environmentRows(agent))
+    form.reset({ rows: environmentRows(agent) })
   }, [agent])
   function update(id: string, values: Partial<EnvironmentRow>) {
-    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...values } : row)))
-  }
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    setBusy(true)
-    try {
-      await saveEnvironment({
-        variables: rows.map((row) => ({
-          name: row.name.trim(),
-          value: row.value,
-          previous_name: row.previousName,
-        })),
-      })
-      toast.success(`${agent.name} environment stored encrypted`)
-      onChanged()
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setBusy(false)
-    }
+    form.setFieldValue('rows', (current) => current.map((row) => (row.id === id ? { ...row, ...values } : row)))
   }
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <EnvironmentCardHeader agent={agent} />
-      <form onSubmit={save} className="space-y-3 p-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          void form.handleSubmit()
+        }}
+        className="space-y-3 p-4"
+      >
         <div className="space-y-2">
           {rows.map((row) => (
             <div key={row.id} className="grid gap-2 rounded-md border p-2 sm:grid-cols-2">
@@ -109,7 +115,7 @@ export function AgentEnvironmentSettingsPanel({
                 variant="ghost"
                 size="sm"
                 className="justify-self-end text-red-400 sm:col-span-2"
-                onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))}
+                onClick={() => form.setFieldValue('rows', (current) => current.filter((item) => item.id !== row.id))}
               >
                 <Trash2 />
                 Remove<span className="sr-only"> {row.name || 'variable'}</span>
@@ -127,14 +133,18 @@ export function AgentEnvironmentSettingsPanel({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setRows((current) => [...current, { id: nanoid(), name: '', value: '', previousName: '' }])}
+            onClick={() => form.setFieldValue('rows', (current) => [...current, { id: nanoid(), name: '', value: '', previousName: '' }])}
           >
             <Plus />
             Add variable
           </Button>
-          <Button size="sm" disabled={busy}>
-            {busy ? 'Saving…' : `Save ${agent.name} environment`}
-          </Button>
+          <form.Subscribe selector={(state) => state.isSubmitting}>
+            {(busy) => (
+              <Button size="sm" disabled={busy}>
+                {busy ? 'Saving…' : `Save ${agent.name} environment`}
+              </Button>
+            )}
+          </form.Subscribe>
         </div>
       </form>
     </Card>

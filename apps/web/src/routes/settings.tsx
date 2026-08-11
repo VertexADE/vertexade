@@ -3,28 +3,27 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   ArrowRight,
   Bot,
+  BookOpen,
   Braces,
-  ChevronsUpDown,
   Container,
   FolderCog,
   Gauge,
+  Home,
   Network,
   Palette,
-  Pencil,
-  Play,
-  Plus,
-  Power,
   RefreshCw,
   Search,
   Settings2,
+  ShieldCheck,
   Sparkles,
-  Trash2,
+  Smartphone,
+  Wifi,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GlobalHighlights } from '@vertexade/ui/components/global-highlights'
-import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
 import {
   emptySystemConfiguration,
@@ -36,32 +35,12 @@ import {
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
-import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@vertexade/ui/components/ui/command'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
-import { Input } from '@vertexade/ui/components/ui/input'
-import { Label } from '@vertexade/ui/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@vertexade/ui/components/ui/popover'
 import { SearchInput } from '@vertexade/ui/components/ui/search-input'
-import {
-  StatusPanel,
-  StatusPanelActions,
-  StatusPanelContent,
-  StatusPanelDescription,
-  StatusPanelTitle,
-} from '@vertexade/ui/components/ui/status'
+import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
-import { Textarea } from '@vertexade/ui/components/ui/textarea'
-import {
-  age,
-  api,
-  isNotificationEvent,
-  isPlatformApiError,
-  subscribeToDashboardEvents,
-  type AgentLaunchOptions,
-} from '@vertexade/ui/lib/dashboard-api'
+import { api, isNotificationEvent, isPlatformApiError, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
 import type { DashboardData, Repository } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 import {
@@ -69,48 +48,75 @@ import {
   Highlights,
   Presets,
   Repositories,
-  SectionIntro,
   WorktreePreviewSettings,
 } from '../components/settings/settings-panels'
+import { SettingsGroup, SettingsPageHeader, SettingsSectionDivider } from '../components/settings/settings-shared'
 import type { ContentGenerationSettings, PreviewSettings, ThreadRuntimeDefaults } from '../components/settings/settings-types'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
 import { ThreadRuntimeDefaultSettings } from '../components/settings/settings-thread-runtime-defaults'
 import { ServerRuntimeSettings } from '../components/settings/server-runtime-settings'
 import { TestTargetSettings } from '../components/settings/test-target-settings'
 import { EvidencePolicySettings } from '../components/settings/evidence-policy-settings'
+import { DesktopOnboardingSettings } from '../components/onboarding/desktop-onboarding-settings'
+import { LinkedServersSettings } from '../components/settings/linked-servers-settings'
+import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
 
-type SettingsSection = 'general' | 'servers' | 'prompts' | 'runtime' | 'capabilities' | 'appearance'
-const settingsSectionIds = new Set<SettingsSection>(['general', 'servers', 'prompts', 'runtime', 'capabilities', 'appearance'])
+type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'capabilities' | 'appearance'
+const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'capabilities', 'appearance'])
+const legacySettingsSections: Record<string, SettingsSection> = {
+  general: 'workspace',
+  servers: 'connectivity',
+  prompts: 'agents',
+  runtime: 'agents',
+}
 type WorkspaceSettingsOverview = Pick<DashboardData, 'repositories' | 'presets' | 'highlights'>
 type SettingsSearch = { section?: SettingsSection; q?: string }
+
+function settingsSection(value: unknown): SettingsSection | undefined {
+  const candidate = String(value || '')
+  if (settingsSectionIds.has(candidate as SettingsSection)) return candidate as SettingsSection
+  return legacySettingsSections[candidate]
+}
+
+function settingsQuery(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value.slice(0, 100) : undefined
+}
 
 export const Route = createFileRoute('/settings')({
   ssr: false,
   validateSearch: (search: Record<string, unknown>): SettingsSearch => ({
-    section: settingsSectionIds.has(search.section as SettingsSection) ? (search.section as SettingsSection) : undefined,
-    q: typeof search.q === 'string' && search.q ? search.q.slice(0, 100) : undefined,
+    section: settingsSection(search.section),
+    q: settingsQuery(search.q),
   }),
   component: SettingsPage,
 })
 
 const settingsSections: Array<{
   id: SettingsSection
-  group: 'workspace' | 'agents'
+  group: 'start' | 'workspace' | 'agents' | 'personal'
   label: string
   description: string
   icon: LucideIcon
   keywords: string
 }> = [
   {
-    id: 'servers',
-    group: 'workspace',
-    label: 'Servers',
-    description: 'Linked VertexADE backends',
-    icon: Network,
-    keywords: 'servers backends federation linked instances connections',
+    id: 'overview',
+    group: 'start',
+    label: 'Overview',
+    description: 'Setup and status at a glance',
+    icon: Home,
+    keywords: 'overview setup status desktop onboarding',
   },
   {
-    id: 'general',
+    id: 'connectivity',
+    group: 'start',
+    label: 'Connectivity',
+    description: 'Phones, network & servers',
+    icon: Network,
+    keywords: 'iphone mobile pairing pair link servers backends federation linked instances connections network listener host port',
+  },
+  {
+    id: 'workspace',
     group: 'workspace',
     label: 'Workspace',
     description: 'Repositories & previews',
@@ -118,20 +124,13 @@ const settingsSections: Array<{
     keywords: 'repository worktree preview gateway',
   },
   {
-    id: 'runtime',
+    id: 'agents',
     group: 'agents',
-    label: 'Agent execution',
-    description: 'Models, limits & execution',
+    label: 'Agents & instructions',
+    description: 'Models, prompts & runtime',
     icon: Gauge,
-    keywords: 'runtime concurrency execution limits generation titles summaries provider model read-only',
-  },
-  {
-    id: 'prompts',
-    group: 'agents',
-    label: 'Instructions',
-    description: 'Prompt policies & presets',
-    icon: Braces,
-    keywords: 'prompts policies presets instructions',
+    keywords:
+      'runtime concurrency execution limits generation titles summaries provider model read-only prompts policies presets instructions',
   },
   {
     id: 'capabilities',
@@ -143,7 +142,7 @@ const settingsSections: Array<{
   },
   {
     id: 'appearance',
-    group: 'workspace',
+    group: 'personal',
     label: 'Appearance',
     description: 'Themes, fonts & highlights',
     icon: Palette,
@@ -152,146 +151,13 @@ const settingsSections: Array<{
 ]
 
 const settingsGroups = [
+  { id: 'start', label: 'VertexADE' },
   { id: 'workspace', label: 'Workspace' },
   { id: 'agents', label: 'Agents' },
+  { id: 'personal', label: 'Personal' },
 ] as const
 
-const settingsSectionClass =
-  'space-y-3 [&_[data-slot=card]]:border-border/65 [&_[data-slot=card]]:bg-card/60 [&_[data-slot=card]]:shadow-[0_10px_32px_rgba(0,0,0,.07)] [&_[data-slot=card-description]]:hidden [&_[data-slot=card-header]]:border-border/45 [&_[data-slot=card-header]]:bg-gradient-to-r [&_[data-slot=card-header]]:from-muted/28 [&_[data-slot=card-header]]:to-transparent [&_[data-slot=card-header]]:p-3 sm:[&_[data-slot=card-description]]:block sm:[&_[data-slot=card-header]]:p-4'
-
-type LinkedServer = { id: string; label: string; url: string; namespace: number; enabled: boolean }
-
-function LinkedServersSettings() {
-  const [servers, setServers] = useState<LinkedServer[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    try {
-      const result = await api<{ servers: LinkedServer[] }>('/api/settings/linked-servers')
-      setServers(result.servers)
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => void load(), [load])
-
-  async function addServer(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = event.currentTarget
-    const values = new FormData(form)
-    const operatorToken = String(values.get('operatorToken') || '').trim()
-    try {
-      await api('/api/settings/linked-servers', {
-        method: 'POST',
-        headers: operatorToken ? { authorization: `Bearer ${operatorToken}` } : undefined,
-        body: JSON.stringify({ id: values.get('id'), label: values.get('label'), url: values.get('url') }),
-      })
-      form.reset()
-      await load()
-      toast.success('Server linked')
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
-  }
-
-  async function updateServer(server: LinkedServer, patch: Partial<LinkedServer>) {
-    try {
-      await api(`/api/settings/linked-servers/${encodeURIComponent(server.id)}`, { method: 'PATCH', body: JSON.stringify(patch) })
-      await load()
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
-  }
-
-  async function removeServer(server: LinkedServer) {
-    try {
-      await api(`/api/settings/linked-servers/${encodeURIComponent(server.id)}`, { method: 'DELETE' })
-      await load()
-      toast.success(`${server.label} unlinked`)
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Server federation</CardTitle>
-        <CardDescription>Add operator-approved VertexADE API origins to the unified workspace.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <StatusPanel tone="info">
-          <Network />
-          <StatusPanelContent>
-            <StatusPanelTitle>Public and private VertexADE servers</StatusPanelTitle>
-            <StatusPanelDescription>
-              Linking explicitly trusts this exact origin. The API verifies its VertexADE identity, pins DNS, and revalidates every
-              redirect. Private origins require this server's operator API token.
-            </StatusPanelDescription>
-          </StatusPanelContent>
-        </StatusPanel>
-        <form
-          className="grid gap-3 md:grid-cols-[minmax(8rem,.7fr)_minmax(10rem,1fr)_minmax(14rem,1.5fr)_minmax(10rem,1fr)_auto]"
-          onSubmit={addServer}
-        >
-          <Label className="grid gap-1.5 text-xs">
-            Stable id
-            <Input name="id" required placeholder="team" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,47}" />
-          </Label>
-          <Label className="grid gap-1.5 text-xs">
-            Label
-            <Input name="label" required placeholder="Team server" maxLength={80} />
-          </Label>
-          <Label className="grid gap-1.5 text-xs">
-            API origin
-            <Input name="url" type="url" required placeholder="http://192.168.1.10:4174" />
-          </Label>
-          <Label className="grid gap-1.5 text-xs">
-            Operator token
-            <Input name="operatorToken" type="password" autoComplete="off" placeholder="Private origins only" />
-          </Label>
-          <Button className="self-end" type="submit">
-            <Plus />
-            Link
-          </Button>
-        </form>
-        <div className="grid gap-2">
-          {servers.map((server) => (
-            <div key={server.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-background/55 p-3">
-              <span className={`size-2 rounded-full ${server.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{server.label}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {server.url} · {server.id}
-                </span>
-              </span>
-              <Label className="flex items-center gap-2 text-xs">
-                <Checkbox
-                  checked={server.enabled}
-                  onCheckedChange={(checked) => void updateServer(server, { enabled: checked === true })}
-                />
-                Enabled
-              </Label>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Unlink ${server.label}`}
-                onClick={() => void removeServer(server)}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          ))}
-          {!servers.length && !loading && <p className="py-3 text-sm text-muted-foreground">No additional servers are linked.</p>}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+const settingsSectionClass = 'flex min-w-0 flex-col gap-5 [&_[data-slot=card]]:min-w-0'
 
 async function workspaceSettingsOverview(): Promise<WorkspaceSettingsOverview> {
   try {
@@ -301,6 +167,115 @@ async function workspaceSettingsOverview(): Promise<WorkspaceSettingsOverview> {
     const dashboard = await api<DashboardData>('/api/dashboard')
     return { repositories: dashboard.repositories, presets: dashboard.presets, highlights: dashboard.highlights }
   }
+}
+
+function SettingsLoadError({ message, onRetry }: { message: string; onRetry(): void }) {
+  return (
+    <StatusPanel tone="danger" className="mb-4">
+      <Settings2 />
+      <StatusPanelContent>
+        <StatusPanelTitle>Some settings could not be loaded</StatusPanelTitle>
+        <StatusPanelDescription>{message}</StatusPanelDescription>
+      </StatusPanelContent>
+      <Button type="button" variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={onRetry}>
+        <RefreshCw data-icon="inline-start" />
+        Try again
+      </Button>
+    </StatusPanel>
+  )
+}
+
+function SettingsShortcut({
+  icon: Icon,
+  title,
+  description,
+  detail,
+  onOpen,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  detail: string
+  onOpen(): void
+}) {
+  return (
+    <Card size="sm" variant="subtle">
+      <CardHeader>
+        <span className="mb-2 grid size-8 place-items-center rounded-lg border border-primary/15 bg-primary/[.07] text-primary">
+          <Icon className="size-3.5" />
+        </span>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+        <CardAction>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Open ${title}`} onClick={onOpen}>
+            <ArrowRight />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <Badge variant="outline">{detail}</Badge>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SettingsOverview({ workspace, onNavigate }: { workspace: WorkspaceSettingsOverview; onNavigate(section: SettingsSection): void }) {
+  return (
+    <section data-slot="settings-section" aria-labelledby="overview-settings" className={settingsSectionClass}>
+      <SettingsPageHeader
+        id="overview-settings"
+        eyebrow="VertexADE"
+        title="Settings overview"
+        description="Configure device access, workspace infrastructure, agent behavior, and personal presentation from one predictable place."
+        icon={Home}
+        badge="Local desktop"
+        summary={[
+          { label: 'Repositories', value: String(workspace.repositories.length), detail: 'Workspace sources' },
+          { label: 'Prompt presets', value: String(workspace.presets.length), detail: 'Reusable instructions' },
+          { label: 'Highlights', value: String(workspace.highlights.length), detail: 'Browser rules' },
+        ]}
+      />
+      <SettingsGroup
+        id="overview-common-tasks"
+        title="Common tasks"
+        description="Jump directly to the settings most often needed when preparing a desktop or a new workspace."
+        icon={Sparkles}
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <SettingsShortcut
+            icon={Smartphone}
+            title="Connect a phone"
+            description="Generate a one-time full pair link for VertexADE Mobile."
+            detail="Connectivity"
+            onOpen={() => onNavigate('connectivity')}
+          />
+          <SettingsShortcut
+            icon={FolderCog}
+            title="Configure workspace"
+            description="Manage repositories, previews, validation, and evidence policies."
+            detail={`${workspace.repositories.length} repositories`}
+            onOpen={() => onNavigate('workspace')}
+          />
+          <SettingsShortcut
+            icon={Bot}
+            title="Tune agents"
+            description="Choose models, instructions, tool paths, limits, skills, and MCP servers."
+            detail="Agent defaults"
+            onOpen={() => onNavigate('agents')}
+          />
+        </div>
+      </SettingsGroup>
+      <SettingsSectionDivider />
+      <SettingsGroup
+        id="overview-onboarding"
+        title="Product guide"
+        description="Revisit the complete desktop walkthrough whenever you need a refresher."
+        icon={BookOpen}
+      >
+        <DesktopOnboardingSettings />
+      </SettingsGroup>
+    </section>
+  )
 }
 
 function SettingsPage() {
@@ -329,7 +304,7 @@ function SettingsPage() {
   })
   const [systemConfiguration, setSystemConfiguration] = useState<SystemConfigurationValue>(emptySystemConfiguration)
   const [loadError, setLoadError] = useState('')
-  const section = search.section || 'general'
+  const section = search.section || 'overview'
   const settingsQuery = search.q || ''
   const updateSearch = useCallback(
     (patch: Partial<SettingsSearch>) =>
@@ -375,20 +350,17 @@ function SettingsPage() {
     [load],
   )
 
-  async function addRepository(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const target = event.currentTarget
-    const form = new FormData(target)
+  async function addRepository(repository: string) {
     try {
       const result = await api<{ repo: Repository; open_prs: number }>('/api/repositories', {
         method: 'POST',
-        body: JSON.stringify({ repository: form.get('repository') }),
+        body: JSON.stringify({ repository }),
       })
-      target.reset()
       await load()
       toast.success(`Added ${result.repo.full_name} · ${result.open_prs} open PRs`)
     } catch (error) {
       toast.error((error as Error).message)
+      throw error
     }
   }
 
@@ -413,28 +385,14 @@ function SettingsPage() {
           title="Settings"
           description="Workspace, agent, automation, and display defaults."
         />
-        {loadError && (
-          <StatusPanel tone="danger" className="mb-4">
-            <Settings2 />
-            <StatusPanelContent>
-              <StatusPanelTitle>Some settings could not be loaded</StatusPanelTitle>
-              <StatusPanelDescription>{loadError}</StatusPanelDescription>
-            </StatusPanelContent>
-            <StatusPanelActions>
-              <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-                <RefreshCw />
-                Retry
-              </Button>
-            </StatusPanelActions>
-          </StatusPanel>
-        )}
+        {loadError && <SettingsLoadError message={loadError} onRetry={() => void load()} />}
         <Tabs
           value={section}
           onValueChange={(value) => updateSearch({ section: value as SettingsSection })}
-          className="gap-3 lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-5"
+          className="gap-3 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start lg:gap-6"
         >
-          <aside className="min-w-0 border-b border-border/45 pb-2 lg:sticky lg:top-16 lg:rounded-xl lg:border lg:border-border/60 lg:bg-card/48 lg:p-2 lg:shadow-[0_12px_32px_rgba(0,0,0,.06)]">
-            <div className="hidden p-1 lg:block">
+          <aside className="min-w-0 border-b border-border/45 pb-2 lg:sticky lg:top-16 lg:rounded-xl lg:border lg:border-border/60 lg:bg-card/65 lg:p-2.5 lg:shadow-sm">
+            <div className="hidden pb-2 lg:block">
               <SearchInput
                 density="compact"
                 value={settingsQuery}
@@ -455,7 +413,7 @@ function SettingsPage() {
                     value={id}
                     className="h-8 shrink-0 gap-1.5 rounded-lg border border-transparent px-2.5 text-xs data-active:border-border/60 data-active:bg-background data-active:shadow-sm"
                   >
-                    <Icon className="size-3.5" />
+                    <Icon />
                     {label}
                   </TabsTrigger>
                 ))}
@@ -477,14 +435,19 @@ function SettingsPage() {
                           {group.label}
                         </span>
                         <span className="grid gap-0.5">
-                          {items.map(({ id, label, icon: Icon }) => (
+                          {items.map(({ id, label, description, icon: Icon }) => (
                             <TabsTrigger
                               key={id}
                               value={id}
-                              className="relative h-10 w-full justify-start gap-2 rounded-lg border border-transparent px-2.5 text-muted-foreground data-active:border-primary/15 data-active:bg-primary/[.08] data-active:text-foreground data-active:shadow-[inset_3px_0_0_var(--primary)]"
+                              className="relative h-auto min-h-12 w-full justify-start gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left text-muted-foreground data-active:border-primary/15 data-active:bg-primary/[.08] data-active:text-foreground data-active:shadow-[inset_3px_0_0_var(--primary)]"
                             >
-                              <Icon />
-                              <span className="truncate text-xs">{label}</span>
+                              <span className="grid size-7 shrink-0 place-items-center rounded-md border border-border/50 bg-background/55">
+                                <Icon />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-xs font-medium">{label}</span>
+                                <span className="mt-0.5 block truncate text-[10px] font-normal text-muted-foreground">{description}</span>
+                              </span>
                             </TabsTrigger>
                           ))}
                         </span>
@@ -502,69 +465,221 @@ function SettingsPage() {
           </aside>
           {visibleSections.length ? (
             <>
-              <TabsContent value="general">
-                <section data-slot="settings-section" aria-labelledby="general-settings" className={settingsSectionClass}>
-                  <SectionIntro id="general-settings" title="Workspace" icon={FolderCog}>
-                    Repositories and isolated preview infrastructure available to pull-request and task workflows.
-                  </SectionIntro>
-                  <WorktreePreviewSettings settings={previewSettings} onSaved={setPreviewSettings} />
-                  <Repositories repositories={workspace.repositories} onAdd={addRepository} />
-                  <TestTargetSettings repositories={workspace.repositories} />
-                  <EvidencePolicySettings repositories={workspace.repositories} />
-                </section>
+              <TabsContent value="overview">
+                <SettingsOverview workspace={workspace} onNavigate={(next) => updateSearch({ section: next })} />
               </TabsContent>
-              <TabsContent value="prompts">
-                <section data-slot="settings-section" aria-labelledby="prompt-settings" className={settingsSectionClass}>
-                  <SectionIntro id="prompt-settings" title="Instructions" icon={Braces}>
-                    Workspace-level policies and reusable instructions for consistent work.
-                  </SectionIntro>
-                  <PromptPolicySettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                  <Presets presets={workspace.presets} />
-                </section>
-              </TabsContent>
-              <TabsContent value="servers">
-                <section data-slot="settings-section" aria-labelledby="server-settings" className={settingsSectionClass}>
-                  <SectionIntro id="server-settings" title="Server management" icon={Network}>
-                    Manage this selected server's listeners and links. Entity actions continue to route to the server that owns the item.
-                  </SectionIntro>
-                  <ServerRuntimeSettings />
-                  <LinkedServersSettings />
-                </section>
-              </TabsContent>
-              <TabsContent value="runtime">
-                <section data-slot="settings-section" aria-labelledby="runtime-settings" className={settingsSectionClass}>
-                  <SectionIntro id="runtime-settings" title="Agent execution" icon={Gauge}>
-                    Extension execution defaults and automation bounds. Extensions register their provider aspects directly.
-                  </SectionIntro>
-                  <ContentGenerationDefaults
-                    key={`${contentGeneration.agentId}:${contentGeneration.model}:${contentGeneration.reasoningEffort}`}
-                    value={contentGeneration}
-                    onSaved={setContentGeneration}
+              <TabsContent value="workspace">
+                <section data-slot="settings-section" aria-labelledby="workspace-settings" className={settingsSectionClass}>
+                  <SettingsPageHeader
+                    id="workspace-settings"
+                    eyebrow="Workspace"
+                    title="Projects & automation"
+                    description="Define where VertexADE works, how isolated previews are exposed, and which validation evidence a change must produce."
+                    icon={FolderCog}
+                    badge="Server-owned"
+                    summary={[
+                      { label: 'Repositories', value: String(workspace.repositories.length), detail: 'Available sources' },
+                      {
+                        label: 'Preview gateway',
+                        value: previewSettings.domain || 'Disabled',
+                        detail: `Port ${previewSettings.gatewayPort}`,
+                      },
+                      { label: 'Policies', value: 'Per repository', detail: 'Validation + readiness' },
+                    ]}
                   />
-                  <ThreadRuntimeDefaultSettings
-                    key={`${threadDefaults.workItem.agentId}:${threadDefaults.review.agentId}`}
-                    value={threadDefaults}
-                    onSaved={setThreadDefaults}
+                  <SettingsGroup
+                    id="workspace-previews"
+                    title="Preview environments"
+                    description="Expose isolated Work-item and pull-request worktrees behind a predictable wildcard domain."
+                    icon={Container}
+                  >
+                    <WorktreePreviewSettings settings={previewSettings} onSaved={setPreviewSettings} />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="workspace-repositories"
+                    title="Source repositories"
+                    description="Add GitHub repositories, synchronize pull requests, and configure repository-specific environments."
+                    icon={FolderCog}
+                  >
+                    <Repositories repositories={workspace.repositories} onAdd={addRepository} />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="workspace-validation"
+                    title="Validation guardrails"
+                    description="Control executable test targets and the evidence required before a pull request is considered ready."
+                    icon={ShieldCheck}
+                  >
+                    <TestTargetSettings repositories={workspace.repositories} />
+                    <EvidencePolicySettings repositories={workspace.repositories} />
+                  </SettingsGroup>
+                </section>
+              </TabsContent>
+              <TabsContent value="connectivity">
+                <section data-slot="settings-section" aria-labelledby="connectivity-settings" className={settingsSectionClass}>
+                  <SettingsPageHeader
+                    id="connectivity-settings"
+                    eyebrow="Connectivity"
+                    title="Devices & servers"
+                    description="Share the authenticated web gateway with your phone, keep the raw API private, and federate independent VertexADE servers only when needed."
+                    icon={Network}
+                    badge="Security-sensitive"
+                    summary={[
+                      { label: 'Phone access', value: 'Pair links', detail: 'One-time invitations' },
+                      { label: 'Shared surface', value: 'Web gateway', detail: 'Authenticated' },
+                      { label: 'Backend API', value: 'Loopback', detail: 'Desktop enforced' },
+                    ]}
                   />
-                  <ToolPathSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                  <RuntimeSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
+                  <SettingsGroup
+                    id="connectivity-devices"
+                    title="Mobile devices"
+                    description="Create short-lived invitations and revoke each phone independently."
+                    icon={Smartphone}
+                  >
+                    <MobilePairingSettings />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="connectivity-network"
+                    title="Network reachability"
+                    description="Expose the authenticated web listener to trusted LAN or Tailscale devices while keeping the backend API on loopback."
+                    icon={Wifi}
+                  >
+                    <ServerRuntimeSettings />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="connectivity-federation"
+                    title="Server federation"
+                    description="Link independent VertexADE backends into one workspace. This is separate from pairing the mobile app."
+                    icon={Network}
+                    badge="Advanced"
+                  >
+                    <LinkedServersSettings />
+                  </SettingsGroup>
+                </section>
+              </TabsContent>
+              <TabsContent value="agents">
+                <section data-slot="settings-section" aria-labelledby="agent-settings" className={settingsSectionClass}>
+                  <SettingsPageHeader
+                    id="agent-settings"
+                    eyebrow="Agents"
+                    title="Defaults & instructions"
+                    description="Choose safe model defaults, centralize workspace guidance, and define the runtime boundaries used by Work-item and review threads."
+                    icon={Gauge}
+                    badge="Workspace-wide"
+                    summary={[
+                      {
+                        label: 'Generated text',
+                        value: contentGeneration.model || contentGeneration.agentId || 'Not configured',
+                        detail: 'Read-only',
+                      },
+                      {
+                        label: 'Thread defaults',
+                        value: threadDefaults.workItem.agentId && threadDefaults.review.agentId ? 'Configured' : 'Incomplete',
+                        detail: 'Work + reviews',
+                      },
+                      { label: 'Prompt presets', value: String(workspace.presets.length), detail: 'Reusable' },
+                    ]}
+                  />
+                  <SettingsGroup
+                    id="agents-defaults"
+                    title="Execution defaults"
+                    description="Set the providers and models used when a workflow does not choose its own runtime."
+                    icon={Gauge}
+                  >
+                    <ContentGenerationDefaults
+                      key={`${contentGeneration.agentId}:${contentGeneration.model}:${contentGeneration.reasoningEffort}`}
+                      value={contentGeneration}
+                      onSaved={setContentGeneration}
+                    />
+                    <ThreadRuntimeDefaultSettings
+                      key={`${threadDefaults.workItem.agentId}:${threadDefaults.review.agentId}`}
+                      value={threadDefaults}
+                      onSaved={setThreadDefaults}
+                    />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="agents-instructions"
+                    title="Instructions"
+                    description="Maintain trusted workspace policy and reusable prompts separately from model selection."
+                    icon={Braces}
+                  >
+                    <PromptPolicySettings value={systemConfiguration} onSaved={setSystemConfiguration} />
+                    <Presets presets={workspace.presets} />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="agents-runtime"
+                    title="Runtime & tools"
+                    description="Control executable discovery, retry behavior, concurrency, and automation limits."
+                    icon={Wrench}
+                    badge="Advanced"
+                  >
+                    <ToolPathSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
+                    <RuntimeSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
+                  </SettingsGroup>
                 </section>
               </TabsContent>
               <TabsContent value="capabilities">
                 <section data-slot="settings-section" aria-labelledby="capability-settings" className={settingsSectionClass}>
-                  <SectionIntro id="capability-settings" title="AI capabilities" icon={Bot}>
-                    Manage skills and MCP servers once, then tailor the active set for each Work item.
-                  </SectionIntro>
-                  <AgentResourceSettings />
+                  <SettingsPageHeader
+                    id="capability-settings"
+                    eyebrow="Agents"
+                    title="AI capabilities"
+                    description="Manage reusable skills and MCP servers once, then choose the active resources for each Work item."
+                    icon={Bot}
+                    badge="Extensible"
+                    summary={[
+                      { label: 'Skills', value: 'Workspace catalog', detail: 'Reusable guidance' },
+                      { label: 'MCP servers', value: 'Managed here', detail: 'External tools' },
+                      { label: 'Activation', value: 'Per Work item', detail: 'Least privilege' },
+                    ]}
+                  />
+                  <SettingsGroup
+                    id="capabilities-resources"
+                    title="Agent resources"
+                    description="Install and maintain capabilities at workspace level without enabling everything for every thread."
+                    icon={Bot}
+                  >
+                    <AgentResourceSettings />
+                  </SettingsGroup>
                 </section>
               </TabsContent>
               <TabsContent value="appearance">
                 <section data-slot="settings-section" aria-labelledby="appearance-settings" className={settingsSectionClass}>
-                  <SectionIntro id="appearance-settings" title="Appearance" icon={Palette}>
-                    Personalize color, typography, and global visual rules in this browser.
-                  </SectionIntro>
-                  <AppearanceSettings />
-                  <Highlights rules={workspace.highlights} />
+                  <SettingsPageHeader
+                    id="appearance-settings"
+                    eyebrow="Personal"
+                    title="Appearance"
+                    description="Personalize color, typography, and global text highlights for this browser without changing the shared workspace."
+                    icon={Palette}
+                    badge="Browser-local"
+                    summary={[
+                      { label: 'Theme', value: 'Live preview', detail: 'Light + dark' },
+                      { label: 'Typography', value: 'Interface + code', detail: 'Independent' },
+                      { label: 'Highlights', value: String(workspace.highlights.length), detail: 'Global rules' },
+                    ]}
+                  />
+                  <SettingsGroup
+                    id="appearance-interface"
+                    title="Interface"
+                    description="Select the display mode, accent palette, and font stacks used in this browser."
+                    icon={Palette}
+                  >
+                    <AppearanceSettings />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
+                    id="appearance-highlights"
+                    title="Global highlights"
+                    description="Make important words, owners, or statuses visually distinct throughout manager screens."
+                    icon={Sparkles}
+                  >
+                    <Highlights rules={workspace.highlights} />
+                  </SettingsGroup>
                 </section>
               </TabsContent>
             </>

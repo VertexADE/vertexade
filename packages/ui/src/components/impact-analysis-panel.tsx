@@ -10,7 +10,7 @@ import { Skeleton } from '@vertexade/ui/components/ui/skeleton'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Label } from '@vertexade/ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@vertexade/ui/components/ui/table'
+import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 
@@ -148,8 +148,40 @@ function RequiredValidations({ analysis }: { analysis: ImpactAnalysis }) {
   )
 }
 
+type ImpactEdge = ImpactAnalysis['result']['edges'][number]
+
 function ImpactReasons({ analysis }: { analysis: ImpactAnalysis }) {
-  const labels = new Map(analysis.result.nodes.map((node) => [node.key, node.label]))
+  const labels = useMemo(() => new Map(analysis.result.nodes.map((node) => [node.key, node.label])), [analysis.result.nodes])
+  const columns = useMemo<DataTableColumn<ImpactEdge>[]>(
+    () => [
+      {
+        id: 'from',
+        header: 'From',
+        cell: ({ row }) => <span className="block max-w-64 truncate">{labels.get(row.original.from) || row.original.from}</span>,
+      },
+      {
+        id: 'relationship',
+        header: 'Relationship',
+        cell: ({ row }) => <Badge variant="outline">{row.original.relation.replaceAll('_', ' ')}</Badge>,
+      },
+      {
+        id: 'to',
+        header: 'To',
+        cell: ({ row }) => <span className="block max-w-64 truncate">{labels.get(row.original.to) || row.original.to}</span>,
+      },
+      {
+        id: 'evidence',
+        header: 'Evidence',
+        cell: ({ row }) => (
+          <span className="block max-w-80 truncate font-mono text-xs text-muted-foreground">
+            {row.original.sourcePath || row.original.summary}
+          </span>
+        ),
+      },
+    ],
+    [labels],
+  )
+  const rows = analysis.result.edges.slice(0, 100)
   return (
     <Card size="sm" layout="divided">
       <CardHeader>
@@ -157,32 +189,11 @@ function ImpactReasons({ analysis }: { analysis: ImpactAnalysis }) {
         <CardDescription>Why each project, validation, or delivery surface is included.</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
-        <TableContainer>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>From</TableHead>
-                <TableHead>Relationship</TableHead>
-                <TableHead>To</TableHead>
-                <TableHead>Evidence</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {analysis.result.edges.slice(0, 100).map((edge) => (
-                <TableRow key={`${edge.from}:${edge.to}:${edge.relation}`}>
-                  <TableCell className="max-w-64 truncate">{labels.get(edge.from) || edge.from}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{edge.relation.replaceAll('_', ' ')}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-64 truncate">{labels.get(edge.to) || edge.to}</TableCell>
-                  <TableCell className="max-w-80 truncate font-mono text-xs text-muted-foreground">
-                    {edge.sourcePath || edge.summary}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <DataTable
+          columns={columns}
+          data={rows}
+          getRowId={(edge) => `${edge.from}:${edge.to}:${edge.relation}:${edge.sourcePath || edge.summary}`}
+        />
         {analysis.result.edges.length > 100 && (
           <p className="p-3 text-xs text-muted-foreground">Showing the first 100 of {analysis.result.edges.length} reason edges.</p>
         )}

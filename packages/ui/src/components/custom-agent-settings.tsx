@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
 import { Bot, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
@@ -136,56 +137,67 @@ function CustomAgentForm({
   onSaved(): void
   onCancel(): void
 }) {
-  const [form, setForm] = useState<ProfileForm>(() => initialForm(profile))
-  const [busy, setBusy] = useState(false)
+  const form = useForm({
+    defaultValues: initialForm(profile),
+    onSubmit: async ({ value }) => {
+      try {
+        await api('/api/agent-resources/profiles', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...profileIdentity(profile),
+            ...value,
+          }),
+        })
+        form.reset(initialForm(null))
+        toast.success(`${value.name} saved`)
+        onSaved()
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
+  const values = useStore(form.store, (state) => state.values)
   const options = {
-    agentId: form.agentId,
-    model: form.model,
-    reasoningEffort: form.reasoningEffort,
+    agentId: values.agentId,
+    model: values.model,
+    reasoningEffort: values.reasoningEffort,
     allowSubagents: false,
   }
-  function update(values: Partial<ProfileForm>) {
-    setForm((current) => ({ ...current, ...values }))
-  }
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    setBusy(true)
-    try {
-      await api('/api/agent-resources/profiles', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...profileIdentity(profile),
-          ...form,
-        }),
-      })
-      setForm(initialForm(null))
-      toast.success(`${form.name} saved`)
-      onSaved()
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
   return (
-    <form onSubmit={save} className="space-y-3">
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        void form.handleSubmit()
+      }}
+      className="space-y-3"
+    >
       <FormHeading profile={profile} onCancel={onCancel} />
       <div className="grid gap-2 sm:grid-cols-2">
         <Input
           required
           maxLength={200}
-          value={form.name}
-          onChange={(event) => update({ name: event.target.value })}
+          value={values.name}
+          onChange={(event) => form.setFieldValue('name', event.target.value)}
           placeholder="Agent name"
         />
         <Input
           maxLength={2_000}
-          value={form.description}
-          onChange={(event) => update({ description: event.target.value })}
+          value={values.description}
+          onChange={(event) => form.setFieldValue('description', event.target.value)}
           placeholder="Short purpose"
         />
       </div>
-      <AgentOptionsPicker nativeOnly showSubagents={false} value={options} onChange={(value) => update(value)} />
+      <AgentOptionsPicker
+        nativeOnly
+        showSubagents={false}
+        value={options}
+        onChange={(value) => {
+          form.setFieldValue('agentId', value.agentId)
+          form.setFieldValue('model', value.model)
+          form.setFieldValue('reasoningEffort', value.reasoningEffort)
+        }}
+      />
       <Label className="flex-col items-stretch gap-1.5">
         <span>
           Prompt to prepend <small className="text-muted-foreground">· optional</small>
@@ -193,21 +205,28 @@ function CustomAgentForm({
         <Textarea
           className="min-h-28"
           maxLength={50_000}
-          value={form.promptPrefix}
-          onChange={(event) => update({ promptPrefix: event.target.value })}
+          value={values.promptPrefix}
+          onChange={(event) => form.setFieldValue('promptPrefix', event.target.value)}
           placeholder="Stable role, working style, or review focus applied before every turn…"
         />
       </Label>
       <div className="grid gap-3 sm:grid-cols-2">
-        <ResourceChecklist title="Preset skills" items={skills} selected={form.skillIds} onChange={(skillIds) => update({ skillIds })} />
+        <ResourceChecklist
+          title="Preset skills"
+          items={skills}
+          selected={values.skillIds}
+          onChange={(skillIds) => form.setFieldValue('skillIds', skillIds)}
+        />
         <ResourceChecklist
           title="Preset MCP servers"
           items={mcpServers}
-          selected={form.mcpServerIds}
-          onChange={(mcpServerIds) => update({ mcpServerIds })}
+          selected={values.mcpServerIds}
+          onChange={(mcpServerIds) => form.setFieldValue('mcpServerIds', mcpServerIds)}
         />
       </div>
-      <Button disabled={busy || !options.agentId}>{saveLabel(busy, profile)}</Button>
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(busy) => <Button disabled={busy || !options.agentId}>{saveLabel(busy, profile)}</Button>}
+      </form.Subscribe>
     </form>
   )
 }

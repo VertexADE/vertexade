@@ -1,9 +1,9 @@
 'use dom'
 
 import type { DOMProps } from 'expo/dom'
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
-import remarkBreaks from 'remark-breaks'
-import remarkGfm from 'remark-gfm'
+import { Markdown, type MarkdownComponents } from '@tanstack/markdown/react'
+import { calloutsExtension } from '@tanstack/markdown/extensions/callouts'
+import type { InlineNode, MarkdownExtension } from '@tanstack/markdown'
 
 export type MobileMarkdownViewProps = {
   content: string
@@ -33,6 +33,10 @@ const styles = `
   li + li { margin-top: 0.25em; }
   a { color: #67e8c5; text-decoration: underline; text-underline-offset: 2px; }
   blockquote { border-left: 3px solid #45d6b2; color: #9eabb9; margin-left: 0; padding-left: 0.9em; }
+  .markdown-alert { background: #111820; border: 1px solid #34404d; border-left: 3px solid #45d6b2; border-radius: 8px; margin: 0.8em 0; padding: 0.7em 0.9em; }
+  .markdown-alert-title { color: #f7fafc; font-weight: 700; margin: 0 0 0.35em; }
+  .markdown-alert-content > :first-child { margin-top: 0; }
+  .markdown-alert-content > :last-child { margin-bottom: 0; }
   code { background: #151b22; border-radius: 4px; color: #d5dee8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; padding: 0.15em 0.35em; }
   pre { background: #05070a; border: 1px solid #28313c; border-radius: 8px; overflow-x: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
   pre code { background: transparent; padding: 0; white-space: pre; }
@@ -44,30 +48,44 @@ const styles = `
   input[type="checkbox"] { accent-color: #45d6b2; margin-right: 0.45em; }
 `
 
+function mobileHardBreaks(value: string): InlineNode[] {
+  const lines = value.split('\n')
+  if (lines.length === 1) return [{ type: 'text', value }]
+  const nodes: InlineNode[] = [{ type: 'text', value: lines[0] }]
+  for (const line of lines.slice(1)) nodes.push({ type: 'break' }, { type: 'text', value: line })
+  return nodes
+}
+
+const mobileBreaksExtension: MarkdownExtension = {
+  name: 'vertexade-mobile-hard-breaks',
+  transformInline(nodes) {
+    return nodes.flatMap((node) => (node.type === 'text' ? mobileHardBreaks(node.value) : node))
+  },
+}
+const mobileMarkdownExtensions = [calloutsExtension(), mobileBreaksExtension]
+
 export default function MobileMarkdownView({ content, onOpenLink }: MobileMarkdownViewProps) {
+  const components = {
+    a: ({ href, children, ...props }) => (
+      <a
+        {...props}
+        href={href}
+        onClick={(event) => {
+          event.preventDefault()
+          if (href) onOpenLink(href)
+        }}
+      >
+        {children}
+      </a>
+    ),
+  } satisfies MarkdownComponents
   return (
     <>
       <style>{styles}</style>
       <main className="markdown-body">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks]}
-          urlTransform={defaultUrlTransform}
-          components={{
-            a: ({ href, children }) => (
-              <a
-                href={href}
-                onClick={(event) => {
-                  event.preventDefault()
-                  if (href) onOpenLink(href)
-                }}
-              >
-                {children}
-              </a>
-            ),
-          }}
-        >
+        <Markdown components={components} extensions={mobileMarkdownExtensions} allowHtml={false} frontmatter={false}>
           {content}
-        </ReactMarkdown>
+        </Markdown>
       </main>
     </>
   )

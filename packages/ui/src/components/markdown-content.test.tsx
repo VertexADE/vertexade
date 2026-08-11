@@ -29,6 +29,7 @@ Also inspect src/components/thread-dialog.tsx:120, [the API](dashboard-server.ts
 `
     const markup = renderToStaticMarkup(<MarkdownContent content={content} worktreePath="/tmp/worktree" onOpenFile={() => {}} />)
 
+    expect(markup).toContain('data-markdown-renderer="tanstack-react"')
     expect(markup).toContain('<h2')
     expect(markup).toContain('<table')
     expect(markup.match(/type="button"/g)).toHaveLength(4)
@@ -37,7 +38,7 @@ Also inspect src/components/thread-dialog.tsx:120, [the API](dashboard-server.ts
     expect(markup).toContain('the API')
   })
 
-  it('renders GitHub pull request extensions and sanitizes embedded HTML', async () => {
+  it('renders the VertexADE Markdown profile and keeps embedded HTML inert', async () => {
     const content = `# Release notes
 First line
 Second line with @octocat, #42, and :rocket:.
@@ -85,8 +86,9 @@ graph TD
     expect(markup).toContain('type="checkbox"')
     expect(markup).toContain('data-footnote-ref')
     expect(markup).toContain('class="katex"')
-    expect(markup).toContain('<details open=""')
-    expect(markup).toContain('<kbd')
+    expect(markup).toContain('&lt;details open&gt;')
+    expect(markup).not.toContain('<details')
+    expect(markup).not.toContain('<kbd')
     expect(markup).toContain('https://github.com/octocat')
     expect(markup).toContain('https://github.com/acme/widget/issues/42')
     expect(markup).toContain('🚀')

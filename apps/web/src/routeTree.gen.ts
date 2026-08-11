@@ -14,6 +14,8 @@ import { Route as ThreadsRouteImport } from './routes/threads'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PullRequestsRouteImport } from './routes/pull-requests'
+import { Route as PairRouteImport } from './routes/pair'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as MigrationsRouteImport } from './routes/migrations'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as ImpactRouteImport } from './routes/impact'
@@ -53,6 +55,16 @@ const SettingsRoute = SettingsRouteImport.update({
 const PullRequestsRoute = PullRequestsRouteImport.update({
   id: '/pull-requests',
   path: '/pull-requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MigrationsRoute = MigrationsRouteImport.update({
@@ -141,6 +153,8 @@ export interface FileRoutesByFullPath {
   '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
   '/migrations': typeof MigrationsRoute
+  '/onboarding': typeof OnboardingRoute
+  '/pair': typeof PairRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -162,6 +176,8 @@ export interface FileRoutesByTo {
   '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
   '/migrations': typeof MigrationsRoute
+  '/onboarding': typeof OnboardingRoute
+  '/pair': typeof PairRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -184,6 +200,8 @@ export interface FileRoutesById {
   '/impact': typeof ImpactRoute
   '/inbox': typeof InboxRoute
   '/migrations': typeof MigrationsRoute
+  '/onboarding': typeof OnboardingRoute
+  '/pair': typeof PairRoute
   '/pull-requests': typeof PullRequestsRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -208,6 +226,8 @@ export interface FileRouteTypes {
     | '/impact'
     | '/inbox'
     | '/migrations'
+    | '/onboarding'
+    | '/pair'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -229,6 +249,8 @@ export interface FileRouteTypes {
     | '/impact'
     | '/inbox'
     | '/migrations'
+    | '/onboarding'
+    | '/pair'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -250,6 +272,8 @@ export interface FileRouteTypes {
     | '/impact'
     | '/inbox'
     | '/migrations'
+    | '/onboarding'
+    | '/pair'
     | '/pull-requests'
     | '/settings'
     | '/setup'
@@ -273,6 +297,8 @@ export interface RootRouteChildren {
   ImpactRoute: typeof ImpactRoute
   InboxRoute: typeof InboxRoute
   MigrationsRoute: typeof MigrationsRoute
+  OnboardingRoute: typeof OnboardingRoute
+  PairRoute: typeof PairRoute
   PullRequestsRoute: typeof PullRequestsRoute
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
@@ -318,6 +344,20 @@ declare module '@tanstack/react-router' {
       path: '/pull-requests'
       fullPath: '/pull-requests'
       preLoaderRoute: typeof PullRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/migrations': {
@@ -463,6 +503,8 @@ const rootRouteChildren: RootRouteChildren = {
   ImpactRoute: ImpactRoute,
   InboxRoute: InboxRoute,
   MigrationsRoute: MigrationsRoute,
+  OnboardingRoute: OnboardingRoute,
+  PairRoute: PairRoute,
   PullRequestsRoute: PullRequestsRoute,
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,

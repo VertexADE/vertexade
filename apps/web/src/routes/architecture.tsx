@@ -9,7 +9,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@vertexade/ui/components/ui/table'
+import { DataTable, type DataTableColumn } from '@vertexade/ui/components/ui/table'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { useRxDashboardCollection } from '../lib/rxdb-dashboard-cache'
@@ -19,7 +19,48 @@ export const Route = createFileRoute('/architecture')({
   component: ArchitecturePage,
 })
 
+type ArchitectureNode = ArchitectureIndex['result']['nodes'][number]
+
+function architectureNodeSource(node: ArchitectureNode): string {
+  return node.citations[0]?.path ?? node.path ?? 'Repository root'
+}
+
+function architectureNodeDigest(node: ArchitectureNode): string {
+  const digest = node.citations[0]?.digest
+  return digest ? ` · ${digest.slice(0, 8)}` : ''
+}
+
 function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
+  const columns = useMemo<DataTableColumn<ArchitectureNode>[]>(
+    () => [
+      {
+        id: 'boundary',
+        header: 'Boundary',
+        cell: ({ row }) => <span className="font-medium">{row.original.label}</span>,
+      },
+      {
+        id: 'kind',
+        header: 'Kind',
+        cell: ({ row }) => <Badge variant="outline">{row.original.kind}</Badge>,
+      },
+      {
+        id: 'summary',
+        header: 'Summary',
+        cell: ({ row }) => row.original.summary || 'Observed repository boundary',
+      },
+      {
+        id: 'source',
+        header: 'Source',
+        cell: ({ row }) => (
+          <span className="block max-w-80 truncate font-mono text-xs text-muted-foreground">
+            {architectureNodeSource(row.original)}
+            {architectureNodeDigest(row.original)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  )
   return (
     <div className="space-y-3">
       <Card>
@@ -63,33 +104,7 @@ function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
           <CardDescription>Every displayed fact retains a path and captured-revision digest.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <TableContainer>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Boundary</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>Summary</TableHead>
-                  <TableHead>Source</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {index.result.nodes.map((node) => (
-                  <TableRow key={node.key}>
-                    <TableCell className="font-medium">{node.label}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{node.kind}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-96">{node.summary || 'Observed repository boundary'}</TableCell>
-                    <TableCell className="max-w-80 truncate font-mono text-xs text-muted-foreground">
-                      {node.citations[0]?.path || node.path || 'Repository root'}
-                      {node.citations[0]?.digest ? ` · ${node.citations[0].digest.slice(0, 8)}` : ''}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <DataTable columns={columns} data={index.result.nodes} getRowId={(node) => node.key} />
         </CardContent>
       </Card>
       <div className="grid gap-3 lg:grid-cols-2">

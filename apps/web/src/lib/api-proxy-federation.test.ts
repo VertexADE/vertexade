@@ -195,6 +195,52 @@ describe('multi-backend API proxy', () => {
     expect(requestHeaders('team.internal').has('proxy-authorization')).toBe(false)
   })
 
+  it('forwards only the explicit operator authorization when linking from a selected secondary server', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input))
+      if (url.host === 'local.internal' && url.pathname === '/api/settings/linked-servers') {
+        return Response.json({ servers: [] })
+      }
+      return Response.json({ ok: true })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/settings/linked-servers', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer team-operator-token',
+          cookie: 'primary-session=secret',
+          'content-type': 'application/json',
+          'proxy-authorization': 'Basic c2VjcmV0',
+          'x-vertexade-backend': 'team',
+        },
+        body: JSON.stringify({ id: 'reciprocal', label: 'Reciprocal', url: 'http://local.internal' }),
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const call = fetch.mock.calls.find(
+      ([input, init]) =>
+        new URL(String(input)).host === 'team.internal' &&
+        new URL(String(input)).pathname === '/api/settings/linked-servers' &&
+        init?.method === 'POST',
+    )
+    expect(call).toBeDefined()
+    const headers = new Headers(call?.[1]?.headers)
+    expect(headers.get('authorization')).toBe('Bearer team-operator-token')
+    expect(headers.has('cookie')).toBe(false)
+    expect(headers.has('proxy-authorization')).toBe(false)
+  })
+
   it('discovers backend-managed linked servers without frontend URL configuration', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {

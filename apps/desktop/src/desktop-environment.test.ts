@@ -1,6 +1,6 @@
 import { delimiter } from 'node:path'
 import { describe, expect, it } from 'vite-plus/test'
-import { desktopServiceEnvironment } from './desktop-environment.ts'
+import { desktopRuntimeModeEnvironment, desktopServiceEnvironment } from './desktop-environment.ts'
 
 describe('desktop service environment', () => {
   it('adds common macOS package-manager paths without replacing inherited paths', () => {
@@ -16,5 +16,10 @@ describe('desktop service environment', () => {
 
   it('does not alter command lookup paths on other platforms', () => {
     expect(desktopServiceEnvironment({ PATH: '/usr/bin' }, 'linux', '/home/test')).toEqual({ PATH: '/usr/bin' })
+  })
+
+  it('marks bundled services as production only in a packaged app', () => {
+    expect(desktopRuntimeModeEnvironment(true)).toEqual({ NODE_ENV: 'production' })
+    expect(desktopRuntimeModeEnvironment(false)).toEqual({})
   })
 })

@@ -88,6 +88,10 @@ function database() {
   return databasePromise
 }
 
+export async function getDashboardModelRxCollection(): Promise<RxCollection<DashboardCacheDocument>> {
+  return (await database()).models
+}
+
 function storageError(action: string, errors: unknown[]) {
   const detail = errors[0]
   let rendered = ''

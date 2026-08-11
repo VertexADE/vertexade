@@ -11,7 +11,15 @@ describe('useReactiveApi', () => {
   it('does not open a browser event stream or load data while server rendering', () => {
     const load = vi.fn(async () => ({ label: 'loaded' }))
 
-    expect(renderToString(<ServerComponent load={load} />)).toContain('loading')
+    const queryClient = new QueryClient()
+    expect(
+      renderToString(
+        <QueryClientProvider client={queryClient}>
+          <ServerComponent load={load} />
+        </QueryClientProvider>,
+      ),
+    ).toContain('loading')
     expect(load).not.toHaveBeenCalled()
   })
 })
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

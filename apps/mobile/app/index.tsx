@@ -10,6 +10,8 @@ import { MobileConnectionPanel, MobileHomeHero } from '@/components/mobile-home-
 import { mobileHomeStyles as styles } from '@/components/mobile-home-styles'
 import { MobileWorkspaceScreen } from '@/components/mobile-workspace'
 import { loadMobileServerCatalogs, type MobileServerCatalog } from '@/platform-service'
+import { redeemMobilePairLink } from '@/mobile-pairing'
+import { readMobileSession } from '@/mobile-session'
 
 const defaultServiceUrl = process.env.EXPO_PUBLIC_VERTEXADE_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4173' : 'http://localhost:4173')
 
@@ -18,8 +20,18 @@ type ActiveConnection = {
   servers: MobileServerCatalog[]
 }
 
+function looksLikePairLink(value: string): boolean {
+  return /\/pair(?:#|$)/.test(value) || value.trim().startsWith('vertexade:')
+}
+
+async function resolveSubmittedConnection(value: string): Promise<ActiveConnection> {
+  let target = value || defaultServiceUrl
+  if (looksLikePairLink(value)) target = (await redeemMobilePairLink(value)).serviceUrl
+  return resolveConnection(target)
+}
+
 export default function HomeScreen() {
-  const [serviceUrl, setServiceUrl] = useState(defaultServiceUrl)
+  const [serviceUrl, setServiceUrl] = useState('')
   const [connection, setConnection] = useState<ActiveConnection | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -29,10 +41,15 @@ export default function HomeScreen() {
     const sequence = connectionSequence.current + 1
     connectionSequence.current = sequence
     let current = true
-    setLoading(true)
-    void resolveConnection(defaultServiceUrl)
+    void readMobileSession()
+      .then((session) => {
+        if (!session) return null
+        setServiceUrl(session.serviceUrl)
+        setLoading(true)
+        return resolveConnection(session.serviceUrl)
+      })
       .then((next) => {
-        if (current && connectionSequence.current === sequence) setConnection(next)
+        if (next && current && connectionSequence.current === sequence) setConnection(next)
       })
       .catch((reason: unknown) => {
         if (current && connectionSequence.current === sequence) setError(connectionError(reason))
@@ -45,21 +62,33 @@ export default function HomeScreen() {
     }
   }, [])
 
+  function commitConnection(sequence: number, next: ActiveConnection) {
+    if (connectionSequence.current !== sequence) return
+    setServiceUrl(next.serviceUrl)
+    setConnection(next)
+  }
+
+  function failConnection(sequence: number, reason: unknown) {
+    if (connectionSequence.current !== sequence) return
+    setConnection(null)
+    setError(connectionError(reason))
+  }
+
+  function finishConnection(sequence: number) {
+    if (connectionSequence.current === sequence) setLoading(false)
+  }
+
   async function connect() {
     const sequence = connectionSequence.current + 1
     connectionSequence.current = sequence
     setLoading(true)
     setError('')
     try {
-      const next = await resolveConnection(serviceUrl)
-      if (connectionSequence.current === sequence) setConnection(next)
+      commitConnection(sequence, await resolveSubmittedConnection(serviceUrl))
     } catch (reason) {
-      if (connectionSequence.current === sequence) {
-        setConnection(null)
-        setError(connectionError(reason))
-      }
+      failConnection(sequence, reason)
     } finally {
-      if (connectionSequence.current === sequence) setLoading(false)
+      finishConnection(sequence)
     }
   }
 

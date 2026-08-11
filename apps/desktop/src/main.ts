@@ -1,12 +1,16 @@
-import { app, BrowserWindow, dialog, shell, type MessageBoxOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
-import { desktopServiceEnvironment } from './desktop-environment.ts'
+import { DESKTOP_ONBOARDING_CHANNELS } from '@vertexade/platform-contracts'
+import { desktopRuntimeModeEnvironment, desktopServiceEnvironment } from './desktop-environment.ts'
+import { DesktopOnboardingStateStore, desktopStartupPath } from './desktop-onboarding-state.ts'
 import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
 import updaterPackage from 'electron-updater'
 import { externalNavigationDecision } from './external-navigation.ts'
 import { desktopPermissionAllowed } from './desktop-permissions.ts'
+import { localListenerUrl, selectDesktopListeners } from './desktop-listeners.ts'
 
 const { autoUpdater } = updaterPackage
 
@@ -14,9 +18,14 @@ const services = new Set<ChildProcess>()
 let desktopWindow: BrowserWindow | null = null
 let windowStartup: Promise<void> | null = null
 let stopUpdater: (() => void) | null = null
+let onboardingStateStore: DesktopOnboardingStateStore | null = null
 
 function resourcePath(...parts: string[]) {
   return join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'dist'), ...parts)
+}
+
+function preloadPath(): string {
+  return join(app.getAppPath(), 'dist', 'preload.cjs')
 }
 
 async function availablePort() {
@@ -71,30 +80,43 @@ function stopServices() {
 }
 
 async function createDesktopWindow() {
-  const apiPort = await availablePort()
-  const webPort = await availablePort()
-  const apiUrl = `http://127.0.0.1:${apiPort}`
-  const webUrl = `http://127.0.0.1:${webPort}`
+  const onboardingState = await requireOnboardingStateStore().read()
   const home = app.getPath('home')
   const serviceEnvironment = desktopServiceEnvironment(process.env, process.platform, home)
+  const packagedEnvironment = desktopRuntimeModeEnvironment(app.isPackaged)
   const vertexHome = process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, 'vertex-ade') : join(home, '.vertex-ade')
-  const api = startService(resourcePath('api.mjs'), {
+  const runtimeEnvironment = {
     ...serviceEnvironment,
-    APP_ROOT: resourcePath('runtime'),
-    API_HOST: '127.0.0.1',
-    API_PORT: String(apiPort),
-    VERTEXADE_BUNDLED_RUNTIME: '1',
-    VERTEXADE_SUBAGENT_MCP_SCRIPT: resourcePath('subagent-mcp.mjs'),
+    ...packagedEnvironment,
     VERTEXADE_DATA_DIR: vertexHome,
+  }
+  const listeners = await selectDesktopListeners(runtimeEnvironment, availablePort)
+  const desktopApiListener = { ...listeners.api, host: '127.0.0.1' }
+  const apiUrl = localListenerUrl(desktopApiListener)
+  const webUrl = localListenerUrl(listeners.web)
+  const localSessionToken = randomBytes(32).toString('base64url')
+  const api = startService(resourcePath('api.mjs'), {
+    ...runtimeEnvironment,
+    APP_ROOT: resourcePath('runtime'),
+    API_HOST: desktopApiListener.host,
+    API_PORT: String(desktopApiListener.port),
+    VERTEXADE_BUNDLED_RUNTIME: '1',
+    VERTEXADE_API_LISTENER_SOURCE: listeners.source,
+    VERTEXADE_SUBAGENT_MCP_SCRIPT: resourcePath('subagent-mcp.mjs'),
+    VERTEXADE_WEB_CURRENT_HOST: listeners.web.host,
+    VERTEXADE_WEB_CURRENT_PORT: String(listeners.web.port),
+    VERTEXADE_WEB_LISTENER_SOURCE: listeners.source,
     VERTEXADE_WORKTREE_ROOT: process.env.VERTEXADE_WORKTREE_ROOT || join(vertexHome, 'worktrees'),
   })
   await waitUntilReady(`${apiUrl}/readyz`, api)
 
   const web = startService(resourcePath('web/server/index.mjs'), {
-    ...serviceEnvironment,
-    HOST: '127.0.0.1',
-    PORT: String(webPort),
+    ...runtimeEnvironment,
+    HOST: listeners.web.host,
+    PORT: String(listeners.web.port),
     VERTEXADE_API_URL: apiUrl,
+    VERTEXADE_LOCAL_SESSION_TOKEN: localSessionToken,
+    VERTEXADE_REQUIRE_PAIRED_CLIENTS: '1',
   })
   await waitUntilReady(webUrl, web)
 
@@ -105,9 +127,26 @@ async function createDesktopWindow() {
     minHeight: 640,
     show: false,
     backgroundColor: '#09090b',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: preloadPath(),
+    },
   })
   desktopWindow = window
+  const internalOrigin = new URL(webUrl).origin
+  window.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+    let trusted = false
+    try {
+      trusted = new URL(details.url).origin === internalOrigin
+    } catch {
+      trusted = false
+    }
+    callback({
+      requestHeaders: trusted ? { ...details.requestHeaders, 'x-vertexade-local-session': localSessionToken } : details.requestHeaders,
+    })
+  })
   window.once('closed', () => {
     desktopWindow = null
     stopServices()
@@ -133,7 +172,27 @@ async function createDesktopWindow() {
   window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback, details) => {
     callback(desktopPermissionAllowed({ permission, requestingUrl: details.requestingUrl, isMainFrame: details.isMainFrame }, webUrl))
   })
-  await window.loadURL(webUrl)
+  await window.loadURL(new URL(desktopStartupPath(onboardingState), `${webUrl}/`).toString())
+}
+
+function requireOnboardingStateStore(): DesktopOnboardingStateStore {
+  if (!onboardingStateStore) throw new Error('Desktop onboarding state is not initialized')
+  return onboardingStateStore
+}
+
+function assertTrustedDesktopRenderer(event: IpcMainInvokeEvent): void {
+  if (!desktopWindow || event.sender !== desktopWindow.webContents) throw new Error('Desktop renderer is not trusted')
+}
+
+function registerDesktopIpc(): void {
+  ipcMain.handle(DESKTOP_ONBOARDING_CHANNELS.status, async (event) => {
+    assertTrustedDesktopRenderer(event)
+    return requireOnboardingStateStore().read()
+  })
+  ipcMain.handle(DESKTOP_ONBOARDING_CHANNELS.complete, async (event) => {
+    assertTrustedDesktopRenderer(event)
+    return requireOnboardingStateStore().complete()
+  })
 }
 
 function ensureDesktopWindow(): Promise<void> {
@@ -171,6 +230,10 @@ async function showStartupError(error: unknown): Promise<void> {
 void app
   .whenReady()
   .then(async () => {
+    onboardingStateStore = new DesktopOnboardingStateStore(app.getPath('userData'), {
+      reportReadError: (error) => console.error('Desktop onboarding state could not be read', error),
+    })
+    registerDesktopIpc()
     await ensureDesktopWindow()
     const updaterEnabled = canStartDesktopUpdater({
       isPackaged: app.isPackaged,
@@ -207,6 +270,8 @@ void app
   .catch(showStartupError)
 
 app.on('will-quit', () => {
+  ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.status)
+  ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.complete)
   stopUpdater?.()
   stopUpdater = null
 })

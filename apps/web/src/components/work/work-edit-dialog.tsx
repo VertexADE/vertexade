@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useForm } from '@tanstack/react-form'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@vertexade/ui/components/ui/button'
@@ -21,48 +23,62 @@ export function EditWorkDialog({
   onOpenChange(open: boolean): void
   onSaved(item: WorkItem): void
 }) {
-  const [title, setTitle] = useState(item.title)
-  const [description, setDescription] = useState(item.description)
-  const [priority, setPriority] = useState(item.priority)
-  const [owner, setOwner] = useState(item.owner || '')
-  const [saving, setSaving] = useState(false)
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: (value: { title: string; description: string; priority: WorkItem['priority']; owner: string }) =>
+      api<WorkItem>(`/api/work-items/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(value),
+      }),
+  })
+  const form = useForm({
+    defaultValues: {
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      owner: item.owner || '',
+    },
+    onSubmit: async ({ value }) => {
+      const title = value.title.trim()
+      if (!title) return
+      try {
+        const updated = await mutation.mutateAsync({
+          title,
+          description: value.description.trim(),
+          priority: value.priority,
+          owner: value.owner.trim(),
+        })
+        await queryClient.invalidateQueries({ queryKey: ['platform'] })
+        onSaved(updated)
+        onOpenChange(false)
+        toast.success(`${item.key} updated`)
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
 
   useEffect(() => {
     if (!open) return
-    setTitle(item.title)
-    setDescription(item.description)
-    setPriority(item.priority)
-    setOwner(item.owner || '')
+    form.reset({
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      owner: item.owner || '',
+    })
   }, [item, open])
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!title.trim()) return
-    setSaving(true)
-    try {
-      const updated = await api<WorkItem>(`/api/work-items/${item.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          priority,
-          owner: owner.trim(),
-        }),
-      })
-      onSaved(updated)
-      onOpenChange(false)
-      toast.success(`${item.key} updated`)
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden sm:max-w-xl">
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            void form.handleSubmit()
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <DialogHeader>
             <DialogTitle>Refine outcome</DialogTitle>
             <DialogDescription>
@@ -72,25 +88,35 @@ export function EditWorkDialog({
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4">
             <div className="space-y-1.5">
               <Label htmlFor="work-edit-title">Outcome</Label>
-              <Input
-                id="work-edit-title"
-                autoFocus
-                maxLength={200}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="What should be true when this is finished?"
-              />
+              <form.Field name="title" validators={{ onChange: ({ value }) => (value.trim() ? undefined : 'Outcome is required') }}>
+                {(field) => (
+                  <Input
+                    id="work-edit-title"
+                    autoFocus
+                    maxLength={200}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="What should be true when this is finished?"
+                  />
+                )}
+              </form.Field>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="work-edit-description">Context and acceptance criteria</Label>
-              <Textarea
-                id="work-edit-description"
-                className="min-h-40 resize-y"
-                maxLength={20_000}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Describe what good looks like, constraints, and the evidence needed to call this done."
-              />
+              <form.Field name="description">
+                {(field) => (
+                  <Textarea
+                    id="work-edit-description"
+                    className="min-h-40 resize-y"
+                    maxLength={20_000}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="Describe what good looks like, constraints, and the evidence needed to call this done."
+                  />
+                )}
+              </form.Field>
               <small className="block text-[11px] text-muted-foreground">
                 Markdown is supported. Agent threads keep their own execution history.
               </small>
@@ -98,38 +124,53 @@ export function EditWorkDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Priority</Label>
-                <Select value={priority} onValueChange={(value) => setPriority(value as WorkItem['priority'])}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <form.Field name="priority">
+                  {(field) => (
+                    <Select value={field.state.value} onValueChange={(value) => field.handleChange(value as WorkItem['priority'])}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </form.Field>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="work-edit-owner">Owner</Label>
-                <Input
-                  id="work-edit-owner"
-                  maxLength={200}
-                  value={owner}
-                  onChange={(event) => setOwner(event.target.value)}
-                  placeholder="Optional person or team"
-                />
+                <form.Field name="owner">
+                  {(field) => (
+                    <Input
+                      id="work-edit-owner"
+                      maxLength={200}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                      placeholder="Optional person or team"
+                    />
+                  )}
+                </form.Field>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button disabled={saving || !title.trim()}>
-              {saving ? <Loader2 className="animate-spin" /> : <Save />}
-              {saving ? 'Saving…' : 'Save outcome'}
-            </Button>
+            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+              {([canSubmit, isSubmitting]) => (
+                <>
+                  <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button disabled={!canSubmit || isSubmitting}>
+                    {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+                    {isSubmitting ? 'Saving…' : 'Save outcome'}
+                  </Button>
+                </>
+              )}
+            </form.Subscribe>
           </DialogFooter>
         </form>
       </DialogContent>
