@@ -19,26 +19,26 @@ function moduleEntry(overrides: Record<string, unknown> = {}): ModuleCatalogEntr
 
 describe('MobileConnectionPanel', () => {
   test('edits the endpoint and connects when it is usable', () => {
-    const onServerChange = jest.fn()
+    const onServiceUrlChange = jest.fn()
     const onConnect = jest.fn()
     render(
       <MobileConnectionPanel
-        server="http://localhost:4174"
+        serviceUrl="http://localhost:4173"
         loading={false}
         error=""
-        onServerChange={onServerChange}
+        onServiceUrlChange={onServiceUrlChange}
         onConnect={onConnect}
       />,
     )
-    fireEvent.changeText(screen.getByLabelText('VertexADE API URL'), 'http://10.0.2.2:4174')
-    fireEvent.press(screen.getByLabelText('Connect to VertexADE'))
-    expect(onServerChange).toHaveBeenCalledWith('http://10.0.2.2:4174')
+    fireEvent.changeText(screen.getByLabelText('VertexADE service URL'), 'http://10.0.2.2:4173')
+    fireEvent.press(screen.getByLabelText('Load VertexADE servers'))
+    expect(onServiceUrlChange).toHaveBeenCalledWith('http://10.0.2.2:4173')
     expect(onConnect).toHaveBeenCalledTimes(1)
   })
 
   test('announces errors and exposes a disabled busy state', () => {
     render(
-      <MobileConnectionPanel server="" loading error="Connection refused" onServerChange={jest.fn()} onConnect={jest.fn()} />,
+      <MobileConnectionPanel serviceUrl="" loading error="Connection refused" onServiceUrlChange={jest.fn()} onConnect={jest.fn()} />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Connection refused')
     expect(screen.getByTestId('connection-submit')).toBeDisabled()
@@ -48,25 +48,48 @@ describe('MobileConnectionPanel', () => {
 
 describe('MobileExtensionList', () => {
   test('renders the empty state', () => {
-    render(<MobileExtensionList modules={[]} server="http://localhost:4174" />)
+    render(<MobileExtensionList servers={[{ id: 'local', label: 'Local', isDefault: true, modules: [], error: '' }]} serviceUrl="http://localhost:4173" />)
     expect(screen.getByText('No portable extensions')).toBeOnTheScreen()
   })
 
-  test('opens enabled and disabled-but-configurable extensions with normalized parameters', () => {
+  test('groups servers and opens extensions with backend-aware normalized parameters', () => {
     render(
       <MobileExtensionList
-        server="http://localhost:4174/"
-        modules={[
-          moduleEntry({ portable: { surfaces: [{ id: 'work', kind: 'collection', title: 'Work', source: { path: '/work' }, item: { idPath: 'id', titlePath: 'title', fields: [] } }], settings: undefined } }),
-          moduleEntry({ id: 'disabled', name: 'Disabled extension', enabled: false, portable: { surfaces: [], settings: { title: 'Settings', fields: [] } } }),
+        serviceUrl="http://localhost:4173/"
+        servers={[
+          {
+            id: 'local',
+            label: 'Local',
+            isDefault: true,
+            error: '',
+            modules: [moduleEntry({ portable: { surfaces: [{ id: 'work', kind: 'collection', title: 'Work', source: { path: '/work' }, item: { idPath: 'id', titlePath: 'title', fields: [] } }], settings: undefined } })],
+          },
+          {
+            id: 'team',
+            label: 'Team',
+            isDefault: false,
+            error: '',
+            modules: [moduleEntry({ id: 'disabled', name: 'Disabled extension', enabled: false, portable: { surfaces: [], settings: { title: 'Settings', fields: [] } } })],
+          },
         ]}
       />,
     )
-    fireEvent.press(screen.getByTestId('extension-disabled'))
+    fireEvent.press(screen.getByTestId('extension-team-disabled'))
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/extensions/[moduleId]',
-      params: { moduleId: 'disabled', server: 'http://localhost:4174' },
+      params: { moduleId: 'disabled', serviceUrl: 'http://localhost:4173', backendId: 'team' },
     })
+    expect(screen.getByText('2/2 live · 2 portable extensions')).toBeOnTheScreen()
     expect(screen.getByText('Settings · Disabled')).toBeOnTheScreen()
+  })
+
+  test('keeps healthy servers visible when another server is unavailable', () => {
+    render(<MobileExtensionList serviceUrl="http://localhost:4173" servers={[
+      { id: 'local', label: 'Local', isDefault: true, modules: [moduleEntry()], error: '' },
+      { id: 'team', label: 'Team', isDefault: false, modules: [], error: 'Team is offline' },
+    ]} />)
+    expect(screen.getByText('1/2 live · 1 portable extension')).toBeOnTheScreen()
+    expect(screen.getByRole('alert')).toHaveTextContent('Team is offline')
+    expect(screen.getByTestId('extension-work')).toBeOnTheScreen()
   })
 })

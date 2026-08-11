@@ -6,13 +6,14 @@ import type { AgentOptions } from './portable-action-values'
 import { useMobileAgentOptions, type SelectableAgent, type SelectableModel } from './use-mobile-agent-options'
 
 type MobileAgentOptionsProps = {
-  server: string
+  serviceUrl: string
+  backendId: string
   value: AgentOptions
   onChange(value: AgentOptions): void
 }
 
-export function MobileAgentOptions({ server, value, onChange }: MobileAgentOptionsProps) {
-  const state = useMobileAgentOptions(server, value, onChange)
+export function MobileAgentOptions({ serviceUrl, backendId, value, onChange }: MobileAgentOptionsProps) {
+  const state = useMobileAgentOptions(serviceUrl, backendId, value, onChange)
   return (
     <View testID="agent-options" style={styles.inputGroup}>
       <Text style={styles.inputLabel}>Agent execution</Text>

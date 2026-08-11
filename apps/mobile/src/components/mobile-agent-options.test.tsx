@@ -23,7 +23,7 @@ describe('MobileAgentOptions', () => {
   test('loads selectable agents and chooses the server default', async () => {
     clientRequest(jest.fn().mockResolvedValue(options))
     const onChange = jest.fn()
-    render(<MobileAgentOptions server="http://one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
+    render(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
     expect(screen.getByTestId('agent-options-loading')).toBeOnTheScreen()
     await screen.findByText('Codex')
     expect(screen.queryByText('Hidden')).not.toBeOnTheScreen()
@@ -35,12 +35,12 @@ describe('MobileAgentOptions', () => {
     clientRequest(jest.fn().mockResolvedValue(options))
     const onChange = jest.fn()
     const { rerender } = render(
-      <MobileAgentOptions server="http://one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={onChange} />,
+      <MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={onChange} />,
     )
     await screen.findByText('GPT')
     fireEvent.press(screen.getByText('GPT'))
     expect(onChange).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt', reasoningEffort: '' })
-    rerender(<MobileAgentOptions server="http://one" value={{ agentId: 'codex', model: 'gpt', reasoningEffort: '' }} onChange={onChange} />)
+    rerender(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: 'gpt', reasoningEffort: '' }} onChange={onChange} />)
     fireEvent.press(screen.getByText('high'))
     expect(onChange).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt', reasoningEffort: 'high' })
   })
@@ -48,14 +48,14 @@ describe('MobileAgentOptions', () => {
   test('shows an actionable failure and retries', async () => {
     const request = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(options)
     clientRequest(request)
-    render(<MobileAgentOptions server="http://one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={jest.fn()} />)
+    render(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={jest.fn()} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('offline')
     fireEvent.press(screen.getByText('Retry agent options'))
     await screen.findByText('Codex')
     expect(request).toHaveBeenCalledTimes(2)
   })
 
-  test('ignores a stale response after the server changes', async () => {
+  test('ignores a stale response after the selected backend changes', async () => {
     let resolveFirst: ((value: typeof options) => void) | undefined
     const first = new Promise<typeof options>((resolve) => {
       resolveFirst = resolve
@@ -68,9 +68,9 @@ describe('MobileAgentOptions', () => {
     clientRequest(request)
     const onChange = jest.fn()
     const { rerender } = render(
-      <MobileAgentOptions server="http://one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />,
+      <MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />,
     )
-    rerender(<MobileAgentOptions server="http://two" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
+    rerender(<MobileAgentOptions serviceUrl="http://service" backendId="two" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
     await screen.findByText('New agent')
     await act(async () => resolveFirst?.(options))
     await waitFor(() => expect(screen.queryByText('Codex')).not.toBeOnTheScreen())

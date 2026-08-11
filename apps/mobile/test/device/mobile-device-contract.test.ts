@@ -19,6 +19,22 @@ describe('mobile device smoke contract', () => {
     const flow = JSON.stringify(documents[1]?.toJS())
     for (const marker of [
       'connection-submit',
+      'pull-request-fixture-1-299',
+      'open-pull-request-fixture-1-299',
+      'detail-tab-conversation',
+      'detail-tab-checks',
+      'detail-tab-changes',
+      'create-pullRequests',
+      'create-submit',
+      'workspace-tab-work',
+      'work-item-fixture-1',
+      'open-work-item-fixture-1',
+      'detail-thread-fixture-1',
+      'workspace-tab-threads',
+      'thread-fixture-1',
+      'open-thread-fixture-1',
+      'detail-tab-info',
+      'workspace-tab-more',
       'extension-work',
       'Agent execution',
       'extension-agents',
@@ -34,15 +50,22 @@ describe('mobile device smoke contract', () => {
   })
 
   test('references stable IDs exposed by the native host', async () => {
-    const [home, chrome, collection, settings, action] = await Promise.all([
+    const [home, workspace, chrome, collection, settings, action] = await Promise.all([
       source('src/components/mobile-home-components.tsx'),
+      source('src/components/mobile-workspace.tsx'),
       source('src/components/mobile-extension-chrome.tsx'),
       source('src/components/portable-collection-presentation.tsx'),
       source('src/components/portable-settings-content.tsx'),
       source('src/components/portable-collection-action-modal.tsx'),
     ])
     expect(home).toContain('testID="connection-submit"')
-    expect(home).toContain('testID={`extension-${module.id}`}')
+    expect(home).toContain('testID={isDefaultServer ? `extension-${module.id}` : `extension-${backendId}-${module.id}`}')
+    expect(workspace).toContain('testID="workspace-tab-prs"')
+    expect(workspace).toContain('testID={`work-item-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('testID={`thread-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('testID={`open-pull-request-${item.backendId}-${item.repoId}-${item.number}`}')
+    expect(workspace).toContain('testID={`open-work-item-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('testID={`open-thread-${item.backendId}-${item.id}`}')
     expect(chrome).toContain('testID="extension-tab-settings"')
     expect(collection).toContain('testID={`record-${item.id}-details`}')
     expect(collection).toContain('testID={`record-${item.id}-action-${action.id}`}')

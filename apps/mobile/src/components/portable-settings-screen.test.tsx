@@ -53,7 +53,7 @@ describe('PortableSettingsScreen', () => {
   test('loads, edits, saves, reloads, and announces success', async () => {
     const api = extension()
     const onSaved = jest.fn()
-    const view = render(<PortableSettingsScreen module={moduleEntry} server="http://fixture" settings={settings} onSaved={onSaved} />)
+    const view = render(<PortableSettingsScreen module={moduleEntry} serviceUrl="http://fixture" backendId="local" settings={settings} onSaved={onSaved} />)
     const input = await loadedName(view, 'Initial')
     fireEvent.changeText(input, 'Updated')
     fireEvent.press(view.getByTestId('settings-submit'))
@@ -67,7 +67,7 @@ describe('PortableSettingsScreen', () => {
 
   test('blocks invalid values before transport', async () => {
     const api = extension({ loadSettings: jest.fn().mockResolvedValue({ name: '' }) })
-    render(<PortableSettingsScreen module={moduleEntry} server="http://fixture" settings={settings} />)
+    render(<PortableSettingsScreen module={moduleEntry} serviceUrl="http://fixture" backendId="local" settings={settings} />)
     await screen.findByTestId('settings-submit')
     fireEvent.press(screen.getByTestId('settings-submit'))
     expect(await screen.findByRole('alert')).toHaveTextContent('Name is required.')
@@ -76,7 +76,7 @@ describe('PortableSettingsScreen', () => {
 
   test('shows a load failure and retries', async () => {
     const api = extension({ loadSettings: jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ name: 'Recovered' }) })
-    const view = render(<PortableSettingsScreen module={moduleEntry} server="http://fixture" settings={settings} />)
+    const view = render(<PortableSettingsScreen module={moduleEntry} serviceUrl="http://fixture" backendId="local" settings={settings} />)
     expect(await screen.findByText('offline')).toBeOnTheScreen()
     fireEvent.press(screen.getByText('Retry'))
     await loadedName(view, 'Recovered')
@@ -85,7 +85,7 @@ describe('PortableSettingsScreen', () => {
 
   test('executes discovery and presents its result message', async () => {
     const api = extension()
-    const view = render(<PortableSettingsScreen module={moduleEntry} server="http://fixture" settings={settings} />)
+    const view = render(<PortableSettingsScreen module={moduleEntry} serviceUrl="http://fixture" backendId="local" settings={settings} />)
     await loadedName(view, 'Initial')
     fireEvent.press(screen.getByTestId('settings-action-discover'))
     await screen.findByText('Discovered.')
@@ -98,7 +98,7 @@ describe('PortableSettingsScreen', () => {
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _description, buttons) => {
       confirm = buttons?.[1]?.onPress
     })
-    const view = render(<PortableSettingsScreen module={moduleEntry} server="http://fixture" settings={settings} />)
+    const view = render(<PortableSettingsScreen module={moduleEntry} serviceUrl="http://fixture" backendId="local" settings={settings} />)
     await loadedName(view, 'Initial')
     fireEvent.press(screen.getByTestId('settings-action-reset'))
     expect(api.executeSettingsAction).not.toHaveBeenCalled()

@@ -7,16 +7,18 @@ import { usePortableSettings } from './use-portable-settings'
 
 export function PortableSettingsScreen({
   module,
-  server,
+  serviceUrl,
+  backendId,
   settings,
   onSaved,
 }: {
   module: ModuleCatalogEntry
-  server: string
+  serviceUrl: string
+  backendId: string
   settings: PortableSettingsSurface
   onSaved?(): void
 }) {
-  const state = usePortableSettings({ module, server, settings, onSaved })
+  const state = usePortableSettings({ module, serviceUrl, backendId, settings, onSaved })
   if (state.loading) return <LoadingSettings />
   if (state.error && !Object.keys(state.values).length) return <FailedSettings error={state.error} retry={state.load} />
   return <PortableSettingsContent module={module} settings={settings} {...state} />

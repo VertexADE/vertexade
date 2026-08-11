@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPlatformClient } from '@vertexade/platform-client'
 import type { AgentOptions } from './portable-action-values'
+import { createMobilePlatformClient } from '@/platform-service'
 
 export type SelectableAgent = { id: string; name: string }
 export type SelectableModel = { id: string; name: string; reasoning_efforts: { id: string }[] }
@@ -11,7 +11,7 @@ type AgentOptionsResponse = {
   models: SelectableModel[]
 }
 
-export function useMobileAgentOptions(server: string, value: AgentOptions, onChange: (value: AgentOptions) => void) {
+export function useMobileAgentOptions(serviceUrl: string, backendId: string, value: AgentOptions, onChange: (value: AgentOptions) => void) {
   const [agents, setAgents] = useState<SelectableAgent[]>([])
   const [models, setModels] = useState<SelectableModel[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,7 +26,7 @@ export function useMobileAgentOptions(server: string, value: AgentOptions, onCha
     let current = true
     setLoading(true)
     setError('')
-    void requestAgentOptions(server)
+    void requestAgentOptions(serviceUrl, backendId)
       .then((result) => applyAgentOptions(result, current, valueRef.current, onChangeRef.current, setAgents, setModels))
       .catch((reason: unknown) => applyAgentOptionsFailure(reason, current, setAgents, setModels, setError))
       .finally(() => {
@@ -35,13 +35,13 @@ export function useMobileAgentOptions(server: string, value: AgentOptions, onCha
     return () => {
       current = false
     }
-  }, [server, revision])
+  }, [backendId, serviceUrl, revision])
 
   return { agents, models, loading, error, retry: () => setRevision((current) => current + 1) }
 }
 
-function requestAgentOptions(server: string) {
-  return createPlatformClient({ baseUrl: server }).request<AgentOptionsResponse>('/api/agent/options')
+function requestAgentOptions(serviceUrl: string, backendId: string) {
+  return createMobilePlatformClient(serviceUrl, backendId).request<AgentOptionsResponse>('/api/agent/options')
 }
 
 function applyAgentOptions(

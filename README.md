@@ -95,11 +95,11 @@ pnpm build:desktop
 ### Expo mobile application
 
 ```bash
-EXPO_PUBLIC_VERTEXADE_URL=http://192.168.1.10:4174 pnpm dev:mobile
+EXPO_PUBLIC_VERTEXADE_URL=http://192.168.1.10:4173 pnpm dev:mobile
 pnpm build:mobile
 ```
 
-Use a simulator- or device-reachable URL. The mobile host is intended for local or trusted development networks until authenticated mobile sessions are available. See [apps/mobile/README.md](apps/mobile/README.md) for platform setup and EAS guidance.
+Use a simulator- or device-reachable URL for the port 4173 service. The mobile app federates PRs, Work items, and agent threads from linked servers there, routes creation to the selected server, and keeps portable extensions under More. It never connects to internal port 4174 APIs directly. It is intended for local or trusted development networks until authenticated mobile sessions are available. See [apps/mobile/README.md](apps/mobile/README.md) for platform setup and EAS guidance.
 
 ## Data and managed worktrees
 
