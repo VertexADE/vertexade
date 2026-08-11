@@ -36,3 +36,4 @@ auditConfig:
 patchedDependencies:
   expo-modules-jsi@57.0.4: patches/expo-modules-jsi@57.0.4.patch
   image-size@1.2.1: patches/image-size@1.2.1.patch
+  react-native-diffs@1.0.3: patches/react-native-diffs@1.0.3.patch

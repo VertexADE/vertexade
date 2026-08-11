@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { ModuleCatalogEntry, PortableCollectionSurface, PortableItemAction } from '@vertexade/platform-contracts'
-import { createPlatformClient } from '@vertexade/platform-client'
 import { usePortableCollectionSource } from '@vertexade/platform-client/react'
 import {
   projectPortableCollection,
@@ -16,17 +15,22 @@ import {
   itemActions,
 } from './portable-collection-projection'
 import { usePortableSourceRefresh } from './use-portable-source-refresh'
+import { createMobilePlatformClient } from '@/platform-service'
 
 type SourceData = Record<string, unknown>
 type ViewMode = 'list' | 'kanban'
 type ActionTarget = { item: PortableCollectionItem | null; action: PortableItemAction }
 
-export function usePortableCollection({ module, server, surface }: {
+export function usePortableCollection({ module, serviceUrl, backendId, surface }: {
   module: ModuleCatalogEntry
-  server: string
+  serviceUrl: string
+  backendId: string
   surface: PortableCollectionSurface
 }) {
-  const extension = useMemo(() => createPlatformClient({ baseUrl: server }).extension(module.id), [module.id, server])
+  const extension = useMemo(
+    () => createMobilePlatformClient(serviceUrl, backendId).extension(module.id),
+    [backendId, module.id, serviceUrl],
+  )
   const {
     data,
     loading,

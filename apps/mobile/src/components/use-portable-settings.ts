@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPlatformClient } from '@vertexade/platform-client'
 import type { ModuleCatalogEntry, PortableSettingsAction, PortableSettingsSurface } from '@vertexade/platform-contracts'
 import {
   portableSettingsValidationErrors,
@@ -7,19 +6,25 @@ import {
   type PortableSettingsValues,
 } from '@vertexade/platform-contracts/portable'
 import { confirmDestructive } from './confirm-destructive'
+import { createMobilePlatformClient } from '@/platform-service'
 
 export function usePortableSettings({
   module,
-  server,
+  serviceUrl,
+  backendId,
   settings,
   onSaved,
 }: {
   module: ModuleCatalogEntry
-  server: string
+  serviceUrl: string
+  backendId: string
   settings: PortableSettingsSurface
   onSaved?(): void
 }) {
-  const extension = useMemo(() => createPlatformClient({ baseUrl: server }).extension(module.id), [module.id, server])
+  const extension = useMemo(
+    () => createMobilePlatformClient(serviceUrl, backendId).extension(module.id),
+    [backendId, module.id, serviceUrl],
+  )
   const [source, setSource] = useState<Record<string, unknown>>({})
   const [values, setValues] = useState<PortableSettingsValues>({})
   const [actionResults, setActionResults] = useState<Record<string, unknown>>({})

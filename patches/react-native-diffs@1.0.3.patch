@@ -1,0 +1,10 @@
+diff --git a/Diffs.podspec b/Diffs.podspec
+--- a/Diffs.podspec
++++ b/Diffs.podspec
+@@ -23,5 +23,5 @@ Pod::Spec.new do |s|
+   spm_dependency(s,
+     url: "https://github.com/HumanInterfaceDesign/MarkdownView",
+-    requirement: { kind: "branch", branch: "main" }, # todo use version
++    requirement: { kind: "revision", revision: "07f2f3d8664eb2bc925ef09b9d697b4e0ffca2dd" },
+     products: ["MarkdownView"]
+   )

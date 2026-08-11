@@ -2,13 +2,78 @@ appId: com.vertexade.mobile
 ---
 - launchApp:
     clearState: true
+- runFlow:
+    when:
+      visible:
+        id: connection-submit
+    commands:
+      - tapOn:
+          id: connection-url
+      - eraseText
+      - inputText: ${MAESTRO_FIXTURE_URL}
+      - hideKeyboard
+      - tapOn:
+          id: connection-submit
+- assertVisible:
+    id: pull-request-fixture-1-299
 - tapOn:
-    id: connection-url
-- eraseText
-- inputText: ${MAESTRO_FIXTURE_URL}
+    id: open-pull-request-fixture-1-299
+- assertVisible: Improve release quality
+- tapOn:
+    id: detail-tab-conversation
+- assertVisible: Please verify this on a physical iPhone.
+- tapOn:
+    id: detail-tab-checks
+- assertVisible: mobile-check
+- tapOn:
+    id: detail-tab-changes
+- assertVisible: apps/mobile/app/index.tsx
+- tapOn:
+    id: workspace-detail-close
+- tapOn:
+    id: create-pullRequests
+- tapOn:
+    id: create-title
+- inputText: Device smoke draft PR
+- tapOn:
+    id: create-repository-1
+- tapOn:
+    id: create-prompt
+- inputText: Implement and verify the device smoke delivery.
 - hideKeyboard
 - tapOn:
-    id: connection-submit
+    id: create-submit
+- assertVisible: W-0002 created. Its agent will publish the draft PR when the work is ready.
+- tapOn:
+    id: workspace-tab-work
+- assertVisible:
+    id: work-item-fixture-1
+- tapOn:
+    id: open-work-item-fixture-1
+- tapOn:
+    id: detail-tab-threads
+- tapOn:
+    id: detail-thread-fixture-1
+- assertVisible: Checking the iOS release flow.
+- tapOn:
+    id: detail-tab-changes
+- assertVisible: apps/mobile/app/index.tsx
+- tapOn:
+    id: workspace-detail-close
+- tapOn:
+    id: workspace-tab-threads
+- assertVisible:
+    id: thread-fixture-1
+- tapOn:
+    id: open-thread-fixture-1
+- assertVisible: Checking the iOS release flow.
+- tapOn:
+    id: detail-tab-info
+- assertVisible: Original prompt
+- tapOn:
+    id: workspace-detail-close
+- tapOn:
+    id: workspace-tab-more
 - assertVisible:
     id: extension-work
 - takeScreenshot: ${MAESTRO_TESTS_DIR}/01-connected

@@ -214,15 +214,15 @@ response write deadline defaults to 15 seconds and can be changed with
 
 ## Expo host
 
-Web and Expo render the same portable workspace and settings declarations. Start Expo with a device-reachable API:
+Web and Expo render the same portable workspace and settings declarations. Start Expo with a device-reachable VertexADE service:
 
 ```bash
-EXPO_PUBLIC_VERTEXADE_URL=http://192.168.1.10:4174 pnpm dev:mobile
+EXPO_PUBLIC_VERTEXADE_URL=http://192.168.1.10:4173 pnpm dev:mobile
 ```
 
-Use `10.0.2.2` for the Android emulator and `localhost` for an iOS simulator on the API host. Settings-only and disabled-but-installed extensions remain configurable in the mobile catalog. Secret fields are write-only and are encrypted by the extension backend.
+Use `10.0.2.2` for the Android emulator and `localhost` for an iOS simulator on the service host. The mobile app federates PRs, Work items, and agent threads from linked servers through port 4173 and routes creation to the selected server. It never connects directly to internal port 4174 APIs. Settings-only and disabled-but-installed extensions remain configurable under More in each server's mobile catalog. Secret fields are write-only and are encrypted by the extension backend.
 
-The current API does not yet expose a production mobile authentication boundary. Do not expose it to an untrusted network or distribute a production app until authenticated sessions, authorization enforcement, secure device session-token storage, TLS, and restrictive network policy are in place.
+The current service does not yet expose a production mobile authentication boundary. Do not expose it to an untrusted network or distribute a production app until authenticated sessions, authorization enforcement, secure device session-token storage, TLS, and restrictive network policy are in place.
 
 ## Troubleshooting
 

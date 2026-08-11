@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native'
+import { act, fireEvent, render, screen } from '@testing-library/react-native'
 import { createPlatformClient } from '@vertexade/platform-client'
 import HomeScreen from '../app/index'
 
@@ -10,35 +10,81 @@ jest.mock('@vertexade/platform-client', () => ({
 
 const createClient = jest.mocked(createPlatformClient)
 
-function modulesList(list: unknown) {
-  createClient.mockReturnValue({ modules: { list: jest.fn().mockResolvedValue(list) } } as unknown as ReturnType<typeof createPlatformClient>)
+const workspaceResponse = {
+  instanceId: 'fixture',
+  version: 1,
+  updates: {
+    repositories: { mode: 'replace', entries: [] },
+    pullRequests: { mode: 'replace', entries: [] },
+    workItems: { mode: 'replace', entries: [] },
+    agentThreads: { mode: 'replace', entries: [] },
+  },
+}
+
+function backendIdFromOptions(options: Parameters<typeof createPlatformClient>[0]): string | undefined {
+  return (options.headers as Record<string, string> | undefined)?.['x-vertexade-backend']
+}
+
+function serverCatalogs(catalogs: Record<string, unknown>) {
+  createClient.mockImplementation((options) => {
+    const backendId = backendIdFromOptions(options)
+    if (!backendId) {
+      return { request: jest.fn((path: string) => Promise.resolve(path.startsWith('/api/read-model')
+        ? workspaceResponse
+        : { backends: Object.keys(catalogs).map((id, index) => ({ id, label: id === 'local' ? 'Local' : 'Team', isDefault: index === 0 })) })) } as unknown as ReturnType<typeof createPlatformClient>
+    }
+    const catalog = catalogs[backendId]
+    const list = catalog instanceof Error ? jest.fn().mockRejectedValue(catalog) : jest.fn().mockResolvedValue(catalog)
+    return { modules: { list } } as unknown as ReturnType<typeof createPlatformClient>
+  })
 }
 
 describe('HomeScreen', () => {
-  test('connects and shows only portable or configurable extensions', async () => {
-    modulesList({
-      modules: [
-        { id: 'work', name: 'Work', description: 'Work', enabled: true, portable: { surfaces: [{ kind: 'collection' }] } },
-        { id: 'settings', name: 'Settings only', description: 'Settings', enabled: false, portable: { surfaces: [], settings: { fields: [] } } },
-        { id: 'server-only', name: 'Server only', description: 'Hidden', enabled: true },
-      ],
+  beforeEach(() => createClient.mockReset())
+  beforeAll(() => jest.useFakeTimers())
+  afterEach(() => act(() => jest.runOnlyPendingTimers()))
+  afterAll(() => jest.useRealTimers())
+
+  test('automatically connects and shows only portable or configurable extensions under More', async () => {
+    serverCatalogs({
+      local: {
+        modules: [
+          { id: 'work', name: 'Work', description: 'Work', enabled: true, portable: { surfaces: [{ kind: 'collection' }] } },
+          { id: 'server-only', name: 'Server only', description: 'Hidden', enabled: true },
+        ],
+      },
+      team: {
+        modules: [{ id: 'settings', name: 'Settings only', description: 'Settings', enabled: false, portable: { surfaces: [], settings: { fields: [] } } }],
+      },
     })
     render(<HomeScreen />)
-    fireEvent.changeText(screen.getByTestId('connection-url'), 'http://fixture:4174')
-    fireEvent.press(screen.getByTestId('connection-submit'))
+    expect(await screen.findByText('Pull requests')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('workspace-tab-more'))
     expect(await screen.findByTestId('extension-work')).toBeOnTheScreen()
     expect(screen.getByText('Settings only')).toBeOnTheScreen()
     expect(screen.queryByText('Server only')).not.toBeOnTheScreen()
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4174' })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173' })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173', headers: { 'x-vertexade-backend': 'team' } })
   })
 
   test('clears stale catalog data and announces a connection failure', async () => {
     createClient.mockReturnValue({
-      modules: { list: jest.fn().mockRejectedValue(new Error('Fixture unavailable')) },
+      request: jest.fn().mockRejectedValue(new Error('Fixture unavailable')),
     } as unknown as ReturnType<typeof createPlatformClient>)
     render(<HomeScreen />)
-    fireEvent.press(screen.getByTestId('connection-submit'))
     expect(await screen.findByRole('alert')).toHaveTextContent('Fixture unavailable')
     expect(screen.queryByTestId('extension-list')).not.toBeOnTheScreen()
+  })
+
+  test('shows a partial backend failure without hiding the healthy catalog', async () => {
+    serverCatalogs({
+      local: { modules: [{ id: 'work', name: 'Work', description: 'Work', enabled: true, portable: { surfaces: [{ kind: 'collection' }] } }] },
+      team: new Error('Team unavailable'),
+    })
+    render(<HomeScreen />)
+    expect(await screen.findByText('Pull requests')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('workspace-tab-more'))
+    expect(await screen.findByTestId('extension-work')).toBeOnTheScreen()
+    expect(screen.getByRole('alert')).toHaveTextContent('Team unavailable')
   })
 })

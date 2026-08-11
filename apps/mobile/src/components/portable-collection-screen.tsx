@@ -8,9 +8,10 @@ import { portableCollectionStyles as styles } from './portable-collection-styles
 import { portableRecords as records } from './portable-collection-projection'
 import { usePortableCollection } from './use-portable-collection'
 
-export function PortableCollectionScreen({ module, server, surface }: {
+export function PortableCollectionScreen({ module, serviceUrl, backendId, surface }: {
   module: ModuleCatalogEntry
-  server: string
+  serviceUrl: string
+  backendId: string
   surface: PortableCollectionSurface
 }) {
   const {
@@ -18,7 +19,7 @@ export function PortableCollectionScreen({ module, server, surface }: {
     facets, setFacets, sourceValues, setSourceValues, detail, setDetail, detailData, detailLoading,
     actionTarget, setActionTarget, load, fieldNames, visible, groups, configured, actionsFor,
     collectionActions, facetOptions, openDetails,
-  } = usePortableCollection({ module, server, surface })
+  } = usePortableCollection({ module, serviceUrl, backendId, surface })
   if (loading && !data) return <ScreenState loading title={`Loading ${surface.title}`} text="Reading the extension data source…" />
   if (error && !data) return <ScreenState title="Surface unavailable" text={error} action="Retry" onAction={() => void load(true)} />
   if (!configured) return <ScreenState title={`${module.name} needs setup`} text={`${surface.setup?.message || 'Configure this extension before using it.'} Open VertexADE web settings to continue.`} />
@@ -56,6 +57,6 @@ export function PortableCollectionScreen({ module, server, surface }: {
       <ScrollView contentContainerStyle={styles.columnItems}>{group.items.map((item) => <RecordCard compact actions={actionsFor(item)} item={item} key={item.id} onAction={(action) => setActionTarget({ item, action })} onDetails={(value) => void openDetails(value)} />)}</ScrollView>
     </View>)}</ScrollView>}
     <DetailsModal actions={detail ? actionsFor(detail) : []} data={detailData} loading={detailLoading} item={detail} onAction={(action) => { if (detail) setActionTarget({ item: detail, action }); setDetail(null) }} onClose={() => setDetail(null)} />
-    {actionTarget ? <ActionModal action={actionTarget.action} data={data || {}} extension={extension} item={actionTarget.item} server={server} onClose={() => setActionTarget(null)} onCompleted={load} /> : null}
+    {actionTarget ? <ActionModal action={actionTarget.action} backendId={backendId} data={data || {}} extension={extension} item={actionTarget.item} serviceUrl={serviceUrl} onClose={() => setActionTarget(null)} onCompleted={load} /> : null}
   </View>
 }

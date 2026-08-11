@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 45
     env:
       EXPO_NO_TELEMETRY: '1'
-      EXPO_PUBLIC_VERTEXADE_URL: http://localhost:4174
+      EXPO_PUBLIC_VERTEXADE_URL: http://localhost:4173
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Select Expo-compatible Xcode
