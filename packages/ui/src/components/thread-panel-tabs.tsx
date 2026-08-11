@@ -3,7 +3,8 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { Conversation, ConversationContent, ConversationScrollButton } from '@vertexade/ui/components/ai-elements/conversation'
 import type { PromptInputMessage } from '@vertexade/ui/components/ai-elements/prompt-input'
-import { MarkdownContent, type FileReference } from '@vertexade/ui/components/markdown-content'
+import type { FileReference } from '@vertexade/ui/components/markdown-content'
+import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-content'
 import { FollowUpComposer, ThreadActivity } from '@vertexade/ui/components/thread-dialog-support'
 import { ThreadChanges } from '@vertexade/ui/components/thread-changes'
 import { ThreadReviewSuggestions, type ReviewSuggestion } from '@vertexade/ui/components/thread-review-suggestions'
@@ -235,7 +236,7 @@ function ReviewSummaryContent({
   onOpenFile,
 }: Pick<ThreadPanelTabsProps, 'reviewResult'> & { job: JobLog; onOpenFile: ThreadPanelTabsProps['setFileReference'] }) {
   if (reviewResult?.summary)
-    return <MarkdownContent content={reviewResult.summary} onOpenFile={onOpenFile} worktreePath={job.worktree_path} />
+    return <ThreadMarkdownContent content={reviewResult.summary} onOpenFile={onOpenFile} worktreePath={job.worktree_path} />
   return <p className="py-12 text-center text-sm text-muted-foreground">{summaryWaitingMessage(job)}</p>
 }
 
@@ -271,14 +272,15 @@ function FindingsHeader({ job }: Pick<ThreadPanelTabsProps, 'job'>) {
 function FindingsContent({ job, isCodeReview, reviewResult, setFileReference }: ThreadPanelTabsProps) {
   if (!job) return null
   if (isCodeReview && reviewResult?.details)
-    return <MarkdownContent content={reviewResult.details} onOpenFile={setFileReference} worktreePath={job.worktree_path} />
+    return <ThreadMarkdownContent content={reviewResult.details} onOpenFile={setFileReference} worktreePath={job.worktree_path} />
   if (isCodeReview)
     return (
       <p className="py-12 text-center text-sm text-muted-foreground">
         {job.agent_name} is preparing the detailed review and rating scorecard first.
       </p>
     )
-  if (job.result_text) return <MarkdownContent content={job.result_text} onOpenFile={setFileReference} worktreePath={job.worktree_path} />
+  if (job.result_text)
+    return <ThreadMarkdownContent content={job.result_text} onOpenFile={setFileReference} worktreePath={job.worktree_path} />
   return <p className="py-12 text-center text-sm text-muted-foreground">{job.agent_name || 'The agent'} is still preparing the report.</p>
 }
 

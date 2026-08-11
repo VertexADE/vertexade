@@ -22,12 +22,12 @@ export function MobileConnectionPanel({ serviceUrl, loading, error, onServiceUrl
   onConnect(): void
 }) {
   return <View testID="connection-panel" style={styles.panel}>
-    <Text style={styles.label}>VertexADE service URL</Text>
-    <TextInput testID="connection-url" accessibilityLabel="VertexADE service URL" accessibilityState={{ disabled: loading }} autoCapitalize="none" autoCorrect={false} editable={!loading} keyboardType="url" placeholder="http://192.168.1.10:4173" placeholderTextColor={colors.muted} style={styles.input} value={serviceUrl} onChangeText={onServiceUrlChange} />
-    <Pressable testID="connection-submit" accessibilityLabel={loading ? 'Loading VertexADE servers' : 'Load VertexADE servers'} accessibilityRole="button" accessibilityState={{ disabled: loading || !serviceUrl.trim(), busy: loading }} disabled={loading || !serviceUrl.trim()} onPress={onConnect} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, (loading || !serviceUrl.trim()) && styles.disabled]}>
-      {loading ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryButtonText}>Load servers</Text>}
+    <Text style={styles.label}>Desktop pair link</Text>
+    <TextInput testID="connection-url" accessibilityLabel="VertexADE pair link or service URL" accessibilityState={{ disabled: loading }} autoCapitalize="none" autoCorrect={false} editable={!loading} keyboardType="url" placeholder="http://100.101.138.108:3773/pair#token=…" placeholderTextColor={colors.muted} style={styles.input} value={serviceUrl} onChangeText={onServiceUrlChange} />
+    <Pressable testID="connection-submit" accessibilityLabel={loading ? 'Pairing with VertexADE Desktop' : 'Pair and connect'} accessibilityRole="button" accessibilityState={{ disabled: loading || !serviceUrl.trim(), busy: loading }} disabled={loading || !serviceUrl.trim()} onPress={onConnect} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, (loading || !serviceUrl.trim()) && styles.disabled]}>
+      {loading ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryButtonText}>Pair and connect</Text>}
     </Pressable>
-    <Text style={styles.warning}>Connect to the port 4173 service on a trusted network. It discovers and routes requests to linked servers.</Text>
+    <Text style={styles.warning}>Generate a one-time link in VertexADE Desktop → Settings → Connectivity. Direct service URLs remain available for local development.</Text>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </View>
 }

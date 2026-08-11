@@ -35,6 +35,16 @@ await Promise.all([
     sourcemap: true,
   }),
   build({
+    entryPoints: [resolve(desktopRoot, 'src/preload.ts')],
+    outfile: resolve(output, 'preload.cjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+    external: ['electron'],
+    sourcemap: true,
+  }),
+  build({
     entryPoints: [resolve(repositoryRoot, 'apps/api/src/server/index.ts')],
     outfile: resolve(output, 'api.mjs'),
     bundle: true,

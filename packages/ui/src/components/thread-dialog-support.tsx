@@ -30,7 +30,7 @@ import { AgentActivityTimeline } from '@vertexade/ui/components/agent-activity-t
 import { AgentAvatar, AgentContextBadges } from '@vertexade/ui/components/agent-identity'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { useConfirm } from '@vertexade/ui/components/confirm-provider'
-import { MarkdownContent, type FileReference } from '@vertexade/ui/components/markdown-content'
+import type { FileReference } from '@vertexade/ui/components/markdown-content'
 import { SourceFileDialog } from '@vertexade/ui/components/source-file-dialog'
 import {
   Conversation,

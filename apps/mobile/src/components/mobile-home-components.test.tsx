@@ -30,8 +30,8 @@ describe('MobileConnectionPanel', () => {
         onConnect={onConnect}
       />,
     )
-    fireEvent.changeText(screen.getByLabelText('VertexADE service URL'), 'http://10.0.2.2:4173')
-    fireEvent.press(screen.getByLabelText('Load VertexADE servers'))
+    fireEvent.changeText(screen.getByLabelText('VertexADE pair link or service URL'), 'http://10.0.2.2:4173')
+    fireEvent.press(screen.getByLabelText('Pair and connect'))
     expect(onServiceUrlChange).toHaveBeenCalledWith('http://10.0.2.2:4173')
     expect(onConnect).toHaveBeenCalledTimes(1)
   })

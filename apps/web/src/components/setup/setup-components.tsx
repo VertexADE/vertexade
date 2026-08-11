@@ -4,15 +4,7 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { cn } from '@vertexade/ui/lib/utils'
-
-export type SetupTool = {
-  id: string
-  name: string
-  ready: boolean
-  required: boolean
-  detail: string
-  install: string
-}
+import type { SetupTool } from '../../lib/setup-status'
 
 export function OperationalMetric({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
   return (

@@ -102,6 +102,7 @@ import {
   runtimeDb as db,
   runtimeExtensions as extensions,
   runtimeJson as json,
+  runtimeMobilePairing as mobilePairing,
   runtimeNotifyClients as notifyClients,
   runtimeReviewAutomationSettings as reviewAutomationSettings,
   runtimeRun as run,
@@ -121,6 +122,7 @@ import {
   writeLinkedServers,
 } from '../settings/linked-servers.ts'
 import { serverRuntimeStatus, updateServerRuntimeConfiguration } from '../settings/server-runtime.ts'
+import { MobilePairingError } from '../settings/mobile-pairing.ts'
 
 function repositoryRow(id: number) {
   const row = db.select().from(repositories).where(eq(repositories.id, id)).get()
@@ -139,6 +141,18 @@ function pullRequestRow(repoId: number, number: number) {
 function linkedServerErrorResponse(error: unknown): Response {
   const status = error instanceof LinkedServerAccessError ? (error.code === 'operator_token_not_configured' ? 503 : 401) : 400
   return json(status, { error: error instanceof Error ? error.message : 'Invalid linked server' })
+}
+
+function mobilePairingErrorResponse(error: unknown): Response {
+  const status = error instanceof MobilePairingError ? error.status : 500
+  return json(status, {
+    error: error instanceof Error ? error.message : 'Mobile pairing request is invalid',
+    code: error instanceof MobilePairingError ? error.code : 'invalid_request',
+  })
+}
+
+function requestRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 
 import { resolveSubagentLaunch } from '../agents/subagents.ts'
@@ -248,6 +262,46 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       })
     }
   }
+  if (url.pathname === '/api/settings/mobile-pairing' && request.method === 'GET') {
+    return json(200, mobilePairing.status())
+  }
+  if (url.pathname === '/api/settings/mobile-pairing/invitations' && request.method === 'POST') {
+    try {
+      const input = requestRecord(await body(request))
+      const invitation = mobilePairing.createInvitation(input.publicOrigin)
+      notifyClients('mobile_pairing_updated')
+      return json(201, invitation)
+    } catch (error) {
+      return mobilePairingErrorResponse(error)
+    }
+  }
+  const mobileDeviceMatch = url.pathname.match(/^\/api\/settings\/mobile-pairing\/devices\/([^/]+)$/)
+  if (mobileDeviceMatch && request.method === 'DELETE') {
+    try {
+      const status = mobilePairing.revoke(decodeURIComponent(mobileDeviceMatch[1]))
+      notifyClients('mobile_pairing_updated')
+      return json(200, status)
+    } catch (error) {
+      return mobilePairingErrorResponse(error)
+    }
+  }
+  if (url.pathname === '/api/mobile-pairing/redeem' && request.method === 'POST') {
+    try {
+      const input = requestRecord(await body(request))
+      const redemption = mobilePairing.redeem(input.token, input.deviceName)
+      notifyClients('mobile_pairing_updated')
+      return json(201, redemption)
+    } catch (error) {
+      return mobilePairingErrorResponse(error)
+    }
+  }
+  if (url.pathname === '/api/mobile-pairing/session/validate' && request.method === 'POST') {
+    try {
+      return json(200, mobilePairing.validate(request.headers.get('authorization')))
+    } catch (error) {
+      return mobilePairingErrorResponse(error)
+    }
+  }
   if (url.pathname === '/api/settings/linked-servers') {
     if (request.method === 'GET') {
       return json(200, {
@@ -288,8 +342,7 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     try {
       const patch = await body(request)
       const next = normalizeLinkedServer({ ...current[index], ...patch, id: current[index].id })
-      if (next.url !== current[index].url)
-        await verifyLinkedServerAccess(next.url, request.headers.get('authorization'), API_TOKEN)
+      if (next.url !== current[index].url) await verifyLinkedServerAccess(next.url, request.headers.get('authorization'), API_TOKEN)
       const duplicate = current.find((candidate, candidateIndex) => candidateIndex !== index && candidate.url === next.url)
       if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
       const updated = [...current]

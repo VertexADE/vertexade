@@ -3,9 +3,38 @@ import { Bot } from 'lucide-react'
 import { toast } from 'sonner'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
+import { Separator } from '@vertexade/ui/components/ui/separator'
+import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { ThreadRuntimeDefaults } from './settings-types'
+
+function threadDefaultsReady(draft: ThreadRuntimeDefaults): boolean {
+  return Boolean(draft.workItem.agentId && draft.review.agentId)
+}
+
+function saveThreadDefaultsDisabled(draft: ThreadRuntimeDefaults, busy: boolean): boolean {
+  return busy || !threadDefaultsReady(draft)
+}
+
+function SaveThreadDefaultsContent({ busy }: { busy: boolean }) {
+  if (busy)
+    return (
+      <>
+        <Spinner data-icon="inline-start" />
+        Saving…
+      </>
+    )
+  return <>Save thread defaults</>
+}
+
+function SaveThreadDefaultsButton({ draft, busy, onSave }: { draft: ThreadRuntimeDefaults; busy: boolean; onSave(): void }) {
+  return (
+    <Button className="w-full sm:w-auto" size="sm" disabled={saveThreadDefaultsDisabled(draft, busy)} onClick={onSave}>
+      <SaveThreadDefaultsContent busy={busy} />
+    </Button>
+  )
+}
 
 export function ThreadRuntimeDefaultSettings({
   value,
@@ -33,16 +62,16 @@ export function ThreadRuntimeDefaultSettings({
     }
   }
   return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-b p-4">
-        <CardTitle className="flex items-center gap-2 font-mono text-sm">
-          <Bot className="size-4" />
+    <Card layout="divided">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bot />
           Thread defaults
         </CardTitle>
         <CardDescription>Default provider, model, and reasoning level when a thread does not override them.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-5 p-4">
-        <section className="space-y-2">
+      <CardContent className="flex flex-col gap-4">
+        <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Work items</h3>
           <AgentOptionsPicker
             value={draft.workItem}
@@ -50,7 +79,8 @@ export function ThreadRuntimeDefaultSettings({
             showSubagents={false}
           />
         </section>
-        <section className="space-y-2 border-t pt-4">
+        <Separator />
+        <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Reviews</h3>
           <AgentOptionsPicker
             value={draft.review}
@@ -58,10 +88,10 @@ export function ThreadRuntimeDefaultSettings({
             showSubagents={false}
           />
         </section>
-        <Button className="w-full sm:w-auto" size="sm" disabled={busy || !draft.workItem.agentId || !draft.review.agentId} onClick={save}>
-          {busy ? 'Saving…' : 'Save thread defaults'}
-        </Button>
       </CardContent>
+      <CardFooter className="justify-end">
+        <SaveThreadDefaultsButton draft={draft} busy={busy} onSave={() => void save()} />
+      </CardFooter>
     </Card>
   )
 }

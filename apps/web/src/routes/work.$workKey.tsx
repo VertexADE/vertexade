@@ -64,7 +64,6 @@ import {
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Label } from '@vertexade/ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@vertexade/ui/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { useIsMobile } from '@vertexade/ui/hooks/use-mobile'

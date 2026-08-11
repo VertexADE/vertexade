@@ -1,5 +1,6 @@
 import type { ModuleCatalogEntry } from '@vertexade/platform-contracts'
 import { createPlatformClient, type PlatformClient } from '@vertexade/platform-client'
+import { mobileAccessToken } from './mobile-session'
 
 export type MobileBackend = {
   id: string
@@ -19,6 +20,7 @@ export function createMobilePlatformClient(serviceUrl: string, backendId?: strin
   if (id !== undefined && !backendIdPattern.test(id)) throw new Error('VertexADE backend ID is invalid')
   return createPlatformClient({
     baseUrl: serviceUrl,
+    getAccessToken: () => mobileAccessToken(serviceUrl),
     ...(id ? { headers: { 'x-vertexade-backend': id } } : {}),
   })
 }

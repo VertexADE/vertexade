@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { serverRuntimeStatus, updateServerRuntimeConfiguration } from './server-runtime.ts'
+import { serverRuntimeStatus, updateServerRuntimeConfiguration, webListenerOrigins } from './server-runtime.ts'
 
 describe('server runtime settings', () => {
   let directory = ''
@@ -48,5 +48,55 @@ describe('server runtime settings', () => {
     expect(result.web).toMatchObject({ currentHost: '0.0.0.0', currentPort: 9000, source: 'environment', environmentOverride: true })
     expect(result.api).toMatchObject({ source: 'environment', environmentOverride: true })
     expect(result.restartRequired).toBe(false)
+  })
+
+  it('suggests full phone-reachable origins for wildcard web listeners', () => {
+    const origins = webListenerOrigins(
+      { host: '0.0.0.0', port: 3773 },
+      {
+        lo0: [
+          { address: '127.0.0.1', netmask: '255.0.0.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: true, cidr: '127.0.0.1/8' },
+        ],
+        en0: [
+          {
+            address: '192.168.1.20',
+            netmask: '255.255.255.0',
+            family: 'IPv4',
+            mac: '00:00:00:00:00:01',
+            internal: false,
+            cidr: '192.168.1.20/24',
+          },
+        ],
+        tailscale0: [
+          {
+            address: '100.101.138.108',
+            netmask: '255.192.0.0',
+            family: 'IPv4',
+            mac: '00:00:00:00:00:02',
+            internal: false,
+            cidr: '100.101.138.108/10',
+          },
+        ],
+      },
+    )
+
+    expect(origins).toEqual(['http://100.101.138.108:3773', 'http://192.168.1.20:3773'])
+  })
+
+  it('keeps the bundled desktop API on loopback while allowing its authenticated web gateway to be shared', async () => {
+    directory = await mkdtemp(join(tmpdir(), 'vertexade-runtime-'))
+    await expect(
+      updateServerRuntimeConfiguration(
+        { web: { host: '0.0.0.0', port: 3773 }, api: { host: '0.0.0.0', port: 4174 } },
+        { VERTEXADE_DATA_DIR: directory, VERTEXADE_BUNDLED_RUNTIME: '1' },
+      ),
+    ).rejects.toThrow('keeps the API listener on loopback')
+
+    await expect(
+      updateServerRuntimeConfiguration(
+        { web: { host: '0.0.0.0', port: 3773 }, api: { host: '127.0.0.1', port: 4174 } },
+        { VERTEXADE_DATA_DIR: directory, VERTEXADE_BUNDLED_RUNTIME: '1' },
+      ),
+    ).resolves.toMatchObject({ web: { host: '0.0.0.0', port: 3773 }, api: { host: '127.0.0.1', port: 4174 } })
   })
 })

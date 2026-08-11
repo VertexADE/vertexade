@@ -1,8 +1,12 @@
 import { useState } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Palette, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
@@ -12,36 +16,160 @@ import { cn } from '@vertexade/ui/lib/utils'
 const placeholders = ['repo', 'pr_number', 'pr_title', 'pr_url', 'author', 'base_branch', 'head_branch']
 const highlightColors = ['#f59e0b', '#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#ec4899']
 
+function PresetEditor({
+  name,
+  prompt,
+  editing,
+  onNameChange,
+  onPromptChange,
+  onInsertPlaceholder,
+  onCancel,
+  onSubmit,
+}: {
+  name: string
+  prompt: string
+  editing: boolean
+  onNameChange(value: string): void
+  onPromptChange(value: string): void
+  onInsertPlaceholder(value: string): void
+  onCancel(): void
+  onSubmit(event: React.FormEvent): void
+}) {
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-3 border-b p-4 md:border-r md:border-b-0">
+      <div className="flex items-center justify-between">
+        <strong className="text-xs">{editing ? 'Edit preset' : 'New preset'}</strong>
+        {editing && (
+          <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
+            Cancel edit
+          </Button>
+        )}
+      </div>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="preset-name">Name</FieldLabel>
+          <Input
+            id="preset-name"
+            required
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+            placeholder="Release review"
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="preset-prompt">Instructions</FieldLabel>
+          <Textarea
+            id="preset-prompt"
+            required
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            placeholder="Reusable prompt with {{pr_title}}, {{author}}, …"
+            className="min-h-28 text-xs"
+          />
+          <FieldDescription>Insert supported context placeholders below.</FieldDescription>
+        </Field>
+      </FieldGroup>
+      <div className="flex flex-wrap gap-1.5">
+        {placeholders.map((item) => (
+          <Button
+            key={item}
+            type="button"
+            variant="outline"
+            size="xs"
+            className="font-mono text-[11px]"
+            onClick={() => onInsertPlaceholder(item)}
+          >
+            {`{{${item}}}`}
+          </Button>
+        ))}
+      </div>
+      <Button size="sm">{editing ? 'Update preset' : 'Save preset'}</Button>
+    </form>
+  )
+}
+
+function PresetList({
+  presets,
+  editingId,
+  onEdit,
+  onRemove,
+}: {
+  presets: Preset[]
+  editingId: number | null
+  onEdit(preset: Preset): void
+  onRemove(id: number): void
+}) {
+  return (
+    <CardContent className="max-h-80 overflow-y-auto p-0">
+      {presets.map((preset) => (
+        <div key={preset.id} className={cn('border-b p-3 last:border-0', editingId === preset.id && 'bg-primary/[.05]')}>
+          <div className="flex justify-between gap-2">
+            <strong className="font-mono text-xs text-primary">[{preset.name}]</strong>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="icon-xs" onClick={() => onEdit(preset)}>
+                <Pencil />
+                <span className="sr-only">Edit preset</span>
+              </Button>
+              <Button variant="ghost" size="icon-xs" onClick={() => onRemove(preset.id)}>
+                <Trash2 />
+                <span className="sr-only">Delete preset</span>
+              </Button>
+            </div>
+          </div>
+          <p className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground">{preset.prompt}</p>
+        </div>
+      ))}
+      {!presets.length && (
+        <Empty className="m-3 min-h-48 border-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Plus />
+            </EmptyMedia>
+            <EmptyTitle>No prompt presets</EmptyTitle>
+            <EmptyDescription>Create a reusable instruction for recurring pull-request work.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+    </CardContent>
+  )
+}
+
 export function Presets({ presets }: { presets: Preset[] }) {
-  const [name, setName] = useState('')
-  const [prompt, setPrompt] = useState('')
+  const queryClient = useQueryClient()
   const [editingId, setEditingId] = useState<number | null>(null)
+  const mutation = useMutation({
+    mutationFn: ({ id, name, prompt }: { id: number | null; name: string; prompt: string }) =>
+      api(id ? `/api/presets/${id}` : '/api/presets', {
+        method: 'POST',
+        body: JSON.stringify({ name, prompt }),
+      }),
+  })
+  const form = useForm({
+    defaultValues: { name: '', prompt: '' },
+    onSubmit: async ({ value }) => {
+      try {
+        await mutation.mutateAsync({ id: editingId, name: value.name.trim(), prompt: value.prompt.trim() })
+        toast.success(editingId ? `Updated [${value.name.trim()}]` : `Saved [${value.name.trim()}]`)
+        reset()
+        await queryClient.invalidateQueries({ queryKey: ['platform'] })
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
+  const values = useStore(form.store, (state) => state.values)
   function reset() {
     setEditingId(null)
-    setName('')
-    setPrompt('')
+    form.reset()
   }
   function edit(preset: Preset) {
     setEditingId(preset.id)
-    setName(preset.name)
-    setPrompt(preset.prompt)
-  }
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    try {
-      await api(editingId ? `/api/presets/${editingId}` : '/api/presets', {
-        method: 'POST',
-        body: JSON.stringify({ name, prompt }),
-      })
-      toast.success(editingId ? `Updated [${name}]` : `Saved [${name}]`)
-      reset()
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
+    form.reset({ name: preset.name, prompt: preset.prompt })
   }
   async function remove(id: number) {
     try {
       await api(`/api/presets/${id}`, { method: 'DELETE' })
+      await queryClient.invalidateQueries({ queryKey: ['platform'] })
       toast.success('Preset deleted')
       if (editingId === id) reset()
     } catch (error) {
@@ -49,116 +177,104 @@ export function Presets({ presets }: { presets: Preset[] }) {
     }
   }
   return (
-    <Card className="gap-0 overflow-hidden py-0">
-      <CardHeader className="border-b p-4">
-        <CardTitle className="font-mono text-sm">Prompt presets</CardTitle>
+    <Card layout="divided">
+      <CardHeader>
+        <CardTitle>Prompt presets</CardTitle>
         <CardDescription>Reusable instructions available when starting work on a pull request.</CardDescription>
+        <CardAction>
+          <span className="text-[11px] text-muted-foreground">{presets.length} saved</span>
+        </CardAction>
       </CardHeader>
       <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <form onSubmit={save} className="space-y-2 border-b p-4 md:border-b-0 md:border-r">
-          <div className="flex items-center justify-between">
-            <strong className="text-xs">{editingId ? 'Edit preset' : 'New preset'}</strong>
-            {editingId && (
-              <Button type="button" variant="ghost" size="xs" onClick={reset}>
-                Cancel edit
-              </Button>
-            )}
-          </div>
-          <Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Preset name" />
-          <Textarea
-            required
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Reusable prompt with {{pr_title}}, {{author}}, …"
-            className="min-h-28 text-xs"
-          />
-          <div className="flex flex-wrap gap-1">
-            {placeholders.map((item) => (
-              <Button
-                key={item}
-                type="button"
-                variant="outline"
-                size="xs"
-                className="font-mono text-[11px]"
-                onClick={() => setPrompt((value) => `${value}{{${item}}}`)}
-              >{`{{${item}}}`}</Button>
-            ))}
-          </div>
-          <Button size="sm">{editingId ? 'Update preset' : 'Save preset'}</Button>
-        </form>
-        <CardContent className="max-h-80 overflow-y-auto p-0">
-          {presets.map((preset) => (
-            <div key={preset.id} className={cn('border-b p-3 last:border-0', editingId === preset.id && 'bg-blue-500/5')}>
-              <div className="flex justify-between gap-2">
-                <strong className="font-mono text-xs text-blue-400">[{preset.name}]</strong>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon-xs" onClick={() => edit(preset)}>
-                    <Pencil />
-                    <span className="sr-only">Edit preset</span>
-                  </Button>
-                  <Button variant="ghost" size="icon-xs" onClick={() => remove(preset.id)}>
-                    <Trash2 />
-                    <span className="sr-only">Delete preset</span>
-                  </Button>
-                </div>
-              </div>
-              <p className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground">{preset.prompt}</p>
-            </div>
-          ))}
-        </CardContent>
+        <PresetEditor
+          name={values.name}
+          prompt={values.prompt}
+          editing={editingId !== null}
+          onNameChange={(value) => form.setFieldValue('name', value)}
+          onPromptChange={(value) => form.setFieldValue('prompt', value)}
+          onInsertPlaceholder={(item) => form.setFieldValue('prompt', (value) => `${value}{{${item}}}`)}
+          onCancel={reset}
+          onSubmit={(event) => {
+            event.preventDefault()
+            void form.handleSubmit()
+          }}
+        />
+        <PresetList presets={presets} editingId={editingId} onEdit={edit} onRemove={(id) => void remove(id)} />
       </div>
     </Card>
   )
 }
 
 export function Highlights({ rules }: { rules: HighlightRule[] }) {
-  const [text, setText] = useState('')
-  const [color, setColor] = useState(highlightColors[0])
-  async function save(event: React.FormEvent) {
-    event.preventDefault()
-    try {
-      await api('/api/highlights', { method: 'POST', body: JSON.stringify({ text, color }) })
-      toast.success(`Highlighting “${text}” globally`)
-      setText('')
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
-  }
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: (value: { text: string; color: string }) => api('/api/highlights', { method: 'POST', body: JSON.stringify(value) }),
+  })
+  const form = useForm({
+    defaultValues: { text: '', color: highlightColors[0]! },
+    onSubmit: async ({ value }) => {
+      try {
+        await mutation.mutateAsync({ text: value.text.trim(), color: value.color })
+        toast.success(`Highlighting “${value.text.trim()}” globally`)
+        form.setFieldValue('text', '')
+        await queryClient.invalidateQueries({ queryKey: ['platform'] })
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
+  const values = useStore(form.store, (state) => state.values)
   async function remove(rule: HighlightRule) {
     try {
       await api(`/api/highlights/${rule.id}`, { method: 'DELETE' })
+      await queryClient.invalidateQueries({ queryKey: ['platform'] })
       toast.success(`Removed “${rule.text}”`)
     } catch (error) {
       toast.error((error as Error).message)
     }
   }
   return (
-    <Card className="gap-0 overflow-hidden py-0">
-      <CardHeader className="border-b p-4">
-        <CardTitle className="flex items-center gap-2 font-mono text-sm">
-          <Palette className="size-4" />
+    <Card layout="divided">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Palette />
           Global highlights
         </CardTitle>
         <CardDescription>Highlight matching text throughout every manager screen.</CardDescription>
+        <CardAction>
+          <span className="text-[11px] text-muted-foreground">{rules.length} active</span>
+        </CardAction>
       </CardHeader>
-      <form onSubmit={save} className="space-y-2 border-b p-3">
-        <div className="flex gap-2">
-          <Input
-            required
-            maxLength={100}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Text or phrase"
-            className="h-8 min-w-0"
-          />
-          <input
-            type="color"
-            value={color}
-            onChange={(event) => setColor(event.target.value)}
-            aria-label="Highlight color"
-            className="h-8 w-10 shrink-0 cursor-pointer rounded-md border bg-background p-1"
-          />
-        </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          void form.handleSubmit()
+        }}
+        className="flex flex-col gap-3 p-3"
+      >
+        <Field>
+          <FieldLabel htmlFor="highlight-text">Text or phrase</FieldLabel>
+          <div className="flex gap-2">
+            <Input
+              id="highlight-text"
+              required
+              maxLength={100}
+              value={values.text}
+              onChange={(event) => form.setFieldValue('text', event.target.value)}
+              placeholder="Text or phrase"
+              className="h-8 min-w-0"
+            />
+            <input
+              type="color"
+              value={values.color}
+              onChange={(event) => form.setFieldValue('color', event.target.value)}
+              aria-label="Highlight color"
+              className="h-8 w-10 shrink-0 cursor-pointer rounded-md border bg-background p-1"
+            />
+          </div>
+          <FieldDescription>Matches are applied globally and stored with the workspace.</FieldDescription>
+        </Field>
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-1">
             {highlightColors.map((item) => (
@@ -166,17 +282,17 @@ export function Highlights({ rules }: { rules: HighlightRule[] }) {
                 key={item}
                 type="button"
                 aria-label={`Use ${item}`}
-                onClick={() => setColor(item)}
+                onClick={() => form.setFieldValue('color', item)}
                 className={cn(
                   'size-5 rounded-full border-2 border-background ring-1 ring-border',
-                  color === item && 'ring-2 ring-foreground',
+                  values.color === item && 'ring-2 ring-foreground',
                 )}
                 style={{ backgroundColor: item }}
               />
             ))}
           </div>
           <Button size="xs">
-            <Plus />
+            <Plus data-icon="inline-start" />
             Add
           </Button>
         </div>
@@ -192,7 +308,17 @@ export function Highlights({ rules }: { rules: HighlightRule[] }) {
             </Button>
           </div>
         ))}
-        {!rules.length && <p className="p-4 text-center text-[11px] text-muted-foreground">No highlights configured.</p>}
+        {!rules.length && (
+          <Empty className="m-3 min-h-32 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Palette />
+              </EmptyMedia>
+              <EmptyTitle>No highlights configured</EmptyTitle>
+              <EmptyDescription>Add words or phrases that should stand out across manager screens.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
       </CardContent>
     </Card>
   )

@@ -9,6 +9,10 @@ const macOsCommandDirectories = (home: string): string[] => [
   '/run/current-system/sw/bin',
 ]
 
+export function desktopRuntimeModeEnvironment(isPackaged: boolean): NodeJS.ProcessEnv {
+  return isPackaged ? { NODE_ENV: 'production' } : {}
+}
+
 export function desktopServiceEnvironment(environment: NodeJS.ProcessEnv, platform: NodeJS.Platform, home: string): NodeJS.ProcessEnv {
   if (platform !== 'darwin') return { ...environment }
 

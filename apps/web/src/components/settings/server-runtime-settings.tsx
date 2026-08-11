@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Globe2, Network, RotateCcw, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@vertexade/ui/components/ui/badge'
@@ -9,6 +11,7 @@ import { Input } from '@vertexade/ui/components/ui/input'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { api } from '@vertexade/ui/lib/dashboard-api'
+import { platformQueryKey } from '@vertexade/ui/lib/platform-query'
 
 type ListenerStatus = {
   host: string
@@ -108,47 +111,55 @@ function ListenerFields({
 }
 
 function useServerRuntimeSettings() {
-  const [status, setStatus] = useState<ServerRuntimeStatus | null>(null)
-  const [configuration, setConfiguration] = useState<ListenerValues | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  const load = useCallback(async () => {
-    try {
-      const result = await api<ServerRuntimeStatus>('/api/settings/server-runtime')
-      setStatus(result)
-      setConfiguration(values(result))
-    } catch (error) {
-      toast.error((error as Error).message)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  async function save() {
-    if (!configuration) return
-    setSaving(true)
-    try {
-      const result = await api<ServerRuntimeStatus>('/api/settings/server-runtime', {
+  const queryClient = useQueryClient()
+  const queryKey = platformQueryKey('/api/settings/server-runtime')
+  const statusQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => api<ServerRuntimeStatus>('/api/settings/server-runtime', { signal }),
+  })
+  const mutation = useMutation({
+    mutationFn: (configuration: ListenerValues) =>
+      api<ServerRuntimeStatus>('/api/settings/server-runtime', {
         method: 'POST',
         body: JSON.stringify(configuration),
-      })
-      setStatus(result)
-      setConfiguration(values(result))
-      toast.success(result.restartRequired ? 'Listener settings saved · restart this server to apply them' : 'Listener settings saved')
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
+      }),
+  })
+  const form = useForm({
+    defaultValues: {
+      web: { host: '', port: 0 },
+      api: { host: '', port: 0 },
+    } satisfies ListenerValues,
+    onSubmit: async ({ value }) => {
+      try {
+        const result = await mutation.mutateAsync(value)
+        queryClient.setQueryData(queryKey, result)
+        form.reset(values(result))
+        toast.success(result.restartRequired ? 'Listener settings saved · restart this server to apply them' : 'Listener settings saved')
+      } catch (error) {
+        toast.error((error as Error).message)
+      }
+    },
+  })
+  const formValues = useStore(form.store, (state) => state.values)
+  const saving = useStore(form.store, (state) => state.isSubmitting)
+  useEffect(() => {
+    if (statusQuery.data) form.reset(values(statusQuery.data))
+  }, [statusQuery.data])
+  useEffect(() => {
+    if (statusQuery.error) toast.error(statusQuery.error.message)
+  }, [statusQuery.error])
 
   const update = (listener: keyof ListenerValues, value: ListenerValues['web']) => {
-    setConfiguration((current) => (current ? { ...current, [listener]: value } : current))
+    form.setFieldValue(listener, value)
   }
 
-  return { status, configuration, saving, save, update }
+  return {
+    status: statusQuery.data ?? null,
+    configuration: statusQuery.data ? formValues : null,
+    saving,
+    save: form.handleSubmit,
+    update,
+  }
 }
 
 function exposureDetails(exposed: boolean) {
@@ -156,9 +167,9 @@ function exposureDetails(exposed: boolean) {
     return {
       tone: 'warning' as const,
       icon: ShieldAlert,
-      title: 'Network exposure requires access controls',
+      title: 'Share only the authenticated web gateway',
       description:
-        'Before exposing either listener, configure authentication, firewall rules, TLS termination, and exact CORS origins where direct API access is required.',
+        'The desktop web listener accepts paired devices. Keep the raw API on 127.0.0.1, and limit the shared web port to a trusted LAN or Tailscale network.',
     }
   }
   return {
@@ -262,7 +273,7 @@ export function ServerRuntimeSettings() {
   }
 
   return (
-    <Card>
+    <Card layout="divided">
       <CardHeader>
         <CardTitle>Network listeners</CardTitle>
         <CardDescription>Configure how this selected VertexADE server exposes its web application and API.</CardDescription>
@@ -271,7 +282,7 @@ export function ServerRuntimeSettings() {
         <CardContent className="flex flex-col gap-4">
           <RuntimeSettingsBody value={value} onChange={settings.update} />
         </CardContent>
-        <CardFooter className="mt-4 justify-between border-t pt-4">
+        <CardFooter className="flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Globe2 />
             Settings are stored independently on this server.

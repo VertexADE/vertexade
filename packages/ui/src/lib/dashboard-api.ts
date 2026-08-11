@@ -2,10 +2,18 @@ import { createPlatformClient, type ApiClient } from '@vertexade/platform-client
 import { parsePlatformEvent, type PlatformConnectionState, type PlatformEventMessage } from '@vertexade/platform-client/reactive'
 import { BehaviorSubject, debounceTime, filter, Subject } from 'rxjs'
 import { activeBackendId, backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
+import { agentLaunchOptions } from './agent-launch-store'
 
 export type { ApiClient } from '@vertexade/platform-client'
 export { isPlatformApiError } from '@vertexade/platform-client'
 export type { PlatformEvent, PlatformEventMessage } from '@vertexade/platform-client/reactive'
+export {
+  agentLaunchOptions,
+  agentLaunchOptionsStore,
+  saveAgentLaunchOptions,
+  useAgentLaunchOptions,
+  type AgentLaunchOptions,
+} from './agent-launch-store'
 
 export const platformClient = createPlatformClient({
   headers: () => {
@@ -157,96 +165,6 @@ export async function backendApi<T>(backendId: string | null | undefined, url: s
 
 export function createScopedApi(request: (path: string, init?: RequestInit) => Promise<Response>): ApiClient {
   return createPlatformClient({ fetch: request }).request
-}
-
-export type AgentLaunchOptions = {
-  agentId: string
-  model: string
-  reasoningEffort: string
-  serviceTier?: string
-  allowSubagents: boolean
-}
-export const AGENT_OPTIONS_EVENT = 'agent-launch-options-changed'
-const AGENT_OPTIONS_STORAGE_KEY = 'agent-launch-options'
-type AgentModelOptions = Omit<AgentLaunchOptions, 'agentId'>
-type StoredAgentLaunchOptions = {
-  version: 4
-  agentId: string
-  byAgent: Record<string, AgentModelOptions>
-}
-
-function text(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function storedAgentLaunchOptions(): StoredAgentLaunchOptions {
-  const empty: StoredAgentLaunchOptions = { version: 4, agentId: '', byAgent: {} }
-  if (typeof window === 'undefined') return empty
-  try {
-    const parsed = JSON.parse(localStorage.getItem(AGENT_OPTIONS_STORAGE_KEY) || '') as Record<string, unknown>
-    const agentId = text(parsed.agentId)
-    if ([2, 3, 4].includes(Number(parsed.version)) && parsed.byAgent && typeof parsed.byAgent === 'object') {
-      const byAgent = Object.fromEntries(
-        Object.entries(parsed.byAgent as Record<string, unknown>).map(([id, value]) => {
-          const options = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-          return [
-            id,
-            {
-              model: text(options.model),
-              reasoningEffort: text(options.reasoningEffort),
-              serviceTier: text(options.serviceTier),
-              allowSubagents: options.allowSubagents === true,
-            },
-          ]
-        }),
-      )
-      return { version: 4, agentId, byAgent }
-    }
-    return {
-      version: 4,
-      agentId,
-      byAgent: agentId
-        ? {
-            [agentId]: {
-              model: text(parsed.model),
-              reasoningEffort: text(parsed.reasoningEffort),
-              serviceTier: '',
-              allowSubagents: false,
-            },
-          }
-        : {},
-    }
-  } catch {
-    return empty
-  }
-}
-
-export function agentLaunchOptions(agentId?: string): AgentLaunchOptions {
-  const stored = storedAgentLaunchOptions()
-  const selectedAgentId = agentId || stored.agentId
-  const options = stored.byAgent[selectedAgentId]
-  return {
-    agentId: selectedAgentId,
-    model: options?.model || '',
-    reasoningEffort: options?.reasoningEffort || '',
-    serviceTier: selectedAgentId === 'codex' ? options?.serviceTier || '' : '',
-    allowSubagents: options?.allowSubagents === true,
-  }
-}
-
-export function saveAgentLaunchOptions(value: AgentLaunchOptions) {
-  const stored = storedAgentLaunchOptions()
-  const agentId = text(value.agentId)
-  const byAgent = { ...stored.byAgent }
-  if (agentId)
-    byAgent[agentId] = {
-      model: text(value.model),
-      reasoningEffort: text(value.reasoningEffort),
-      serviceTier: agentId === 'codex' ? text(value.serviceTier) : '',
-      allowSubagents: value.allowSubagents === true,
-    }
-  localStorage.setItem(AGENT_OPTIONS_STORAGE_KEY, JSON.stringify({ version: 4, agentId, byAgent } satisfies StoredAgentLaunchOptions))
-  window.dispatchEvent(new CustomEvent(AGENT_OPTIONS_EVENT, { detail: value }))
 }
 
 export function eventReason(event: Event) {

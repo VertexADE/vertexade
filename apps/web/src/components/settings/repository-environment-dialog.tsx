@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FolderCog, Plus, Trash2 } from 'lucide-react'
+import { FolderCog, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { ScrollArea } from '@vertexade/ui/components/ui/scroll-area'
+import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
+import { cn } from '@vertexade/ui/lib/utils'
 import { RepositoryEnvironmentEditor } from './repository-environment-editor'
 import {
   editableProfile,
@@ -109,7 +111,7 @@ export function RepositoryEnvironmentDialog({
         <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader className="mx-0 mt-0 border-b p-4 pr-12 sm:mx-0 sm:mt-0">
             <DialogTitle className="flex items-center gap-2">
-              <FolderCog className="size-4" />
+              <FolderCog />
               Repository environments
             </DialogTitle>
             <DialogDescription>
@@ -126,12 +128,15 @@ export function RepositoryEnvironmentDialog({
                 </Button>
               </div>
               <ScrollArea className="max-h-36 flex-1 md:max-h-none">
-                <div className="space-y-1 p-2">
+                <div className="flex flex-col gap-1 p-2">
                   {profiles.map((profile) => (
                     <button
                       key={profile.id}
                       type="button"
-                      className={`flex w-full min-w-0 items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors ${selected?.id === profile.id ? 'border-blue-500/35 bg-blue-500/10' : 'border-transparent hover:bg-muted'}`}
+                      className={cn(
+                        'flex w-full min-w-0 items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
+                        selected?.id === profile.id ? 'border-primary/35 bg-primary/10' : 'border-transparent hover:bg-muted',
+                      )}
                       onClick={() => setSelectedId(profile.id)}
                     >
                       <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{profileLabel(profile)}</span>
@@ -142,20 +147,20 @@ export function RepositoryEnvironmentDialog({
                   ))}
                 </div>
               </ScrollArea>
-              <div className="space-y-2 border-t p-2">
+              <div className="flex flex-col gap-2 border-t p-2">
                 <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={addProfile}>
-                  <Plus />
+                  <Plus data-icon="inline-start" />
                   Subfolder profile
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start text-red-400"
+                  className="w-full justify-start text-destructive"
                   disabled={!selected?.scope}
                   onClick={removeSelected}
                 >
-                  <Trash2 />
+                  <Trash2 data-icon="inline-start" />
                   Delete profile
                 </Button>
               </div>
@@ -163,7 +168,9 @@ export function RepositoryEnvironmentDialog({
             <ScrollArea className="min-h-0">
               <div className="p-3 sm:p-4">
                 {loading ? (
-                  <p className="p-8 text-center text-xs text-muted-foreground">Loading environment profiles…</p>
+                  <p className="flex items-center justify-center gap-2 p-8 text-center text-xs text-muted-foreground">
+                    <Spinner /> Loading environment profiles…
+                  </p>
                 ) : selected ? (
                   <RepositoryEnvironmentEditor profile={selected} update={update} />
                 ) : (
@@ -174,22 +181,19 @@ export function RepositoryEnvironmentDialog({
           </div>
           <DialogFooter className="mx-0 mb-0 border-t bg-background p-3 sm:mx-0 sm:mb-0">
             <div className="mr-auto hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
-              <ShieldCheckIcon />
+              <ShieldCheck className="text-success" />
               Secrets remain encrypted; lifecycle commands only run inside preview containers.
             </div>
             <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            <Button disabled={loading || busy}>{busy ? 'Validating and saving…' : 'Save environments'}</Button>
+            <Button disabled={loading || busy}>
+              {busy && <Spinner data-icon="inline-start" />}
+              {busy ? 'Validating and saving…' : 'Save environments'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function ShieldCheckIcon() {
-  return (
-    <span className="inline-flex size-4 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-500">✓</span>
   )
 }

@@ -5,6 +5,16 @@ import { ConfirmProvider } from '@vertexade/ui/components/confirm-provider'
 import { threadHeaderClass } from '@vertexade/ui/components/thread-dialog-support'
 import { ThreadPanel } from '@vertexade/ui/components/thread-panel'
 
+function renderPanel(props: { activityOnly?: boolean; showCompactHeader?: boolean } = {}): string {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <ConfirmProvider>
+        <ThreadPanel jobId={null} {...props} />
+      </ConfirmProvider>
+    </QueryClientProvider>,
+  )
+}
+
 describe('run panel', () => {
   it('keeps the thread header vertically compact', () => {
     expect(threadHeaderClass).toContain('py-2')
@@ -13,11 +23,7 @@ describe('run panel', () => {
   })
 
   it('provides the canonical embedded agent run experience without a dialog shell', () => {
-    const markup = renderToStaticMarkup(
-      <ConfirmProvider>
-        <ThreadPanel jobId={null} />
-      </ConfirmProvider>,
-    )
+    const markup = renderPanel()
 
     expect(markup).toContain('data-slot="thread-panel"')
     expect(markup).toContain('Agent run')
@@ -27,11 +33,7 @@ describe('run panel', () => {
   })
 
   it('keeps the activity-only thread free of work-item chrome while retaining the activity surface', () => {
-    const markup = renderToStaticMarkup(
-      <ConfirmProvider>
-        <ThreadPanel jobId={null} activityOnly />
-      </ConfirmProvider>,
-    )
+    const markup = renderPanel({ activityOnly: true })
 
     expect(markup).toContain('data-slot="thread-panel"')
     expect(markup).toContain('data-slot="tabs-content"')
@@ -42,11 +44,7 @@ describe('run panel', () => {
   })
 
   it('can retain compact run context in an activity-only workspace', () => {
-    const markup = renderToStaticMarkup(
-      <ConfirmProvider>
-        <ThreadPanel jobId={null} activityOnly showCompactHeader />
-      </ConfirmProvider>,
-    )
+    const markup = renderPanel({ activityOnly: true, showCompactHeader: true })
 
     expect(markup).toContain('data-slot="thread-panel"')
     expect(markup).toContain('Loading session context')
@@ -54,3 +52,4 @@ describe('run panel', () => {
     expect(markup).toContain('<footer hidden=""')
   })
 })
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

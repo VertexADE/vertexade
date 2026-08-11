@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
-import { createReactiveQuery, type PlatformEventMessage, type ReactiveQueryState } from '@vertexade/platform-client/reactive'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { auditTime, filter } from 'rxjs'
 import { platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
+import { platformQueryKey } from '@vertexade/ui/lib/platform-query'
 
 type ReactiveApiOptions<T> = {
   key: string
@@ -9,43 +11,38 @@ type ReactiveApiOptions<T> = {
   auditMs?: number
 }
 
-type SharedQuery = ReturnType<typeof createReactiveQuery<unknown, PlatformEventMessage>>
-
-const queries = new Map<string, SharedQuery>()
-
-function sharedQuery<T>(options: ReactiveApiOptions<T>) {
-  let query = queries.get(options.key)
-  if (!query) {
-    query = createReactiveQuery<T, PlatformEventMessage>({
-      load: options.load,
-      invalidations$: platformEventMessages(),
-      accepts: (message) => options.accepts?.(message.raw) ?? true,
-      auditMs: options.auditMs,
-    }) as SharedQuery
-    queries.set(options.key, query)
-  }
-  return query as ReturnType<typeof createReactiveQuery<T, PlatformEventMessage>>
-}
-
 export function useReactiveApi<T>(options: ReactiveApiOptions<T>) {
-  const [query] = useState(() =>
-    typeof window === 'undefined'
-      ? createReactiveQuery<T, PlatformEventMessage>({
-          load: options.load,
-          autoStart: false,
-        })
-      : sharedQuery(options),
-  )
-  const [state, setState] = useState<ReactiveQueryState<T>>(query.snapshot)
+  const queryClient = useQueryClient()
+  const queryKey = platformQueryKey(options.key)
+  const query = useQuery({
+    queryKey,
+    queryFn: options.load,
+    enabled: typeof window !== 'undefined',
+  })
 
   useEffect(() => {
-    const subscription = query.state$.subscribe(setState)
+    if (typeof window === 'undefined') return
+    const subscription = platformEventMessages()
+      .pipe(
+        filter((message) => options.accepts?.(message.raw) ?? true),
+        auditTime(options.auditMs ?? 120),
+      )
+      .subscribe(() => void queryClient.invalidateQueries({ queryKey }))
     return () => subscription.unsubscribe()
-  }, [query])
+  }, [options.accepts, options.auditMs, queryClient, queryKey[1], queryKey[2]])
+
+  const refresh = async (): Promise<T | undefined> => {
+    const result = await query.refetch()
+    if (result.error) throw result.error
+    return result.data
+  }
 
   return {
-    ...state,
-    ready: state.data !== undefined,
-    refresh: query.refresh,
+    data: query.data,
+    loading: query.isFetching,
+    error: query.error,
+    updatedAt: query.dataUpdatedAt ? new Date(query.dataUpdatedAt).toISOString() : null,
+    ready: query.data !== undefined,
+    refresh,
   }
 }

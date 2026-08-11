@@ -18,7 +18,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { MarkdownContent, type FileReference } from '@vertexade/ui/components/markdown-content'
+import type { FileReference } from '@vertexade/ui/components/markdown-content'
+import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-content'
 import type { AgentAccent } from '@vertexade/ui/components/agent-identity'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { buildAgentTimeline, timelineSummary, type TimelineEvent } from '@vertexade/ui/lib/agent-timeline'
@@ -186,7 +187,7 @@ function MessageEvent({
         <strong className="min-w-0 flex-1 truncate">{event.title}</strong>
         <EventMeta event={event} />
       </div>
-      <MarkdownContent content={event.text} onOpenFile={onOpenFile} worktreePath={worktreePath} className="text-sm" />
+      <ThreadMarkdownContent content={event.text} onOpenFile={onOpenFile} worktreePath={worktreePath} className="text-sm" />
     </article>
   )
 }

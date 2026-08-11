@@ -3,12 +3,13 @@ import { ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PullRequestReadinessPolicy, PullRequestReadinessRule } from '@vertexade/platform-contracts'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
-import { Label } from '@vertexade/ui/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { ChoiceItem, ChoiceItemContent, ChoiceItemDescription, ChoiceItemTitle, ChoiceList } from '@vertexade/ui/components/ui/choice-list'
+import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
+import { RepositoryOwnerField } from './settings-shared'
 
 const availableRules: Array<PullRequestReadinessRule & { label: string }> = [
   { entryKey: 'scope.impact', condition: 'always', required: true, label: 'Impact analysis for every change' },
@@ -73,7 +74,7 @@ export function EvidencePolicySettings({ repositories }: { repositories: Reposit
   }, [repositoryId, selected])
 
   return (
-    <Card>
+    <Card layout="divided">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck /> Pull-request readiness policy
@@ -82,55 +83,53 @@ export function EvidencePolicySettings({ repositories }: { repositories: Reposit
           Missing collectors stay unknown. Conditional proof is activated only when current-head impact detects that change class.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Label className="grid gap-1.5">
-          Repository owner
-          <Select value={repositoryId ? String(repositoryId) : ''} onValueChange={(value) => setRepositoryId(value ? Number(value) : null)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select repository" />
-            </SelectTrigger>
-            <SelectContent>
-              {repositories.map((repository) => (
-                <SelectItem key={repository.id} value={String(repository.id)}>
-                  {repository.full_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Label>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {availableRules.map((rule) => {
-            const identity = ruleIdentity(rule)
-            return (
-              <Label key={identity} className="flex items-start gap-2 rounded-md border p-3 text-sm">
-                <Checkbox
-                  checked={selected.has(identity)}
-                  onCheckedChange={(checked) =>
-                    setSelected((current) => {
-                      const next = new Set(current)
-                      if (checked === true) next.add(identity)
-                      else next.delete(identity)
-                      return next
-                    })
-                  }
-                />
-                <span>
-                  <strong className="block">{rule.label}</strong>
-                  <span className="text-xs text-muted-foreground">{rule.condition.replaceAll('_', ' ')}</span>
-                </span>
-              </Label>
-            )
-          })}
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {policy?.repositoryId === null ? 'Using server defaults' : `Repository override v${policy?.version || 1}`}
-          </p>
-          <Button disabled={saving || !repositoryId} onClick={() => void save()}>
-            {saving ? 'Saving…' : 'Save policy override'}
-          </Button>
-        </div>
+      <CardContent className="flex flex-col gap-4">
+        <RepositoryOwnerField
+          id="evidence-repository"
+          repositories={repositories}
+          value={repositoryId}
+          description="The policy follows the repository owner in a federated workspace."
+          onChange={setRepositoryId}
+        />
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-xs font-medium">Required evidence</legend>
+          <ChoiceList scrollable>
+            {availableRules.map((rule) => {
+              const identity = ruleIdentity(rule)
+              const checkboxId = `evidence-rule-${identity.replaceAll('.', '-').replaceAll(':', '-')}`
+              return (
+                <ChoiceItem key={identity} htmlFor={checkboxId}>
+                  <Checkbox
+                    id={checkboxId}
+                    checked={selected.has(identity)}
+                    onCheckedChange={(checked) =>
+                      setSelected((current) => {
+                        const next = new Set(current)
+                        if (checked === true) next.add(identity)
+                        else next.delete(identity)
+                        return next
+                      })
+                    }
+                  />
+                  <ChoiceItemContent>
+                    <ChoiceItemTitle>{rule.label}</ChoiceItemTitle>
+                    <ChoiceItemDescription>{rule.condition.replaceAll('_', ' ')}</ChoiceItemDescription>
+                  </ChoiceItemContent>
+                </ChoiceItem>
+              )
+            })}
+          </ChoiceList>
+        </fieldset>
       </CardContent>
+      <CardFooter className="flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+        <p className="text-xs text-muted-foreground">
+          {policy?.repositoryId === null ? 'Using server defaults' : `Repository override v${policy?.version || 1}`}
+        </p>
+        <Button disabled={saving || !repositoryId} onClick={() => void save()}>
+          {saving && <Spinner data-icon="inline-start" />}
+          {saving ? 'Saving…' : 'Save policy override'}
+        </Button>
+      </CardFooter>
     </Card>
   )
 }

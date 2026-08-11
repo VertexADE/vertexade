@@ -1,8 +1,9 @@
 import { FileKey2, Files, Play, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
+import { Field, FieldDescription, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
-import { Label } from '@vertexade/ui/components/ui/label'
+import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import {
   nextRowId,
@@ -36,7 +37,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="space-y-2 rounded-lg border bg-muted/[.12] p-3">
+    <section className="flex flex-col gap-2 rounded-lg border bg-muted/[.12] p-3">
       <div className="flex gap-2">
         <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div>
@@ -51,7 +52,7 @@ function Section({
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-red-400" aria-label={label} onClick={onClick}>
+    <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-destructive" aria-label={label} onClick={onClick}>
       <Trash2 />
     </Button>
   )
@@ -64,7 +65,7 @@ function SnapshotEditor({ rows, update }: { rows: SnapshotPath[]; update: (rows:
       title="Worktree snapshots"
       description="Copy local, untracked files or folders into every newly created worktree. Paths are relative to this profile’s scope."
     >
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-1.5">
         {rows.map((row) => (
           <div key={row.id} className="flex items-center gap-2">
             <Input
@@ -95,7 +96,7 @@ function SnapshotEditor({ rows, update }: { rows: SnapshotPath[]; update: (rows:
         </p>
       )}
       <Button type="button" variant="outline" size="xs" onClick={() => update([...rows, { id: nextRowId('snapshot'), path: '' }])}>
-        <Plus />
+        <Plus data-icon="inline-start" />
         Add snapshot
       </Button>
     </Section>
@@ -109,7 +110,7 @@ function VariableEditor({ rows, update }: { rows: SecretVariable[]; update: (row
       title="Encrypted variables"
       description="Values are encrypted at rest and never returned by the API. Deeper profiles override variables with the same name."
     >
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-1.5">
         {rows.map((row) => (
           <div
             key={row.id}
@@ -143,7 +144,7 @@ function VariableEditor({ rows, update }: { rows: SecretVariable[]; update: (row
         size="xs"
         onClick={() => update([...rows, { id: nextRowId('variable'), name: '', value: '', configured: false, changed: true }])}
       >
-        <Plus />
+        <Plus data-icon="inline-start" />
         Add variable
       </Button>
     </Section>
@@ -157,9 +158,9 @@ function EnvFileEditor({ rows, update }: { rows: ManagedEnvFile[]; update: (rows
       title="Managed .env files"
       description="Keep familiar .env-formatted groups encrypted. They are parsed and injected into matching containers without writing secrets into the host worktree."
     >
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         {rows.map((row) => (
-          <div key={row.id} className="space-y-1.5 rounded-md border bg-background p-2">
+          <div key={row.id} className="flex flex-col gap-1.5 rounded-md border bg-background p-2">
             <div className="flex items-center gap-2">
               <Input
                 required
@@ -204,7 +205,7 @@ function EnvFileEditor({ rows, update }: { rows: ManagedEnvFile[]; update: (rows
           ])
         }
       >
-        <Plus />
+        <Plus data-icon="inline-start" />
         Add .env file
       </Button>
     </Section>
@@ -219,24 +220,28 @@ function LifecycleEditor({ profile, update }: { profile: EnvironmentProfile; upd
       description="Optional overrides run through sh inside the detected preview container. Stop always tears the container down, even if its command fails."
     >
       <div className="grid gap-2 sm:grid-cols-2">
-        <Label className="flex-col items-stretch gap-1">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Start command</span>
+        <Field>
+          <FieldLabel htmlFor="environment-start-command">Start command</FieldLabel>
           <Textarea
+            id="environment-start-command"
             className="min-h-20 font-mono text-xs"
             value={profile.startCommand}
             placeholder="pnpm dev --host 0.0.0.0"
             onChange={(event) => update({ ...profile, startCommand: event.target.value })}
           />
-        </Label>
-        <Label className="flex-col items-stretch gap-1">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Stop command</span>
+          <FieldDescription>Runs after the preview container starts.</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="environment-stop-command">Stop command</FieldLabel>
           <Textarea
+            id="environment-stop-command"
             className="min-h-20 font-mono text-xs"
             value={profile.stopCommand}
             placeholder="pnpm cleanup"
             onChange={(event) => update({ ...profile, stopCommand: event.target.value })}
           />
-        </Label>
+          <FieldDescription>Runs before the container is torn down.</FieldDescription>
+        </Field>
       </div>
       <div>
         <p className="mb-1 text-[11px] text-muted-foreground">Runtime placeholders</p>
@@ -260,11 +265,21 @@ export function RepositoryEnvironmentEditor({
   update: (profile: EnvironmentProfile) => void
 }) {
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2 rounded-lg border border-blue-500/25 bg-blue-500/[.05] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-        <Label className="flex-col items-stretch gap-1">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Repository subfolder</span>
+    <div className="flex flex-col gap-3">
+      <StatusPanel tone="info">
+        <Files />
+        <StatusPanelContent>
+          <StatusPanelTitle>Profile scope</StatusPanelTitle>
+          <StatusPanelDescription>
+            Use an empty subfolder for repository defaults, or target one detected service directory.
+          </StatusPanelDescription>
+        </StatusPanelContent>
+      </StatusPanel>
+      <div className="grid gap-2 rounded-lg border bg-muted/[.12] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <Field>
+          <FieldLabel htmlFor="environment-scope">Repository subfolder</FieldLabel>
           <Input
+            id="environment-scope"
             required={Boolean(profile.scope)}
             disabled={profile.persisted}
             className="h-8 font-mono text-xs"
@@ -272,7 +287,7 @@ export function RepositoryEnvironmentEditor({
             placeholder="Repository defaults"
             onChange={(event) => update({ ...profile, scope: event.target.value })}
           />
-        </Label>
+        </Field>
         <div className="text-[11px] text-muted-foreground">
           {profile.scope ? (
             <>

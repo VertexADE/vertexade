@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native'
 import { createPlatformClient } from '@vertexade/platform-client'
+import * as SecureStore from 'expo-secure-store'
 import HomeScreen from '../app/index'
+import { resetMobileSessionCacheForTests } from '../src/mobile-session'
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }))
 jest.mock('@vertexade/platform-client', () => ({
@@ -40,7 +42,15 @@ function serverCatalogs(catalogs: Record<string, unknown>) {
 }
 
 describe('HomeScreen', () => {
-  beforeEach(() => createClient.mockReset())
+  beforeEach(() => {
+    createClient.mockReset()
+    resetMobileSessionCacheForTests()
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValue(JSON.stringify({
+      serviceUrl: 'http://localhost:4173',
+      sessionToken: 'paired-session',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }))
+  })
   beforeAll(() => jest.useFakeTimers())
   afterEach(() => act(() => jest.runOnlyPendingTimers()))
   afterAll(() => jest.useRealTimers())
@@ -63,8 +73,8 @@ describe('HomeScreen', () => {
     expect(await screen.findByTestId('extension-work')).toBeOnTheScreen()
     expect(screen.getByText('Settings only')).toBeOnTheScreen()
     expect(screen.queryByText('Server only')).not.toBeOnTheScreen()
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173' })
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173', headers: { 'x-vertexade-backend': 'team' } })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173', getAccessToken: expect.any(Function) })
+    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://localhost:4173', getAccessToken: expect.any(Function), headers: { 'x-vertexade-backend': 'team' } })
   })
 
   test('clears stale catalog data and announces a connection failure', async () => {
@@ -86,5 +96,15 @@ describe('HomeScreen', () => {
     fireEvent.press(screen.getByTestId('workspace-tab-more'))
     expect(await screen.findByTestId('extension-work')).toBeOnTheScreen()
     expect(screen.getByRole('alert')).toHaveTextContent('Team unavailable')
+  })
+
+  test('starts with pair-link setup when no secure session exists', async () => {
+    resetMobileSessionCacheForTests()
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null)
+    render(<HomeScreen />)
+
+    expect(await screen.findByText('Desktop pair link')).toBeOnTheScreen()
+    expect(screen.getByTestId('connection-submit')).toBeDisabled()
+    expect(createClient).not.toHaveBeenCalled()
   })
 })

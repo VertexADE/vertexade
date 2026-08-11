@@ -5,6 +5,7 @@ import { AutomationImprovementApproval } from '@vertexade/ui/components/automati
 import { RecipeList, recipeStatusTone } from '@vertexade/ui/components/automation-recipe-list'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
+import { VirtualList } from '@vertexade/ui/components/ui/virtual-list'
 import { Card, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { age } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
@@ -46,20 +47,21 @@ function FlowRunList({
         </div>
         <Badge variant="secondary">{runs.length}</Badge>
       </header>
-      <div className="max-h-[32rem] overflow-y-auto">
-        {runs.map((run) => (
+      <VirtualList
+        items={runs}
+        getItemKey={(run) => run.id}
+        estimateSize={86}
+        className="max-h-[32rem]"
+        empty={<p className="border-t p-8 text-center text-xs text-muted-foreground">Completed and active flows will appear here.</p>}
+        renderItem={(run) => (
           <FlowRunCard
-            key={run.id}
             run={run}
             recipeName={recipeNames[run.recipeId]}
             busy={busy === `approval:${run.id}`}
             onResolve={(selectedIds) => onResolve(run, selectedIds)}
           />
-        ))}
-        {!runs.length && (
-          <p className="border-t p-8 text-center text-xs text-muted-foreground">Completed and active flows will appear here.</p>
         )}
-      </div>
+      />
     </section>
   )
 }
@@ -119,8 +121,13 @@ function ExecutionList({ executions }: { executions: CapabilityExecution[] }) {
         <strong className="text-xs">Recent capability executions</strong>
         <Badge variant="secondary">{executions.length}</Badge>
       </header>
-      <div className="max-h-64 overflow-y-auto">
-        {executions.map((execution) => (
+      <VirtualList
+        items={executions}
+        getItemKey={(execution) => execution.id}
+        estimateSize={72}
+        className="max-h-64"
+        empty={<p className="border-t p-8 text-center text-xs text-muted-foreground">Capability executions will appear here.</p>}
+        renderItem={(execution) => (
           <article key={execution.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t p-3">
             <div className="min-w-0">
               <strong className="block truncate font-mono text-xs">{execution.capabilityId}</strong>
@@ -136,11 +143,8 @@ function ExecutionList({ executions }: { executions: CapabilityExecution[] }) {
               <span className="mt-1 block text-xs text-muted-foreground">{age(execution.createdAt)}</span>
             </div>
           </article>
-        ))}
-        {!executions.length && (
-          <p className="border-t p-8 text-center text-xs text-muted-foreground">Capability executions will appear here.</p>
         )}
-      </div>
+      />
     </section>
   )
 }
@@ -155,8 +159,13 @@ function AutomationAuditList({ events }: { events: AutomationAuditEvent[] }) {
         </div>
         <Badge variant="secondary">{events.length}</Badge>
       </header>
-      <div className="max-h-72 overflow-y-auto">
-        {events.map((event) => (
+      <VirtualList
+        items={events}
+        getItemKey={(event) => event.id}
+        estimateSize={58}
+        className="max-h-72"
+        empty={<p className="border-t p-8 text-center text-xs text-muted-foreground">Automation activity will appear here.</p>}
+        renderItem={(event) => (
           <article key={event.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t p-3">
             <div className="min-w-0">
               <strong className="block truncate font-mono text-[11px]">{event.eventType.replaceAll('_', ' ')}</strong>
@@ -167,9 +176,8 @@ function AutomationAuditList({ events }: { events: AutomationAuditEvent[] }) {
             </div>
             <span className="text-[11px] text-muted-foreground">{age(event.createdAt)}</span>
           </article>
-        ))}
-        {!events.length && <p className="border-t p-8 text-center text-xs text-muted-foreground">Automation activity will appear here.</p>}
-      </div>
+        )}
+      />
     </section>
   )
 }

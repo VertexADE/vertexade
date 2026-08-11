@@ -6,12 +6,15 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
-import { Label } from '@vertexade/ui/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
+import { RepositoryOwnerField } from './settings-shared'
 
 type TargetDraft = {
   id: string
@@ -146,7 +149,7 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
   )
 
   return (
-    <Card>
+    <Card layout="divided">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FlaskConical /> Trusted validation targets
@@ -155,22 +158,14 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
           Server-owned executable and argument catalogs used by impact-driven validation. Shell strings are never accepted.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Label className="grid gap-1.5">
-          Repository owner
-          <Select value={repositoryId ? String(repositoryId) : ''} onValueChange={(value) => setRepositoryId(value ? Number(value) : null)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select repository" />
-            </SelectTrigger>
-            <SelectContent>
-              {repositories.map((repository) => (
-                <SelectItem key={repository.id} value={String(repository.id)}>
-                  {repository.full_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Label>
+      <CardContent className="flex flex-col gap-4">
+        <RepositoryOwnerField
+          id="validation-repository"
+          repositories={repositories}
+          value={repositoryId}
+          description="Overrides are stored on the server that owns the repository."
+          onChange={setRepositoryId}
+        />
         <div className="divide-y rounded-md border">
           {targets.map((target) => (
             <div key={target.id} className="flex min-w-0 items-center gap-3 p-3">
@@ -204,124 +199,165 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
             </div>
           ))}
           {!targets.length && (
-            <p className="p-3 text-xs text-muted-foreground">No overrides. Deterministic package-script discovery remains advisory.</p>
+            <Empty className="m-2 min-h-32 border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FlaskConical />
+                </EmptyMedia>
+                <EmptyTitle>No validation overrides</EmptyTitle>
+                <EmptyDescription>
+                  Deterministic package-script discovery remains advisory until a trusted target is added.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </div>
-        <form className="grid gap-3 rounded-md border p-3 sm:grid-cols-2" onSubmit={save}>
-          <strong className="sm:col-span-2">{editingId ? 'Edit target' : 'Add target override'}</strong>
-          <Label className="grid gap-1.5">
-            Stable target ID
-            <Input
-              required
-              value={draft.id}
-              maxLength={300}
-              onChange={(event) => setDraft((value) => ({ ...value, id: event.target.value }))}
-            />
-          </Label>
-          <Label className="grid gap-1.5">
-            Label
-            <Input
-              required
-              value={draft.label}
-              maxLength={300}
-              onChange={(event) => setDraft((value) => ({ ...value, label: event.target.value }))}
-            />
-          </Label>
-          <Label className="grid gap-1.5">
-            Project key
-            <Input
-              required
-              value={draft.projectKey}
-              onChange={(event) => setDraft((value) => ({ ...value, projectKey: event.target.value }))}
-            />
-          </Label>
-          <Label className="grid gap-1.5">
-            Project label
-            <Input
-              required
-              value={draft.projectLabel}
-              onChange={(event) => setDraft((value) => ({ ...value, projectLabel: event.target.value }))}
-            />
-          </Label>
-          <Label className="grid gap-1.5">
-            Validation kind
-            <Select
-              value={draft.kind}
-              onValueChange={(value) => setDraft((current) => ({ ...current, kind: value as ImpactValidationKind }))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['test', 'typecheck', 'lint', 'build', 'integration', 'end_to_end', 'check'].map((kind) => (
-                  <SelectItem key={kind} value={kind}>
-                    {kind.replaceAll('_', ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Label>
-          <Label className="grid gap-1.5">
-            Script label
-            <Input required value={draft.script} onChange={(event) => setDraft((value) => ({ ...value, script: event.target.value }))} />
-          </Label>
-          <Label className="grid gap-1.5">
-            Executable
-            <Select
-              value={draft.executable}
-              onValueChange={(value) => setDraft((current) => ({ ...current, executable: value as TestTarget['executable'] }))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['pnpm', 'npm', 'yarn', 'bun', 'node'].map((executable) => (
-                  <SelectItem key={executable} value={executable}>
-                    {executable}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Label>
-          <Label className="grid gap-1.5">
-            Working directory
-            <Input
-              required
-              value={draft.workingDirectory}
-              onChange={(event) => setDraft((value) => ({ ...value, workingDirectory: event.target.value }))}
-            />
-          </Label>
-          <Label className="grid gap-1.5">
-            Timeout seconds
-            <Input
-              required
-              type="number"
-              min={1}
-              max={1_800}
-              value={draft.timeoutSeconds}
-              onChange={(event) => setDraft((value) => ({ ...value, timeoutSeconds: Number(event.target.value) }))}
-            />
-          </Label>
-          <Label className="flex items-center gap-2 self-end pb-2">
-            <Checkbox
-              checked={draft.enabled}
-              onCheckedChange={(checked) => setDraft((value) => ({ ...value, enabled: checked === true }))}
-            />
-            Enabled
-          </Label>
-          <Label className="grid gap-1.5 sm:col-span-2">
-            Argument array · one argument per line
-            <Textarea required value={draft.args} onChange={(event) => setDraft((value) => ({ ...value, args: event.target.value }))} />
-          </Label>
-          <Label className="grid gap-1.5 sm:col-span-2">
-            Expected artifact paths · repository-relative, one per line
-            <Textarea
-              placeholder="coverage\nreports/test-results.xml"
-              value={draft.artifactPaths}
-              onChange={(event) => setDraft((value) => ({ ...value, artifactPaths: event.target.value }))}
-            />
-          </Label>
-          <div className="flex justify-end gap-2 sm:col-span-2">
+        <form className="flex flex-col gap-4 rounded-md border bg-muted/15 p-3" onSubmit={save}>
+          <div>
+            <strong>{editingId ? 'Edit target' : 'Add target override'}</strong>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Arguments remain a typed array; shell command strings are not accepted.
+            </p>
+          </div>
+          <FieldGroup className="sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="target-id">Stable target ID</FieldLabel>
+              <Input
+                id="target-id"
+                required
+                value={draft.id}
+                maxLength={300}
+                onChange={(event) => setDraft((value) => ({ ...value, id: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-label">Label</FieldLabel>
+              <Input
+                id="target-label"
+                required
+                value={draft.label}
+                maxLength={300}
+                onChange={(event) => setDraft((value) => ({ ...value, label: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-project-key">Project key</FieldLabel>
+              <Input
+                id="target-project-key"
+                required
+                value={draft.projectKey}
+                onChange={(event) => setDraft((value) => ({ ...value, projectKey: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-project-label">Project label</FieldLabel>
+              <Input
+                id="target-project-label"
+                required
+                value={draft.projectLabel}
+                onChange={(event) => setDraft((value) => ({ ...value, projectLabel: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-kind">Validation kind</FieldLabel>
+              <Select
+                value={draft.kind}
+                onValueChange={(value) => setDraft((current) => ({ ...current, kind: value as ImpactValidationKind }))}
+              >
+                <SelectTrigger id="target-kind" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {['test', 'typecheck', 'lint', 'build', 'integration', 'end_to_end', 'check'].map((kind) => (
+                      <SelectItem key={kind} value={kind}>
+                        {kind.replaceAll('_', ' ')}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-script">Script label</FieldLabel>
+              <Input
+                id="target-script"
+                required
+                value={draft.script}
+                onChange={(event) => setDraft((value) => ({ ...value, script: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-executable">Executable</FieldLabel>
+              <Select
+                value={draft.executable}
+                onValueChange={(value) => setDraft((current) => ({ ...current, executable: value as TestTarget['executable'] }))}
+              >
+                <SelectTrigger id="target-executable" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {['pnpm', 'npm', 'yarn', 'bun', 'node'].map((executable) => (
+                      <SelectItem key={executable} value={executable}>
+                        {executable}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-working-directory">Working directory</FieldLabel>
+              <Input
+                id="target-working-directory"
+                required
+                value={draft.workingDirectory}
+                onChange={(event) => setDraft((value) => ({ ...value, workingDirectory: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="target-timeout">Timeout seconds</FieldLabel>
+              <Input
+                id="target-timeout"
+                required
+                type="number"
+                min={1}
+                max={1_800}
+                value={draft.timeoutSeconds}
+                onChange={(event) => setDraft((value) => ({ ...value, timeoutSeconds: Number(event.target.value) }))}
+              />
+            </Field>
+            <Field className="flex grid-cols-[auto_1fr] items-center self-end pb-2">
+              <Checkbox
+                id="target-enabled"
+                checked={draft.enabled}
+                onCheckedChange={(checked) => setDraft((value) => ({ ...value, enabled: checked === true }))}
+              />
+              <FieldLabel htmlFor="target-enabled">Enabled</FieldLabel>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="target-arguments">Argument array</FieldLabel>
+              <Textarea
+                id="target-arguments"
+                required
+                value={draft.args}
+                onChange={(event) => setDraft((value) => ({ ...value, args: event.target.value }))}
+              />
+              <FieldDescription>One argument per line.</FieldDescription>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="target-artifacts">Expected artifact paths</FieldLabel>
+              <Textarea
+                id="target-artifacts"
+                placeholder="coverage\nreports/test-results.xml"
+                value={draft.artifactPaths}
+                onChange={(event) => setDraft((value) => ({ ...value, artifactPaths: event.target.value }))}
+              />
+              <FieldDescription>Repository-relative, one path per line.</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <div className="flex justify-end gap-2">
             {editingId && (
               <Button
                 type="button"
@@ -335,7 +371,8 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
               </Button>
             )}
             <Button disabled={loading}>
-              <Plus data-icon="inline-start" /> {editingId ? 'Update target' : 'Add target'}
+              {loading ? <Spinner data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
+              {editingId ? 'Update target' : 'Add target'}
             </Button>
           </div>
         </form>

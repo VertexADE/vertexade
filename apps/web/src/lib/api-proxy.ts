@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { HttpError, readRequestBody, readResponseBody } from '@vertexade/platform-server/http'
 import { OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
@@ -37,6 +37,9 @@ let linkedOutboundPolicy = new OutboundRequestPolicy()
 let linkedAllowedOriginsKey = ''
 let linkedBackendIds = new Set<string>()
 let linkedServersCheckedAt = 0
+const pairedSessionCache = new Map<string, number>()
+
+type ClientIdentity = 'unrestricted' | 'local' | 'mobile' | 'public'
 
 const runtimeById = new Map<string, BackendRuntime>(
   activeBackends.map((backend) => [
@@ -75,13 +78,13 @@ function syncRuntime(backends: ApiBackend[]) {
   for (const id of runtimeById.keys()) if (!backends.some((backend) => backend.id === id)) runtimeById.delete(id)
 }
 
-async function refreshLinkedServers(request: Request, source: URL, force = false) {
+async function refreshLinkedServers(request: Request, source: URL, identity: ClientIdentity, force = false) {
   if (!force && Date.now() - linkedServersCheckedAt < 5_000) return
   linkedServersCheckedAt = Date.now()
   const primary = configuredBackends[0]
   try {
     const response = await fetch(new URL('/api/settings/linked-servers', primary.url), {
-      headers: proxyHeaders(source, request.headers),
+      headers: proxyHeaders(source, request.headers, identity === 'local' || identity === 'unrestricted' ? 'all' : 'none'),
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(5_000)]),
     })
     if (!response.ok) return
@@ -118,7 +121,9 @@ async function refreshLinkedServers(request: Request, source: URL, force = false
 
 const crossBackendCredentialHeaders = ['authorization', 'cookie', 'proxy-authorization'] as const
 
-function proxyHeaders(source: URL, requestHeaders: Headers, forwardCredentials = true) {
+type CrossBackendCredentialPolicy = 'all' | 'authorization' | 'none'
+
+function proxyHeaders(source: URL, requestHeaders: Headers, credentialPolicy: CrossBackendCredentialPolicy = 'all') {
   const headers = new Headers(requestHeaders)
   const requestOrigin = headers.get('origin')
   if (requestOrigin) {
@@ -134,10 +139,85 @@ function proxyHeaders(source: URL, requestHeaders: Headers, forwardCredentials =
   headers.delete('host')
   headers.delete('content-length')
   headers.delete('x-vertexade-backend')
-  if (!forwardCredentials) {
-    for (const name of crossBackendCredentialHeaders) headers.delete(name)
+  headers.delete('x-vertexade-local-session')
+  if (credentialPolicy !== 'all') {
+    for (const name of crossBackendCredentialHeaders) {
+      if (name !== 'authorization' || credentialPolicy !== 'authorization') headers.delete(name)
+    }
   }
   return headers
+}
+
+function pairedClientsRequired(): boolean {
+  return process.env.VERTEXADE_REQUIRE_PAIRED_CLIENTS === '1'
+}
+
+function constantTimeTextMatch(actual: string, expected: string): boolean {
+  const actualDigest = createHash('sha256').update(actual).digest()
+  const expectedDigest = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(actualDigest, expectedDigest)
+}
+
+function bearerAuthorization(request: Request): string {
+  const value = request.headers.get('authorization') || ''
+  return value.startsWith('Bearer ') && value.slice(7).trim() ? value : ''
+}
+
+function publicPairingRequest(pathname: string, method: string): boolean {
+  return method === 'OPTIONS' || (method === 'POST' && pathname === '/api/mobile-pairing/redeem')
+}
+
+function localClientAuthorized(request: Request): boolean {
+  const expected = process.env.VERTEXADE_LOCAL_SESSION_TOKEN || ''
+  const actual = request.headers.get('x-vertexade-local-session') || ''
+  return Boolean(expected && actual && constantTimeTextMatch(actual, expected))
+}
+
+function mobileSessionCacheKey(authorization: string): string {
+  return createHash('sha256').update(authorization).digest('base64url')
+}
+
+function cachedMobileSession(cacheKey: string): boolean {
+  return (pairedSessionCache.get(cacheKey) || 0) > Date.now()
+}
+
+function cacheMobileSession(cacheKey: string): void {
+  const oldest = pairedSessionCache.keys().next().value
+  if (pairedSessionCache.size >= 256 && oldest) pairedSessionCache.delete(oldest)
+  pairedSessionCache.set(cacheKey, Date.now() + 5_000)
+}
+
+async function validateMobileSession(request: Request, authorization: string, cacheKey: string): Promise<boolean> {
+  const primary = configuredBackends[0]
+  try {
+    const response = await fetch(new URL('/api/mobile-pairing/session/validate', primary.url), {
+      method: 'POST',
+      headers: { authorization },
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(5_000)]),
+    })
+    if (!response.ok) return false
+    cacheMobileSession(cacheKey)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function authorizeClient(request: Request, source: URL): Promise<ClientIdentity | null> {
+  if (!pairedClientsRequired()) return 'unrestricted'
+  if (publicPairingRequest(source.pathname, request.method)) return 'public'
+  if (localClientAuthorized(request)) return 'local'
+
+  const authorization = bearerAuthorization(request)
+  if (!authorization) return null
+  const cacheKey = mobileSessionCacheKey(authorization)
+  if (cachedMobileSession(cacheKey)) return 'mobile'
+  return (await validateMobileSession(request, authorization, cacheKey)) ? 'mobile' : null
+}
+
+function crossBackendCredentialPolicy(pathname: string, method: string): CrossBackendCredentialPolicy {
+  if (['POST', 'PATCH'].includes(method) && /^\/api\/settings\/linked-servers(?:\/[^/]+)?$/.test(pathname)) return 'authorization'
+  return 'none'
 }
 
 function publicBackend(runtime: BackendRuntime) {
@@ -247,13 +327,23 @@ async function proxyBody(request: Request, backend: ApiBackend, pathname: string
   }
 }
 
-async function fetchBackend(request: Request, source: URL, backend: ApiBackend, pathname: string) {
+function backendCredentialPolicy(
+  identity: ClientIdentity,
+  backend: ApiBackend,
+  pathname: string,
+  method: string,
+): CrossBackendCredentialPolicy {
+  if (identity === 'mobile' || identity === 'public') return 'none'
+  return backend.isDefault ? 'all' : crossBackendCredentialPolicy(pathname, method)
+}
+
+async function fetchBackend(request: Request, source: URL, backend: ApiBackend, pathname: string, identity: ClientIdentity) {
   const target = new URL(rewritePath(pathname, backend), backend.url)
   target.search = rewriteSearch(new URLSearchParams(source.search)).toString()
   const body = await proxyBody(request, backend, target.pathname)
   const init: RequestInit & { duplex?: 'half' } = {
     method: request.method,
-    headers: proxyHeaders(source, request.headers, backend.isDefault),
+    headers: proxyHeaders(source, request.headers, backendCredentialPolicy(identity, backend, pathname, request.method)),
     body,
     signal: request.signal,
   }
@@ -277,18 +367,34 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-async function readBackendModel(request: Request, source: URL, backend: ApiBackend, maxResponseBytes: number) {
+function readModelCredentialPolicy(identity: ClientIdentity, backend: ApiBackend): CrossBackendCredentialPolicy {
+  if (identity !== 'local' && identity !== 'unrestricted') return 'none'
+  return backend.isDefault ? 'all' : 'none'
+}
+
+function validReadModelPayload(value: unknown): value is ReadModelResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const payload = value as Partial<ReadModelResponse>
+  return Boolean(payload.instanceId && payload.updates)
+}
+
+function runtimeReadModel(runtime: BackendRuntime): FederatedModel | null {
+  if (!runtime.snapshot) return null
+  return { backend: runtime as BackendStatus, payload: runtime.snapshot }
+}
+
+async function readBackendModel(request: Request, source: URL, backend: ApiBackend, maxResponseBytes: number, identity: ClientIdentity) {
   const runtime = runtimeById.get(backend.id)!
   try {
     const target = new URL('/api/read-model?since=0', backend.url)
     const backendFetch = linkedBackendIds.has(backend.id) ? linkedOutboundPolicy.fetch : fetch
     const response = await backendFetch(target, {
-      headers: proxyHeaders(source, request.headers, backend.isDefault),
+      headers: proxyHeaders(source, request.headers, readModelCredentialPolicy(identity, backend)),
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const payload = (await boundedJsonResponse(response, 'Federated read model', maxResponseBytes, request.signal)) as ReadModelResponse
-    if (!payload.instanceId || !payload.updates) throw new Error('Invalid read-model response')
+    const payload = await boundedJsonResponse(response, 'Federated read model', maxResponseBytes, request.signal)
+    if (!validReadModelPayload(payload)) throw new Error('Invalid read-model response')
     runtime.connected = true
     runtime.lastConnectedAt = new Date().toISOString()
     runtime.error = null
@@ -297,7 +403,7 @@ async function readBackendModel(request: Request, source: URL, backend: ApiBacke
     runtime.connected = false
     runtime.error = errorMessage(error)
   }
-  return runtime.snapshot ? { backend: runtime as BackendStatus, payload: runtime.snapshot } : null
+  return runtimeReadModel(runtime)
 }
 
 function modelEntries(payload: ReadModelResponse, collection: DashboardCollection) {
@@ -364,12 +470,12 @@ function modelsWithinAggregateBudget(models: FederatedModel[], backends: ApiBack
   return accepted
 }
 
-async function federatedReadModel(request: Request, source: URL) {
+async function federatedReadModel(request: Request, source: URL, identity: ClientIdentity) {
   const backends = [...activeBackends]
   const perBackendLimit = Math.min(MAX_BACKEND_READ_MODEL_RESPONSE_BYTES, Math.floor(maxFederatedReadModelResponseBytes / backends.length))
-  const models = (await Promise.all(backends.map((backend) => readBackendModel(request, source, backend, perBackendLimit)))).filter(
-    (model): model is FederatedModel => model !== null,
-  )
+  const models = (
+    await Promise.all(backends.map((backend) => readBackendModel(request, source, backend, perBackendLimit, identity)))
+  ).filter((model): model is FederatedModel => model !== null)
   if (!models.length) {
     return Response.json({ error: 'None of the configured backends could be reached', backends: publicBackends() }, { status: 502 })
   }
@@ -412,10 +518,12 @@ async function normalizeResponse(response: Response, backend: ApiBackend, signal
 
 export async function proxyApiRequest({ request }: { request: Request }) {
   const source = new URL(request.url)
-  await refreshLinkedServers(request, source, source.pathname === '/api/backends')
+  const identity = await authorizeClient(request, source)
+  if (!identity) return Response.json({ error: 'Pair this device in VertexADE Desktop Settings' }, { status: 401 })
+  if (identity !== 'public') await refreshLinkedServers(request, source, identity, source.pathname === '/api/backends')
   if (source.pathname === '/api/backends' && request.method === 'GET') return Response.json({ backends: publicBackends() })
   if (source.pathname === '/api/read-model' && request.method === 'GET' && activeBackends.length > 1) {
-    return federatedReadModel(request, source)
+    return federatedReadModel(request, source, identity)
   }
   const selected = selectedBackend(source, request)
   if (!selected.backend) return Response.json({ error: 'Backend not found' }, { status: 404 })
@@ -424,7 +532,7 @@ export async function proxyApiRequest({ request }: { request: Request }) {
   }
   let response: Response
   try {
-    response = await fetchBackend(request, source, selected.backend, selected.pathname)
+    response = await fetchBackend(request, source, selected.backend, selected.pathname, identity)
   } catch (error) {
     if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status })
     throw error

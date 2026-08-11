@@ -15,17 +15,24 @@
     "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vertexade.mobile"
+      "bundleIdentifier": "com.vertexade.mobile",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
-      "package": "com.vertexade.mobile"
+      "package": "com.vertexade.mobile",
+      "usesCleartextTraffic": true
     }
   }
 }
