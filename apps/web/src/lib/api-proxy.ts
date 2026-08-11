@@ -305,8 +305,9 @@ function modelEntries(payload: ReadModelResponse, collection: DashboardCollectio
   return (update?.entries || update?.upserts || []) as ReadModelEntry[]
 }
 
-function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadModelResponse }>, backends: ApiBackend[]) {
-  const statuses = backends.map((backend) => publicBackend(runtimeById.get(backend.id)!))
+type FederatedModel = { backend: BackendStatus; payload: ReadModelResponse }
+
+function nextFederationVersion(backends: ApiBackend[]) {
   const versionIdentity = JSON.stringify(
     backends.map((backend) => {
       const runtime = runtimeById.get(backend.id)!
@@ -318,6 +319,11 @@ function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadMo
     federationDigest = nextDigest
     federationVersion = Math.max(Date.now(), federationVersion + 1)
   }
+  return federationVersion
+}
+
+function mergedReadModel(models: FederatedModel[], backends: ApiBackend[], version: number) {
+  const statuses = backends.map((backend) => publicBackend(runtimeById.get(backend.id)!))
   const updates = Object.fromEntries(
     dashboardCollections.map((collection) => {
       const entries =
@@ -329,34 +335,55 @@ function mergedReadModel(models: Array<{ backend: BackendStatus; payload: ReadMo
       return [
         collection,
         {
-          version: federationVersion,
+          version,
           mode: 'replace',
           entries: entries.map((entry, position) => ({ ...entry, position })),
         },
       ]
     }),
   ) as ReadModelResponse['updates']
-  return { instanceId: federationInstanceId, version: federationVersion, updates }
+  return { instanceId: federationInstanceId, version, updates }
+}
+
+function responseBytes(payload: ReadModelResponse) {
+  return Buffer.byteLength(JSON.stringify(payload), 'utf8')
+}
+
+function modelsWithinAggregateBudget(models: FederatedModel[], backends: ApiBackend[]) {
+  const accepted = [...models]
+  while (accepted.length) {
+    const probe = mergedReadModel(accepted, backends, Number.MAX_SAFE_INTEGER)
+    if (responseBytes(probe) <= maxFederatedReadModelResponseBytes) break
+    const rejected = accepted.pop()!
+    const runtime = runtimeById.get(rejected.backend.id)
+    if (runtime) {
+      runtime.connected = false
+      runtime.error = 'Normalized read model exceeds the federated response budget'
+    }
+  }
+  return accepted
 }
 
 async function federatedReadModel(request: Request, source: URL) {
   const backends = [...activeBackends]
   const perBackendLimit = Math.min(MAX_BACKEND_READ_MODEL_RESPONSE_BYTES, Math.floor(maxFederatedReadModelResponseBytes / backends.length))
   const models = (await Promise.all(backends.map((backend) => readBackendModel(request, source, backend, perBackendLimit)))).filter(
-    (model): model is { backend: BackendStatus; payload: ReadModelResponse } => model !== null,
+    (model): model is FederatedModel => model !== null,
   )
   if (!models.length) {
     return Response.json({ error: 'None of the configured backends could be reached', backends: publicBackends() }, { status: 502 })
   }
-  const payload = mergedReadModel(models, backends)
+  const acceptedModels = modelsWithinAggregateBudget(models, backends)
+  if (!acceptedModels.length) {
+    return Response.json({ error: 'No backend read model fits the federated response budget', backends: publicBackends() }, { status: 502 })
+  }
+  const payload = mergedReadModel(acceptedModels, backends, nextFederationVersion(backends))
   const since = Number(source.searchParams.get('since') || 0)
   const instance = source.searchParams.get('instance')
   if (instance === payload.instanceId && since === payload.version) payload.updates = {}
   const body = JSON.stringify(payload)
   const bodyBytes = Buffer.byteLength(body, 'utf8')
-  if (bodyBytes > maxFederatedReadModelResponseBytes) {
-    return Response.json({ error: 'Federated read model exceeds the aggregate response limit' }, { status: 502 })
-  }
+  if (bodyBytes > maxFederatedReadModelResponseBytes) throw new Error('Federated read-model budget invariant failed')
   return new Response(body, {
     headers: {
       'content-length': String(bodyBytes),
