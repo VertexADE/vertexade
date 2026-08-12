@@ -21,6 +21,8 @@ type MobileThreadDetailProps = {
   thread: MobileThread
   onBack?: () => void
   onClose(): void
+  onDismiss?(): void
+  visible?: boolean
   onChanged(message: string): Promise<void>
   onOpenThread?(thread: MobileThread): void
   onOpenWork?(): void
@@ -40,8 +42,10 @@ function PendingThreadDetail({
   thread,
   onBack,
   onClose,
+  onDismiss,
+  visible,
   controller,
-}: Pick<MobileThreadDetailProps, 'thread' | 'onBack' | 'onClose'> & { controller: MobileThreadController }) {
+}: Pick<MobileThreadDetailProps, 'thread' | 'onBack' | 'onClose' | 'onDismiss' | 'visible'> & { controller: MobileThreadController }) {
   return (
     <MobileDetailShell<MobileThreadTab>
       eyebrow={`${thread.backendName.toUpperCase()} · AGENT RUN`}
@@ -54,6 +58,8 @@ function PendingThreadDetail({
       onTab={controller.setTab}
       onBack={onBack}
       onClose={onClose}
+      onDismiss={onDismiss}
+      visible={visible}
       onRetry={() => void controller.detail.refresh()}
     >
       <ThreadDetailAlerts notice={controller.notice} error={controller.error} />
@@ -66,6 +72,8 @@ function ResolvedThreadDetail({
   thread,
   onBack,
   onClose,
+  onDismiss,
+  visible,
   onOpenWork,
   onOpenThreadId,
   onOpenPullRequest,
@@ -90,6 +98,8 @@ function ResolvedThreadDetail({
       onTab={controller.setTab}
       onBack={onBack}
       onClose={onClose}
+      onDismiss={onDismiss}
+      visible={visible}
       onRetry={() => void controller.detail.refresh()}
       footer={(
         <ThreadFooter

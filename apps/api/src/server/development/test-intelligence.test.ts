@@ -20,7 +20,21 @@ function analysis(): ImpactAnalysis {
     result: {
       analyzerVersion: 'test',
       repositoryName: 'fixture/repository',
-      changedFiles: [{ path: 'packages/a/src/index.ts', previousPath: null, status: 'modified', projectKey: 'package:a' }],
+      changedFiles: [
+        {
+          path: 'packages/a/src/index.ts',
+          previousPath: null,
+          status: 'modified',
+          projectKey: 'package:a',
+          impact: {
+            level: 'medium',
+            reasons: ['Fixture consumer'],
+            consumerCount: 1,
+            affectedProjectKeys: ['package:a', 'package:b'],
+            adrs: [],
+          },
+        },
+      ],
       nodes: [
         { key: 'package:a', kind: 'package', label: 'a', path: 'packages/a', direct: true, confidence: 'high' },
         { key: 'package:b', kind: 'package', label: 'b', path: 'packages/b', direct: false, confidence: 'high' },
@@ -36,9 +50,11 @@ function analysis(): ImpactAnalysis {
           reason: 'Directly changed project',
           required: true,
           confidence: 'high',
+          adrIds: [],
         },
       ],
       deliveryEffects: [],
+      applicableAdrs: [],
       warnings: [],
       summary: {
         directProjects: 1,

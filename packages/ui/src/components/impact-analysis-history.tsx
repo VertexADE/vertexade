@@ -8,6 +8,7 @@ const riskVariant = {
   low: 'outline',
   medium: 'secondary',
   high: 'destructive',
+  unknown: 'secondary',
 } as const
 
 function revision(value: string): string {

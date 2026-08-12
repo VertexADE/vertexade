@@ -16,25 +16,26 @@ export function MobileThreadActivity({
   onSteerQueued(id: number): void
   onCancelQueued(id: number): void
 }) {
+  const showsPrompt = detail.prompt && !detail.events.some((event) => event.text.trim() === detail.prompt.trim())
   return (
     <>
-      <DetailSection title="Agent activity" meta={`${detail.events.length} events`}>
-        {detail.events.length ? (
-          detail.events.map((event, index) => (
-            <View key={event.id} style={[styles.row, index === 0 && styles.rowFirst]}>
-              <View style={styles.eventHeader}>
-                <View style={styles.eventMarker} />
-                <Text style={styles.eventTitle}>{event.title || event.kind || 'Activity'}</Text>
-                <Text style={styles.rowMeta}>{formatDate(event.time)}</Text>
-              </View>
-              <MobileMarkdown content={event.text} emptyText="No event details." />
-              {event.status ? <Text style={styles.inputHint}>{event.status}</Text> : null}
-            </View>
-          ))
-        ) : (
-          <Text style={styles.muted}>{detail.latestActivity || 'No timeline events yet.'}</Text>
-        )}
-      </DetailSection>
+      <View accessibilityRole="list" style={styles.chatTimeline}>
+        {showsPrompt ? <ThreadMessage role="user" title="You" text={detail.prompt} /> : null}
+        {detail.events.map((event) => (
+          <ThreadMessage
+            key={event.id}
+            role={eventRole(event.kind)}
+            title={eventTitle(event.kind, event.title, detail.agentName)}
+            text={event.text}
+            meta={[event.status, formatDate(event.time)].filter(Boolean).join(' · ')}
+          />
+        ))}
+        {!showsPrompt && !detail.events.length ? (
+          <View style={styles.chatEmpty}>
+            <Text style={styles.muted}>{detail.latestActivity || 'No conversation yet.'}</Text>
+          </View>
+        ) : null}
+      </View>
       <QueuedThreadMessages
         messages={detail.queuedFollowUps}
         canSteer={detail.canSteer}
@@ -44,6 +45,43 @@ export function MobileThreadActivity({
       />
     </>
   )
+}
+
+type ThreadMessageRole = 'user' | 'assistant' | 'system'
+
+function ThreadMessage({ role, title, text, meta = '' }: { role: ThreadMessageRole; title: string; text: string; meta?: string }) {
+  const user = role === 'user'
+  const system = role === 'system'
+  return (
+    <View accessibilityRole="listitem" style={[styles.chatMessageRow, user && styles.chatMessageRowUser]}>
+      <View style={[styles.chatMessage, user && styles.chatMessageUser, system && styles.chatMessageSystem]}>
+        <View style={styles.chatMessageHeader}>
+          <Text style={[styles.chatMessageAuthor, user && styles.chatMessageAuthorUser]}>{title}</Text>
+          {meta ? <Text style={styles.chatMessageMeta}>{meta}</Text> : null}
+        </View>
+        <MobileMarkdown content={text} emptyText="No message content." />
+      </View>
+    </View>
+  )
+}
+
+function eventRole(kind: string): ThreadMessageRole {
+  const normalized = kind.toLowerCase()
+  if (['user', 'human', 'prompt', 'input'].some((value) => normalized.includes(value))) return 'user'
+  if (['assistant', 'agent', 'message', 'response'].some((value) => normalized.includes(value))) return 'assistant'
+  return 'system'
+}
+
+function eventTitle(kind: string, title: string, agentName: string): string {
+  const role = eventRole(kind)
+  if (role === 'user') return 'You'
+  if (role === 'assistant') return agentName
+  return title || readableKind(kind)
+}
+
+function readableKind(kind: string): string {
+  const value = kind.replaceAll('_', ' ').trim()
+  return value ? value[0].toUpperCase() + value.slice(1) : 'Thread update'
 }
 
 function QueuedThreadMessages({

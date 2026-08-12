@@ -148,6 +148,7 @@ function impactInvestigationPrompt(
     summary: analysis.result.summary,
     sourceGraph: analysis.result.sourceGraph,
     changedFiles: analysis.result.changedFiles.slice(0, 500),
+    applicableAdrs: analysis.result.applicableAdrs,
     reasonEdges: analysis.result.edges.slice(0, 500),
     validationTargets: analysis.result.validationTargets,
     deliveryEffects: analysis.result.deliveryEffects,

@@ -38,6 +38,7 @@ const packet: ArchitectureContextPacket = {
       scope: 'web',
       supersedes: null,
       citation,
+      rule: null,
     },
   ],
   citations: [citation],

@@ -49,8 +49,9 @@ describe('TestIntelligenceView', () => {
           changedFiles: [],
           nodes: [],
           edges: [],
-          validationTargets: [{ ...target, reason: 'Public contract changed', required: true }],
+          validationTargets: [{ ...target, reason: 'Public contract changed', required: true, adrIds: [] }],
           deliveryEffects: [],
+          applicableAdrs: [],
           warnings: [],
           summary: {
             directProjects: 1,

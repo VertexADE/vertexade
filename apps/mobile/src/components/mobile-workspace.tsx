@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   FlatList,
   Pressable,
@@ -17,6 +17,7 @@ import type {
 import type { MobileServerCatalog } from '@/platform-service'
 import { colors } from '@/theme'
 import { MobileExtensionList } from './mobile-home-components'
+import { MobileThreadDetail } from './mobile-thread-detail'
 import { MobileWorkspaceCreateModal, type MobileCreateMode } from './mobile-workspace-create-modal'
 import {
   MobileWorkspaceDetail,
@@ -26,7 +27,7 @@ import { mobileWorkspaceStyles as styles } from './mobile-workspace-styles'
 import { useMobileWorkspace } from './use-mobile-workspace'
 
 type WorkspaceView = 'pullRequests' | 'work' | 'threads' | 'more'
-type WorkspaceRow = MobileWorkspaceDetailSelection
+type WorkspaceRow = MobileWorkspaceDetailSelection | { kind: 'thread'; value: MobileThread }
 type CreateRequest = { mode: MobileCreateMode; workItem?: MobileWorkItem }
 
 const viewCopy: Record<WorkspaceView, { title: string; subtitle: string; action?: string }> = {
@@ -34,6 +35,12 @@ const viewCopy: Record<WorkspaceView, { title: string; subtitle: string; action?
   work: { title: 'Work', subtitle: 'Outcomes queued, active, and moving to delivery.', action: '+ Work' },
   threads: { title: 'Threads', subtitle: 'Live agent execution and recent activity.', action: '+ Thread' },
   more: { title: 'More', subtitle: 'Connected servers and portable extensions.' },
+}
+const createModeByView: Record<WorkspaceView, MobileCreateMode> = {
+  pullRequests: 'pullRequest',
+  work: 'work',
+  threads: 'thread',
+  more: 'work',
 }
 
 export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: {
@@ -44,7 +51,8 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
   const [view, setView] = useState<WorkspaceView>('pullRequests')
   const [query, setQuery] = useState('')
   const [createRequest, setCreateRequest] = useState<CreateRequest | null>(null)
-  const [detailStack, setDetailStack] = useState<MobileWorkspaceDetailSelection[]>([])
+  const [activeThread, setActiveThread] = useState<MobileThread | null>(null)
+  const detail = useDetailPresentation()
   const state = useMobileWorkspace(serviceUrl, servers)
   const availableServers = useMemo(() => servers.filter((server) => !server.error), [servers])
   const portableServers = useMemo(
@@ -58,8 +66,7 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
   const copy = viewCopy[view]
 
   function beginCreate() {
-    const mode = view === 'pullRequests' ? 'pullRequest' : view === 'threads' ? 'thread' : 'work'
-    setCreateRequest({ mode })
+    setCreateRequest({ mode: createModeByView[view] })
   }
 
   async function completed(message: string) {
@@ -74,63 +81,45 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
   }
 
   function startThread(item: MobileWorkItem) {
-    setDetailStack([])
+    detail.clear()
     setCreateRequest({ mode: 'thread', workItem: item })
   }
 
   function openWorkItem(backendId: string, workItemId: number) {
     const item = state.workspace.workItems.find((candidate) => candidate.backendId === backendId && candidate.id === workItemId)
-    if (item) setDetailStack((current) => [...current, { kind: 'work', value: item }])
+    if (item) detail.open({ kind: 'work', value: item })
     else state.setNotice('The related Work item is no longer available in this workspace.')
   }
 
   function openThreadById(backendId: string, threadId: number) {
     const item = state.workspace.threads.find((candidate) => candidate.backendId === backendId && candidate.id === threadId)
-    if (item) setDetailStack((current) => [...current, { kind: 'thread', value: item }])
+    if (item) openThread(item)
     else state.setNotice('The related thread is no longer available in this workspace.')
+  }
+
+  function openThread(thread: MobileThread) {
+    detail.clear()
+    setActiveThread(thread)
   }
 
   function openPullRequest(backendId: string, fullName: string, number: number) {
     const item = state.workspace.pullRequests.find((candidate) =>
       candidate.backendId === backendId && candidate.fullName === fullName && candidate.number === number,
     )
-    if (item) setDetailStack((current) => [...current, { kind: 'pullRequest', value: item }])
+    if (item) detail.open({ kind: 'pullRequest', value: item })
     else state.setNotice('The related pull request is no longer available in this workspace.')
   }
 
   return <View style={styles.screen}>
-    <View style={styles.header}>
-      <View style={styles.topRow}>
-        <View style={styles.heading}>
-          <Text style={styles.eyebrow}>VERTEXADE MOBILE</Text>
-          <Text style={styles.title}>{copy.title}</Text>
-          <Text style={styles.subtitle}>{copy.subtitle}</Text>
-        </View>
-        {copy.action ? <Pressable
-          testID={`create-${view}`}
-          accessibilityRole="button"
-          accessibilityLabel={copy.action.replace('+ ', 'Create ')}
-          onPress={beginCreate}
-          style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}
-        ><Text style={styles.createButtonText}>{copy.action}</Text></Pressable> : null}
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        <WorkspaceTab count={state.workspace.pullRequests.length} active={view === 'pullRequests'} label="PRs" testID="workspace-tab-prs" onPress={() => changeView('pullRequests', setView, setQuery)} />
-        <WorkspaceTab count={state.workspace.workItems.filter((item) => !item.archived).length} active={view === 'work'} label="Work" testID="workspace-tab-work" onPress={() => changeView('work', setView, setQuery)} />
-        <WorkspaceTab count={state.workspace.threads.filter((thread) => !thread.archived).length} active={view === 'threads'} label="Threads" testID="workspace-tab-threads" onPress={() => changeView('threads', setView, setQuery)} />
-        <WorkspaceTab active={view === 'more'} label="More" testID="workspace-tab-more" onPress={() => changeView('more', setView, setQuery)} />
-      </ScrollView>
-      {view !== 'more' ? <TextInput
-        accessibilityLabel={`Search ${copy.title}`}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder={`Search ${copy.title.toLowerCase()}…`}
-        placeholderTextColor={colors.muted}
-        style={styles.search}
-        value={query}
-        onChangeText={setQuery}
-      /> : null}
-    </View>
+    <WorkspaceHeader
+      view={view}
+      copy={copy}
+      query={query}
+      workspace={state.workspace}
+      onCreate={beginCreate}
+      onChangeView={(nextView) => changeView(nextView, setView, setQuery)}
+      onChangeQuery={setQuery}
+    />
 
     <FlatList
       contentContainerStyle={styles.list}
@@ -143,11 +132,13 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
         {view === 'more' ? <MoreContent serviceUrl={serviceUrl} servers={portableServers} onChangeService={onChangeService} /> : null}
       </>}
       ListEmptyComponent={view === 'more' ? null : <WorkspaceEmpty loading={state.loading} query={query} view={view} />}
-      renderItem={({ item }) => item.kind === 'pullRequest'
-        ? <PullRequestCard item={item.value} onOpen={() => setDetailStack([item])} onError={state.setNotice} />
-        : item.kind === 'work'
-          ? <WorkItemCard item={item.value} onOpen={() => setDetailStack([item])} onStartThread={startThread} />
-          : <ThreadCard item={item.value} onOpen={() => setDetailStack([item])} onError={state.setNotice} />}
+      renderItem={({ item }) => <WorkspaceRowCard
+        item={item}
+        onOpenDetail={detail.open}
+        onOpenThread={openThread}
+        onStartThread={startThread}
+        onError={state.setNotice}
+      />}
     />
 
     {createRequest ? <MobileWorkspaceCreateModal
@@ -161,17 +152,155 @@ export function MobileWorkspaceScreen({ serviceUrl, servers, onChangeService }: 
     /> : null}
     <MobileWorkspaceDetail
       serviceUrl={serviceUrl}
-      stack={detailStack}
-      onBack={() => setDetailStack((current) => current.slice(0, -1))}
-      onClose={() => setDetailStack([])}
+      stack={detail.stack}
+      onBack={detail.back}
+      onClose={detail.close}
+      onDismiss={detail.completeDismissal}
+      visible={detail.visible}
       onChanged={changed}
-      onOpenThread={(thread) => setDetailStack((current) => [...current, { kind: 'thread', value: thread }])}
-      onOpenWorkId={openWorkItem}
-      onOpenThreadId={openThreadById}
-      onOpenPullRequest={openPullRequest}
+      onOpenThread={openThread}
       onStartThread={startThread}
     />
+    <ActiveThreadDetail
+      serviceUrl={serviceUrl}
+      thread={activeThread}
+      onClose={() => setActiveThread(null)}
+      onChanged={changed}
+      onOpenThread={openThread}
+      onOpenWork={openWorkItem}
+      onOpenThreadId={openThreadById}
+      onOpenPullRequest={openPullRequest}
+    />
   </View>
+}
+
+function WorkspaceHeader({ view, copy, query, workspace, onCreate, onChangeView, onChangeQuery }: {
+  view: WorkspaceView
+  copy: (typeof viewCopy)[WorkspaceView]
+  query: string
+  workspace: ReturnType<typeof useMobileWorkspace>['workspace']
+  onCreate(): void
+  onChangeView(view: WorkspaceView): void
+  onChangeQuery(query: string): void
+}) {
+  return <View style={styles.header}>
+    <View style={styles.topRow}>
+      <View style={styles.heading}>
+        <Text style={styles.eyebrow}>VERTEXADE MOBILE</Text>
+        <Text style={styles.title}>{copy.title}</Text>
+        <Text style={styles.subtitle}>{copy.subtitle}</Text>
+      </View>
+      {copy.action ? <Pressable
+        testID={`create-${view}`}
+        accessibilityRole="button"
+        accessibilityLabel={copy.action.replace('+ ', 'Create ')}
+        onPress={onCreate}
+        style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}
+      ><Text style={styles.createButtonText}>{copy.action}</Text></Pressable> : null}
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+      <WorkspaceTab count={workspace.pullRequests.length} active={view === 'pullRequests'} label="PRs" testID="workspace-tab-prs" onPress={() => onChangeView('pullRequests')} />
+      <WorkspaceTab count={workspace.workItems.filter((item) => !item.archived).length} active={view === 'work'} label="Work" testID="workspace-tab-work" onPress={() => onChangeView('work')} />
+      <WorkspaceTab count={workspace.threads.filter((thread) => !thread.archived).length} active={view === 'threads'} label="Threads" testID="workspace-tab-threads" onPress={() => onChangeView('threads')} />
+      <WorkspaceTab active={view === 'more'} label="More" testID="workspace-tab-more" onPress={() => onChangeView('more')} />
+    </ScrollView>
+    {view !== 'more' ? <TextInput
+      accessibilityLabel={`Search ${copy.title}`}
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholder={`Search ${copy.title.toLowerCase()}…`}
+      placeholderTextColor={colors.muted}
+      style={styles.search}
+      value={query}
+      onChangeText={onChangeQuery}
+    /> : null}
+  </View>
+}
+
+function WorkspaceRowCard({ item, onOpenDetail, onOpenThread, onStartThread, onError }: {
+  item: WorkspaceRow
+  onOpenDetail(selection: MobileWorkspaceDetailSelection): void
+  onOpenThread(thread: MobileThread): void
+  onStartThread(item: MobileWorkItem): void
+  onError(message: string): void
+}) {
+  if (item.kind === 'pullRequest') return <PullRequestCard item={item.value} onOpen={() => onOpenDetail(item)} onError={onError} />
+  if (item.kind === 'work') return <WorkItemCard item={item.value} onOpen={() => onOpenDetail(item)} onStartThread={onStartThread} />
+  return <ThreadCard item={item.value} onOpen={() => onOpenThread(item.value)} onError={onError} />
+}
+
+function ActiveThreadDetail({ serviceUrl, thread, onClose, onChanged, onOpenThread, onOpenWork, onOpenThreadId, onOpenPullRequest }: {
+  serviceUrl: string
+  thread: MobileThread | null
+  onClose(): void
+  onChanged(message: string): Promise<void>
+  onOpenThread(thread: MobileThread): void
+  onOpenWork(backendId: string, workItemId: number): void
+  onOpenThreadId(backendId: string, threadId: number): void
+  onOpenPullRequest(backendId: string, fullName: string, number: number): void
+}) {
+  if (!thread) return null
+  const { backendId, workItemId } = thread
+  return <MobileThreadDetail
+    key={`${backendId}:${thread.id}`}
+    serviceUrl={serviceUrl}
+    thread={thread}
+    onClose={onClose}
+    onChanged={onChanged}
+    onOpenThread={onOpenThread}
+    onOpenWork={workItemId ? () => {
+      onClose()
+      onOpenWork(backendId, workItemId)
+    } : undefined}
+    onOpenThreadId={(threadId) => onOpenThreadId(backendId, threadId)}
+    onOpenPullRequest={(fullName, number) => {
+      onClose()
+      onOpenPullRequest(backendId, fullName, number)
+    }}
+  />
+}
+
+function useDetailPresentation() {
+  const [stack, setStack] = useState<MobileWorkspaceDetailSelection[]>([])
+  const [visible, setVisible] = useState(false)
+  const pending = useRef<MobileWorkspaceDetailSelection | null>(null)
+
+  function open(selection: MobileWorkspaceDetailSelection) {
+    if (!stack.length) {
+      setStack([selection])
+      setVisible(true)
+      return
+    }
+    pending.current = selection
+    setVisible(false)
+  }
+
+  function clear() {
+    pending.current = null
+    setVisible(false)
+    setStack([])
+  }
+
+  function completeDismissal() {
+    const selection = pending.current
+    pending.current = null
+    if (!selection) {
+      setStack([])
+      return
+    }
+    setStack([selection])
+    setVisible(true)
+  }
+
+  return {
+    stack,
+    visible,
+    open,
+    clear,
+    close: clear,
+    back: () => setStack((current) => current.slice(0, -1)),
+    completeDismissal,
+  }
 }
 
 function WorkspaceTab({ active, count, label, testID, onPress }: {
@@ -256,7 +385,7 @@ function ThreadCard({ item, onOpen, onError }: {
     {item.latestActivity && item.latestActivity !== title ? <Text numberOfLines={3} style={styles.cardText}>{item.latestActivity}</Text> : null}
     <Text style={styles.metadata}>{item.agentName}{item.branchName ? ` · ${item.branchName}` : ''}{item.activityAt ? ` · ${relativeDate(item.activityAt)}` : ''}</Text>
     <View style={styles.cardActions}>
-      <Pressable testID={`open-thread-${item.backendId}-${item.id}`} accessibilityRole="button" onPress={onOpen} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Full thread</Text></Pressable>
+      <Pressable testID={`open-thread-${item.backendId}-${item.id}`} accessibilityRole="button" onPress={onOpen} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Open chat</Text></Pressable>
       {item.pullRequestUrl ? <Pressable accessibilityRole="link" onPress={() => void openExternalUrl(item.pullRequestUrl, onError)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Open PR #{item.pullRequestNumber}</Text></Pressable> : null}
     </View>
   </View>

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ImpactAnalysis, ImpactAnalysisFeedback, ImpactAnalysisListItem, ImpactNode } from '@vertexade/platform-contracts'
+import type {
+  ImpactAnalysis,
+  ImpactAnalysisFeedback,
+  ImpactAnalysisListItem,
+  ImpactChangedFile,
+  ImpactNode,
+} from '@vertexade/platform-contracts'
 import { ImpactAnalysisHistory } from '@vertexade/ui/components/impact-analysis-history'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
@@ -38,6 +44,7 @@ const riskVariant = {
   low: 'outline',
   medium: 'secondary',
   high: 'destructive',
+  unknown: 'secondary',
 } as const
 
 function shortRevision(value: string): string {
@@ -116,6 +123,90 @@ function ImpactSummary({ analysis }: { analysis: ImpactAnalysis }) {
         </div>
       ))}
     </div>
+  )
+}
+
+function ChangedFileImpact({ analysis }: { analysis: ImpactAnalysis }) {
+  const columns = useMemo<DataTableColumn<ImpactChangedFile>[]>(
+    () => [
+      {
+        id: 'path',
+        header: 'Changed file',
+        cell: ({ row }) => (
+          <div className="max-w-md">
+            <p className="truncate font-mono text-xs">{row.original.path}</p>
+            <p className="text-xs text-muted-foreground">{row.original.status.replaceAll('_', ' ')}</p>
+          </div>
+        ),
+      },
+      {
+        id: 'impact',
+        header: 'Impact',
+        cell: ({ row }) => <Badge variant={riskVariant[row.original.impact.level]}>{row.original.impact.level}</Badge>,
+      },
+      {
+        id: 'reach',
+        header: 'Reach',
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {row.original.impact.consumerCount} consumers · {row.original.impact.affectedProjectKeys.length} projects
+          </span>
+        ),
+      },
+      {
+        id: 'reason',
+        header: 'Why',
+        cell: ({ row }) => (
+          <div className="max-w-xl text-xs text-muted-foreground">
+            <p>{row.original.impact.reasons.join(' · ')}</p>
+            {!!row.original.impact.adrs.length && (
+              <p className="mt-1 font-medium">ADRs: {row.original.impact.adrs.map((adr) => adr.id).join(', ')}</p>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [],
+  )
+  return (
+    <Card size="sm" layout="divided">
+      <CardHeader>
+        <CardTitle>Changed-file impact</CardTitle>
+        <CardDescription>Per-file blast radius, architectural significance, and applicable decisions.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <DataTable columns={columns} data={analysis.result.changedFiles} getRowId={(file) => file.path} />
+      </CardContent>
+    </Card>
+  )
+}
+
+function ApplicableAdrs({ analysis }: { analysis: ImpactAnalysis }) {
+  if (!analysis.result.applicableAdrs.length) return null
+  return (
+    <Card size="sm" layout="divided">
+      <CardHeader>
+        <CardTitle>Applicable architecture decisions</CardTitle>
+        <CardDescription>Accepted ADRs matched automatically to changed or downstream code.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {analysis.result.applicableAdrs.map((adr) => (
+          <div key={adr.id} className="grid gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="text-sm">
+                {adr.id}: {adr.title}
+              </strong>
+              <Badge variant="outline">{adr.confidence} confidence</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">{adr.reason}</p>
+            <p className="font-mono text-[11px] text-muted-foreground">
+              {adr.citation.path}
+              {adr.citation.startLine ? `:${adr.citation.startLine}` : ''}
+            </p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -375,6 +466,8 @@ export function ImpactAnalysisView({ analysis, running, onRefresh }: { analysis:
         <AffectedProjects analysis={analysis} />
         <RequiredValidations analysis={analysis} />
       </div>
+      <ChangedFileImpact analysis={analysis} />
+      <ApplicableAdrs analysis={analysis} />
       <ImpactWarnings analysis={analysis} />
       <ImpactFeedbackPanel analysis={analysis} />
       <ImpactReasons analysis={analysis} />

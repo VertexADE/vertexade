@@ -1,6 +1,7 @@
 import type {
   DevelopmentConfidence,
   DevelopmentSubject,
+  ArchitectureDecision,
   ImpactAnalysisResult,
   ImpactChangedFile,
   ImpactChangedFileStatus,
@@ -12,8 +13,16 @@ import type {
   ImpactWarning,
 } from '@vertexade/platform-contracts'
 import { buildRepositorySourceGraph, type RepositorySourceGraph } from './repository-source-graph.ts'
+import {
+  aggregateImpactLevel,
+  applyAdrValidationRequirements,
+  assessChangedFiles,
+  contractKind,
+  deliveryKind,
+  projectForPath,
+} from './impact-classification.ts'
 
-export const impactAnalyzerVersion = '1.1.0'
+export const impactAnalyzerVersion = '1.2.0'
 
 const maximumChangedFiles = 5_000
 const maximumTrackedFiles = 100_000
@@ -48,7 +57,7 @@ type Project = PackageManifest & {
   manifestPath: string | null
 }
 
-type ChangedPath = Omit<ImpactChangedFile, 'projectKey'>
+type ChangedPath = Omit<ImpactChangedFile, 'projectKey' | 'impact'>
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
@@ -129,14 +138,6 @@ export function parseGitNameStatus(output: string): ChangedPath[] {
   return changed
 }
 
-function projectForPath(projects: Project[], path: string): Project {
-  return (
-    [...projects]
-      .sort((left, right) => right.rootPath.length - left.rootPath.length)
-      .find((project) => !project.rootPath || path === project.rootPath || path.startsWith(`${project.rootPath}/`)) || projects[0]!
-  )
-}
-
 function projectKey(rootPath: string): string {
   return rootPath ? `project:${rootPath}` : 'project:.'
 }
@@ -154,27 +155,6 @@ function validationKind(script: string): ImpactValidationKind | null {
   if (/(^|:|-)lint($|:|-)/.test(normalized)) return 'lint'
   if (/(^|:|-)build($|:|-)/.test(normalized)) return 'build'
   if (/(^|:|-)(check|verify)($|:|-)/.test(normalized)) return 'check'
-  return null
-}
-
-function contractKind(path: string): ImpactNode['kind'] | null {
-  const normalized = path.toLowerCase()
-  if (/(^|\/)(migrations?|schema)(\/|\.|$)/.test(normalized) || /(^|\/)drizzle\//.test(normalized)) return 'database'
-  if (
-    /(^|\/)(contracts?|openapi|graphql|proto)(\/|\.|$)/.test(normalized) ||
-    /(^|\/)src\/(index|public)(\.|\/)/.test(normalized) ||
-    /(^|\/)api(\/|\.)/.test(normalized)
-  )
-    return 'public_contract'
-  if (/(^|\/)(package\.json|[^/]*config\.[^/]+|tsconfig[^/]*\.json|pnpm-workspace\.yaml|[^/]*lock[^/]*)$/.test(normalized))
-    return 'configuration'
-  return null
-}
-
-function deliveryKind(path: string): ImpactDeliveryEffect['kind'] | null {
-  const normalized = path.toLowerCase()
-  if (normalized.startsWith('.github/workflows/')) return 'workflow'
-  if (/(^|\/)(dockerfile|deploy|deployment|helm|k8s|kubernetes|terraform|vercel)(\.|\/|$)/.test(normalized)) return 'deployment'
   return null
 }
 
@@ -311,6 +291,14 @@ type SourceImpactContext = {
   edges: ImpactReasonEdge[]
 }
 
+type SourceTraversalContext = {
+  impact: SourceImpactContext
+  origins: Map<string, Set<string>>
+  reach: Map<string, Set<string>>
+  visited: Set<string>
+  emittedRelations: Set<string>
+}
+
 function reverseSourceEdges(graph: RepositorySourceGraph): Map<string, RepositorySourceGraph['edges']> {
   const reverse = new Map<string, RepositorySourceGraph['edges']>()
   for (const edge of graph.edges) reverse.set(edge.toPath, [...(reverse.get(edge.toPath) || []), edge])
@@ -370,6 +358,31 @@ function addSourceConsumer(context: SourceImpactContext, providerPath: string, r
   return consumerPath
 }
 
+function propagateSourceConsumer(
+  traversal: SourceTraversalContext,
+  providerPath: string,
+  relation: RepositorySourceGraph['edges'][number],
+): { consumerPath: string; gainedOrigin: boolean; discovered: boolean } {
+  const consumerPath = relation.fromPath
+  const relationIdentity = `${providerPath}:${consumerPath}:${relation.line}:${relation.kind}`
+  if (!traversal.emittedRelations.has(relationIdentity)) {
+    addSourceConsumer(traversal.impact, providerPath, relation)
+    traversal.emittedRelations.add(relationIdentity)
+  }
+  const consumerOrigins = traversal.origins.get(consumerPath) || new Set<string>()
+  let gainedOrigin = false
+  for (const origin of traversal.origins.get(providerPath) || []) {
+    traversal.reach.get(origin)?.add(consumerPath)
+    if (consumerOrigins.has(origin)) continue
+    consumerOrigins.add(origin)
+    gainedOrigin = true
+  }
+  traversal.origins.set(consumerPath, consumerOrigins)
+  const discovered = !traversal.visited.has(consumerPath)
+  traversal.visited.add(consumerPath)
+  return { consumerPath, gainedOrigin, discovered }
+}
+
 function addSourceImpact(
   graph: RepositorySourceGraph,
   changedFiles: ImpactChangedFile[],
@@ -378,22 +391,26 @@ function addSourceImpact(
   nodes: Map<string, ImpactNode>,
   edges: ImpactReasonEdge[],
   warnings: ImpactWarning[],
-): void {
+): Map<string, Set<string>> {
   const context: SourceImpactContext = { changedFiles, projects, affected, nodes, edges }
   const reverse = reverseSourceEdges(graph)
   const queue = changedFiles.flatMap((file) => [file.path, file.previousPath].filter((path): path is string => Boolean(path)))
-  const visited = new Set(queue)
+  const traversal: SourceTraversalContext = {
+    impact: context,
+    origins: new Map(queue.map((path) => [path, new Set([path])])),
+    reach: new Map(changedFiles.map((file) => [file.path, new Set<string>()])),
+    visited: new Set(queue),
+    emittedRelations: new Set<string>(),
+  }
   const maximumSourceConsumers = 2_000
   let discovered = 0
   while (queue.length && discovered < maximumSourceConsumers) {
     const providerPath = queue.shift()!
     addSourceProvider(context, providerPath)
     for (const relation of reverse.get(providerPath) || []) {
-      const consumerPath = addSourceConsumer(context, providerPath, relation)
-      if (visited.has(consumerPath)) continue
-      visited.add(consumerPath)
-      queue.push(consumerPath)
-      discovered += 1
+      const propagated = propagateSourceConsumer(traversal, providerPath, relation)
+      if (propagated.discovered) discovered += 1
+      if (propagated.gainedOrigin) queue.push(propagated.consumerPath)
       if (discovered >= maximumSourceConsumers) break
     }
   }
@@ -404,6 +421,7 @@ function addSourceImpact(
       path: null,
     })
   }
+  return traversal.reach
 }
 
 function validationTargets(
@@ -440,6 +458,7 @@ function validationTargets(
         reason,
         required: true,
         confidence: confidence(direct),
+        adrIds: [],
       })
       addNode(nodes, {
         key: id,
@@ -521,11 +540,13 @@ export async function analyzeRepositoryImpact({
   subject,
   run,
   signal,
+  architectureDecisions = [],
 }: {
   repository: ImpactAnalyzerRepository
   subject: DevelopmentSubject
   run: ImpactCommandRunner
   signal?: AbortSignal
+  architectureDecisions?: ArchitectureDecision[]
 }): Promise<ImpactAnalysisResult> {
   const warnings: ImpactWarning[] = []
   const diff = await run(
@@ -554,6 +575,7 @@ export async function analyzeRepositoryImpact({
   const changedFiles: ImpactChangedFile[] = changedPaths.map((file) => ({
     ...file,
     projectKey: projectForPath(projects, file.path).key,
+    impact: { level: 'unknown', reasons: [], consumerCount: 0, affectedProjectKeys: [], adrs: [] },
   }))
   const directKeys = new Set(changedFiles.map((file) => file.projectKey))
   const affected = affectedProjects(projects, directKeys)
@@ -596,7 +618,7 @@ export async function analyzeRepositoryImpact({
       confidence: 'high',
     })
   }
-  addSourceImpact(sourceGraph, changedFiles, projects, affected, nodes, edges, warnings)
+  const reach = addSourceImpact(sourceGraph, changedFiles, projects, affected, nodes, edges, warnings)
   for (const project of projects.filter((candidate) => affected.has(candidate.key))) {
     const direct = affected.get(project.key) === true
     addNode(nodes, {
@@ -611,14 +633,14 @@ export async function analyzeRepositoryImpact({
   addDependencyEdges(projects, affected, edges)
   const validations = validationTargets(projects, affected, nodes, edges, warnings)
   const special = addSpecialEffects(changedFiles, nodes, edges)
+  assessChangedFiles({ changedFiles, projects, reach, decisions: architectureDecisions, warnings })
+  applyAdrValidationRequirements(changedFiles, architectureDecisions, validations, warnings)
   const directProjects = [...affected.values()].filter(Boolean).length
   const transitiveProjects = affected.size - directProjects
-  const risk =
-    special.contractChanges > 0 || special.deliveryEffects.some((effect) => effect.kind === 'deployment')
-      ? 'high'
-      : transitiveProjects > 0 || changedFiles.length > 5
-        ? 'medium'
-        : 'low'
+  const risk = aggregateImpactLevel(changedFiles)
+  const applicableAdrs = [...new Map(changedFiles.flatMap((file) => file.impact.adrs).map((adr) => [adr.id, adr])).values()].sort(
+    (left, right) => left.id.localeCompare(right.id),
+  )
   return {
     analyzerVersion: impactAnalyzerVersion,
     sourceGraph: {
@@ -636,6 +658,7 @@ export async function analyzeRepositoryImpact({
     ),
     validationTargets: validations,
     deliveryEffects: special.deliveryEffects,
+    applicableAdrs,
     warnings,
     summary: {
       directProjects,

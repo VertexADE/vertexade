@@ -125,6 +125,14 @@ describe('impact analyzer', () => {
     )
     expect(result.deliveryEffects).toContainEqual(expect.objectContaining({ kind: 'workflow', path: '.github/workflows/verify.yml' }))
     expect(result.summary).toMatchObject({ directProjects: 2, transitiveProjects: 2, risk: 'high' })
+    expect(result.changedFiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'packages/library/src/index.ts',
+          impact: expect.objectContaining({ level: 'high', consumerCount: 2 }),
+        }),
+      ]),
+    )
     expect(result.sourceGraph).toMatchObject({ revision: fixture.head, edgeCount: expect.any(Number) })
     expect(result.summary.contractChanges).toBeGreaterThan(0)
   })

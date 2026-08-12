@@ -299,6 +299,9 @@ describe('mobile full detail views', () => {
     )
 
     expect(await screen.findByText('Building full thread details')).toBeOnTheScreen()
+    expect(screen.getByText('You')).toBeOnTheScreen()
+    expect(screen.getAllByText('Codex').length).toBeGreaterThan(0)
+    expect(screen.getByText('Implement the full view.')).toBeOnTheScreen()
     fireEvent.changeText(screen.getByLabelText('Thread message'), 'Continue with tests')
     fireEvent.press(screen.getByText('Queue next turn'))
     await waitFor(() =>

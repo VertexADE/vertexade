@@ -16,6 +16,7 @@ import {
   type ImpactAnalyzerRepository,
   type ImpactCommandRunner,
 } from './impact-analyzer.ts'
+import { ArchitectureContextService } from './architecture-service.ts'
 
 export type ResolvedImpactAnalysisInput = {
   subject: DevelopmentSubject
@@ -52,7 +53,22 @@ function outputRecord(value: unknown): Record<string, unknown> | null {
 function resultValue(value: unknown): ImpactAnalysisResult {
   const result = typeof value === 'string' ? (JSON.parse(value) as unknown) : value
   if (!outputRecord(result)) throw new Error('Stored impact analysis is invalid')
-  return result as ImpactAnalysisResult
+  const stored = result as ImpactAnalysisResult
+  return {
+    ...stored,
+    changedFiles: stored.changedFiles.map((file) => ({
+      ...file,
+      impact: file.impact || {
+        level: stored.summary.risk,
+        reasons: ['Legacy analysis did not record per-file impact evidence'],
+        consumerCount: 0,
+        affectedProjectKeys: [file.projectKey],
+        adrs: [],
+      },
+    })),
+    validationTargets: stored.validationTargets.map((target) => ({ ...target, adrIds: target.adrIds || [] })),
+    applicableAdrs: stored.applicableAdrs || [],
+  }
 }
 
 function subjectFromRow(row: ImpactAnalysisRow): DevelopmentSubject {
@@ -226,7 +242,17 @@ export class ImpactAnalysisService {
 
   async analyze(input: ResolvedImpactAnalysisInput, signal?: AbortSignal): Promise<ImpactAnalysis> {
     const repository = this.repository(input.subject.repositoryId)
-    const result = await analyzeRepositoryImpact({ repository, subject: input.subject, run: this.run, signal })
+    const architecture = new ArchitectureContextService(this.database, this.run, this.notify)
+    const architectureIndex =
+      architecture.indexForRevision(repository.id, input.subject.headRevision) ||
+      (await architecture.index({ repositoryId: repository.id, revision: input.subject.headRevision }, signal))
+    const result = await analyzeRepositoryImpact({
+      repository,
+      subject: input.subject,
+      run: this.run,
+      signal,
+      architectureDecisions: architectureIndex.result.decisions,
+    })
     const resultDigest = digest(result)
     const values = {
       repositoryId: repository.id,

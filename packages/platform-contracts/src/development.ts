@@ -151,11 +151,30 @@ export type DevelopmentExecutionSummary = {
 
 export type ImpactChangedFileStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'type_changed' | 'unmerged' | 'unknown'
 
+export type ImpactLevel = 'low' | 'medium' | 'high' | 'unknown'
+
+export type ImpactAdrReference = {
+  id: string
+  title: string
+  reason: string
+  confidence: DevelopmentConfidence
+  citation: ArchitectureSourceCitation
+}
+
+export type ImpactFileAssessment = {
+  level: ImpactLevel
+  reasons: string[]
+  consumerCount: number
+  affectedProjectKeys: string[]
+  adrs: ImpactAdrReference[]
+}
+
 export type ImpactChangedFile = {
   path: string
   previousPath: string | null
   status: ImpactChangedFileStatus
   projectKey: string
+  impact: ImpactFileAssessment
 }
 
 export type ImpactNodeKind =
@@ -207,6 +226,7 @@ export type ImpactValidationTarget = {
   reason: string
   required: boolean
   confidence: DevelopmentConfidence
+  adrIds: string[]
 }
 
 export type ImpactDeliveryEffect = {
@@ -233,6 +253,7 @@ export type ImpactAnalysisResult = {
   edges: ImpactReasonEdge[]
   validationTargets: ImpactValidationTarget[]
   deliveryEffects: ImpactDeliveryEffect[]
+  applicableAdrs: ImpactAdrReference[]
   warnings: ImpactWarning[]
   summary: {
     directProjects: number
@@ -240,7 +261,7 @@ export type ImpactAnalysisResult = {
     requiredValidations: number
     deliveryEffects: number
     contractChanges: number
-    risk: 'low' | 'medium' | 'high'
+    risk: ImpactLevel
   }
 }
 
@@ -328,6 +349,16 @@ export type ArchitectureDecision = {
   scope: string | null
   supersedes: string | null
   citation: ArchitectureSourceCitation
+  rule: ArchitectureDecisionRule | null
+}
+
+export type ArchitectureDecisionRule = {
+  paths: string[]
+  nodeKeys: string[]
+  impact: Exclude<ImpactLevel, 'low' | 'unknown'>
+  validationKinds: ImpactValidationKind[]
+  rationale: string
+  confidence: DevelopmentConfidence
 }
 
 export type ArchitectureIndexResult = {

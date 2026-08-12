@@ -25,7 +25,29 @@ const analysis: ImpactAnalysis = {
   result: {
     analyzerVersion: '1.0.0',
     repositoryName: 'vertexade/example',
-    changedFiles: [{ path: 'packages/core/src/index.ts', previousPath: null, status: 'modified', projectKey: 'project:packages/core' }],
+    changedFiles: [
+      {
+        path: 'packages/core/src/index.ts',
+        previousPath: null,
+        status: 'modified',
+        projectKey: 'project:packages/core',
+        impact: {
+          level: 'high',
+          reasons: ['ADR-007 applies: public contracts require consumer validation'],
+          consumerCount: 1,
+          affectedProjectKeys: ['project:packages/core', 'project:apps/web'],
+          adrs: [
+            {
+              id: 'adr-007',
+              title: 'Public contracts',
+              reason: 'Public contracts require consumer validation.',
+              confidence: 'high',
+              citation: { path: 'docs/adrs/ADR-007.md', startLine: 1, endLine: 1, digest: 'd'.repeat(40) },
+            },
+          ],
+        },
+      },
+    ],
     nodes: [
       {
         key: 'project:packages/core',
@@ -64,9 +86,19 @@ const analysis: ImpactAnalysis = {
         reason: '@vertexade/core owns changed files',
         required: true,
         confidence: 'high',
+        adrIds: ['adr-007'],
       },
     ],
     deliveryEffects: [],
+    applicableAdrs: [
+      {
+        id: 'adr-007',
+        title: 'Public contracts',
+        reason: 'Public contracts require consumer validation.',
+        confidence: 'high',
+        citation: { path: 'docs/adrs/ADR-007.md', startLine: 1, endLine: 1, digest: 'd'.repeat(40) },
+      },
+    ],
     warnings: [
       { code: 'validation_gap', message: 'No validation script was discovered for @vertexade/web', path: 'apps/web/package.json' },
     ],
@@ -91,5 +123,7 @@ describe('ImpactAnalysisView', () => {
     expect(markup).toContain('Consumer')
     expect(markup).toContain('No validation script was discovered')
     expect(markup).toContain('apps/web/package.json')
+    expect(markup).toContain('ADR-007')
+    expect(markup).toContain('Changed-file impact')
   })
 })

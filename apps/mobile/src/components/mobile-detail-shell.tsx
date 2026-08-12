@@ -13,6 +13,7 @@ type MobileDetailShellProps<Tab extends string> = {
   activeTab: Tab
   loading: boolean
   error: string
+  visible?: boolean
   headerContent?: ReactNode
   banner?: ReactNode
   footer?: ReactNode
@@ -20,12 +21,13 @@ type MobileDetailShellProps<Tab extends string> = {
   onTab(tab: Tab): void
   onBack?: () => void
   onClose(): void
+  onDismiss?(): void
   onRetry(): void
 }
 
 export function MobileDetailShell<Tab extends string>(props: MobileDetailShellProps<Tab>) {
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={props.onClose}>
+    <Modal testID="workspace-detail-native-modal" animationType="slide" presentationStyle="pageSheet" visible={props.visible ?? true} onDismiss={props.onDismiss} onRequestClose={props.onClose}>
       <View testID="workspace-detail-modal" style={styles.modal}>
         <MobileDetailHeader {...props} />
         {props.banner}

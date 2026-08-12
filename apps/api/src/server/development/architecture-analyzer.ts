@@ -1,5 +1,6 @@
 import type {
   ArchitectureDecision,
+  ArchitectureDecisionRule,
   ArchitectureIndexResult,
   ArchitectureNode,
   ArchitectureNodeKind,
@@ -10,7 +11,7 @@ import type {
 import type { ImpactCommandRunner } from './impact-analyzer.ts'
 import { buildRepositorySourceGraph, type RepositorySourceGraph } from './repository-source-graph.ts'
 
-export const architectureIndexVersion = '1.1.0'
+export const architectureIndexVersion = '1.2.0'
 
 const maximumTrackedFiles = 100_000
 const maximumIndexedDocuments = 500
@@ -194,7 +195,59 @@ function decisionStatus(content: string): ArchitectureDecision['status'] {
   return 'unknown'
 }
 
-function architectureDecision(entry: TreeEntry, content: string, node: ArchitectureNode): ArchitectureDecision | null {
+function mentionedArchitectureNodes(content: string, nodes: ArchitectureNode[]): ArchitectureNode[] {
+  const normalized = content.toLowerCase()
+  return nodes.filter((node) => {
+    if (node.kind === 'repository' || node.kind === 'document') return false
+    const candidates = [node.label, node.path || '']
+      .flatMap((value) => [value, ...value.split(/[/@._-]+/)])
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length >= 4)
+    return candidates.some((value) => normalized.includes(value))
+  })
+}
+
+function decisionValidationKinds(content: string): ArchitectureDecisionRule['validationKinds'] {
+  const kinds = new Set<ArchitectureDecisionRule['validationKinds'][number]>()
+  if (/contract|api|schema|type/i.test(content)) kinds.add('typecheck')
+  if (/contract|api|database|schema|migration|integration/i.test(content)) kinds.add('integration')
+  if (/deploy|delivery|workflow|release|build/i.test(content)) kinds.add('build')
+  if (/security|authentication|authorization|end[- ]to[- ]end|e2e/i.test(content)) kinds.add('end_to_end')
+  if (/\btests?\b|verification|validate/i.test(content)) kinds.add('test')
+  return [...kinds]
+}
+
+function architectureDecisionRule(content: string, nodes: ArchitectureNode[]): ArchitectureDecisionRule | null {
+  const matched = mentionedArchitectureNodes(content, nodes)
+  const explicitPaths = [...content.matchAll(/`([^`]*(?:\/|\.[a-z0-9]{1,8})[^`]*)`/gi)]
+    .map((match) => normalizedPath(match[1].replace(/[*{}]/g, '')))
+    .filter((path) => path && !path.includes(' '))
+  const paths = [...new Set([...explicitPaths, ...matched.map((node) => node.path).filter((path): path is string => Boolean(path))])].sort()
+  if (!paths.length && !matched.length) return null
+  const highImpact =
+    /public contract|breaking|database|schema|migration|security|authentication|authorization|deploy|delivery|cross[- ]service/i.test(
+      content,
+    ) || matched.some((node) => ['api', 'event', 'datastore', 'deployment'].includes(node.kind))
+  const sentence = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => !line.startsWith('#') && !/^status\s*:/i.test(line) && line.length > 20)
+  return {
+    paths,
+    nodeKeys: matched.map((node) => node.key).sort(),
+    impact: highImpact ? 'high' : 'medium',
+    validationKinds: decisionValidationKinds(content),
+    rationale: (sentence || 'The architecture decision applies to this boundary.').slice(0, 500),
+    confidence: explicitPaths.length ? 'high' : 'medium',
+  }
+}
+
+function architectureDecision(
+  entry: TreeEntry,
+  content: string,
+  node: ArchitectureNode,
+  nodes: ArchitectureNode[],
+): ArchitectureDecision | null {
   const normalized = entry.path.toLowerCase()
   if (!/(^|\/)(adr|adrs|decisions?)(\/|[-_.])/.test(normalized) && !/\barchitecture decision\b/i.test(content.slice(0, 2_000))) return null
   const filename =
@@ -220,6 +273,7 @@ function architectureDecision(entry: TreeEntry, content: string, node: Architect
     scope,
     supersedes,
     citation: node.citations[0],
+    rule: architectureDecisionRule(content, nodes),
   }
 }
 
@@ -446,7 +500,7 @@ export async function analyzeRepositoryArchitecture({
         confidence: 'medium',
         citation: node.citations[0],
       })
-      const decision = architectureDecision(entry, content, node)
+      const decision = architectureDecision(entry, content, node, [...nodes.values()])
       if (decision) decisions.push(decision)
     } catch (error) {
       warnings.push({

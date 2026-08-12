@@ -46,7 +46,7 @@ async function fixture(): Promise<{ path: string; revision: string }> {
     writeFile(join(path, 'docs', 'architecture.md'), '# Fixture architecture\n\nThe web service consumes the shared public contracts.\n'),
     writeFile(
       join(path, 'docs', 'adrs', 'ADR-001-contract-ownership.md'),
-      '# ADR-001 Contract ownership\n\nStatus: Accepted\n\nContracts are owned by the contracts package.\n',
+      '# ADR-001 Contract ownership\n\nStatus: Accepted\n\nChanges to the public contracts package require typecheck and integration validation.\n',
     ),
     writeFile(join(path, '.github', 'workflows', 'deploy.yml'), 'name: Deploy\n'),
   ])
@@ -98,7 +98,16 @@ describe('architecture analyzer', () => {
       }),
     )
     expect(result.decisions).toContainEqual(
-      expect.objectContaining({ id: 'adr-001', title: 'ADR-001 Contract ownership', status: 'accepted' }),
+      expect.objectContaining({
+        id: 'adr-001',
+        title: 'ADR-001 Contract ownership',
+        status: 'accepted',
+        rule: expect.objectContaining({
+          impact: 'high',
+          nodeKeys: expect.arrayContaining(['architecture:package:packages/contracts']),
+          validationKinds: expect.arrayContaining(['typecheck', 'integration']),
+        }),
+      }),
     )
     expect(result.summary).toMatchObject({ packages: 2, services: 2, deployments: 1, decisions: 1 })
     expect(result.summary.contracts).toBeGreaterThanOrEqual(1)

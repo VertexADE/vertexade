@@ -131,5 +131,7 @@ describe('MobileWorkspaceScreen', () => {
     fireEvent.press(screen.getByTestId('workspace-tab-threads'))
     fireEvent.press(screen.getByTestId('open-thread-local-3'))
     expect(screen.getByTestId('workspace-detail-modal')).toBeOnTheScreen()
+    expect(screen.getByText('LOCAL · AGENT RUN')).toBeOnTheScreen()
   })
+
 })

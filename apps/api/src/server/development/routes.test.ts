@@ -34,9 +34,13 @@ async function git(repository: string, args: string[]): Promise<string> {
 async function repositoryFixture(): Promise<{ path: string; base: string; head: string }> {
   const path = await mkdtemp(join(tmpdir(), 'vertexade-impact-routes-'))
   directories.push(path)
-  await mkdir(join(path, 'src'), { recursive: true })
+  await Promise.all([mkdir(join(path, 'src'), { recursive: true }), mkdir(join(path, 'docs', 'adrs'), { recursive: true })])
   await writeFile(join(path, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { test: 'vitest run' } }))
   await writeFile(join(path, 'src', 'index.ts'), 'export const value = 1\n')
+  await writeFile(
+    join(path, 'docs', 'adrs', 'ADR-001-public-entry-point.md'),
+    '# ADR-001 Public entry point\n\nStatus: Accepted\n\nChanges to the public contract in `src/index.ts` require integration validation.\n',
+  )
   await git(path, ['init', '--initial-branch=main'])
   await git(path, ['add', '.'])
   await git(path, ['-c', 'user.name=VertexADE', '-c', 'user.email=vertexade@example.invalid', 'commit', '-m', 'base'])
@@ -104,6 +108,28 @@ describe('development impact routes', () => {
       {},
     )
     const analysis = (await analysisResponse!.json()) as { id: number; digest: string }
+
+    const storedAnalysisResponse = await routes.dispatch(
+      new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses/${analysis.id}`),
+      {},
+    )
+    const storedAnalysis = (await storedAnalysisResponse!.json()) as {
+      result: {
+        summary: { risk: string }
+        changedFiles: Array<{ path: string; impact: { level: string; adrs: Array<{ id: string }> } }>
+        applicableAdrs: Array<{ id: string }>
+        warnings: Array<{ code: string }>
+      }
+    }
+    expect(storedAnalysis.result.summary.risk).toBe('high')
+    expect(storedAnalysis.result.changedFiles).toContainEqual(
+      expect.objectContaining({
+        path: 'src/index.ts',
+        impact: expect.objectContaining({ level: 'high', adrs: [expect.objectContaining({ id: 'adr-001' })] }),
+      }),
+    )
+    expect(storedAnalysis.result.applicableAdrs).toContainEqual(expect.objectContaining({ id: 'adr-001' }))
+    expect(storedAnalysis.result.warnings).toContainEqual(expect.objectContaining({ code: 'adr_validation_gap' }))
 
     const overviewResponse = await routes.dispatch(
       new Request(`http://vertexade.test/api/repositories/${repositoryId}/impact-analyses/${analysis.id}/intelligence`),

@@ -22,6 +22,8 @@ export function MobileWorkDetail({
   item,
   onBack,
   onClose,
+  onDismiss,
+  visible,
   onChanged,
   onOpenThread,
   onStartThread,
@@ -30,6 +32,8 @@ export function MobileWorkDetail({
   item: MobileWorkItem
   onBack?: () => void
   onClose(): void
+  onDismiss?(): void
+  visible?: boolean
   onChanged(message: string): Promise<void>
   onOpenThread(thread: MobileThread): void
   onStartThread(item: MobileWorkItem): void
@@ -66,6 +70,8 @@ export function MobileWorkDetail({
       onTab={setTab}
       onBack={onBack}
       onClose={onClose}
+      onDismiss={onDismiss}
+      visible={visible}
       onRetry={() => void detail.refresh()}
     >
       {actionError ? (

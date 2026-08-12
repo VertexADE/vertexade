@@ -23,12 +23,16 @@ export function MobilePullRequestDetail({
   pullRequest,
   onBack,
   onClose,
+  onDismiss,
+  visible,
   onChanged,
 }: {
   serviceUrl: string
   pullRequest: MobilePullRequest
   onBack?: () => void
   onClose(): void
+  onDismiss?(): void
+  visible?: boolean
   onChanged(message: string): Promise<void>
 }) {
   const [tab, setTab] = useState<PullRequestTab>('overview')
@@ -65,6 +69,8 @@ export function MobilePullRequestDetail({
       onTab={setTab}
       onBack={onBack}
       onClose={onClose}
+      onDismiss={onDismiss}
+      visible={visible}
       onRetry={() => void detail.refresh()}
     >
       {notice ? (
