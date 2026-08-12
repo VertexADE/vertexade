@@ -117,6 +117,18 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } f
 import { automaticReviewQueue, jobs, pullRequests, repositories, repositoryAgentBootstraps } from '../database/schema/tables.ts'
 import { automaticReviewQueueRecord, jobRecord, pullRequestRecord, repositoryRecord } from '../database/contract-records.ts'
 
+type RepositoryCredentials = { token?: string; sshKeyPath?: string }
+let repositoryCredentials = (_repository: string): RepositoryCredentials => ({})
+
+export function configureRepositoryCredentialResolver(resolver: (repository: string) => RepositoryCredentials) {
+  repositoryCredentials = resolver
+}
+
+function sshCommand(keyPath: string) {
+  const escaped = keyPath.replaceAll("'", "'\\''")
+  return `ssh -i '${escaped}' -o IdentitiesOnly=yes`
+}
+
 function storedRepository(repositoryId: number) {
   const repository = db.select().from(repositories).where(eq(repositories.id, repositoryId)).get()
   return repository ? repositoryRecord(repository) : null
@@ -155,10 +167,19 @@ export async function generateWorkItemTitle(input: { context: string; kind: stri
 
 function runAgentThread(options: any, runOptions: any, runtimeAgent = requestedAgent()) {
   const launch = runtimeAgent.launch(localizeAgentPrompt({ ...agentLaunchContext.getStore(), ...options }))
+  const repository = db
+    .select({ fullName: repositories.fullName, localPath: repositories.localPath })
+    .from(repositories)
+    .all()
+    .filter(({ localPath }) => runOptions.cwd === localPath || String(runOptions.cwd || '').startsWith(`${localPath}/`))
+    .sort((left, right) => right.localPath.length - left.localPath.length)[0]
+  const credentials = repository ? repositoryCredentials(repository.fullName) : {}
   return run(launch.command, launch.args, {
     ...runOptions,
     env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env, {
       VERTEXADE_TOOL_PATHS: JSON.stringify(systemConfiguration.read().tools),
+      ...(credentials.token ? { GH_TOKEN: credentials.token } : {}),
+      ...(credentials.sshKeyPath ? { GIT_SSH_COMMAND: sshCommand(credentials.sshKeyPath) } : {}),
     }),
   })
 }
@@ -721,16 +742,20 @@ export async function repositoryReviewers(repo) {
 }
 
 export async function ensureClone(repo) {
+  const keyPath = repositoryCredentials(repo.full_name).sshKeyPath
+  const gitEnvironment = keyPath ? { ...process.env, GIT_SSH_COMMAND: sshCommand(keyPath) } : undefined
   let cloned = false
   try {
     await stat(join(repo.local_path, '.git'))
     cloned = true
   } catch {}
   if (cloned) {
-    await run('git', ['-C', repo.local_path, 'fetch', '--prune', 'origin'])
+    if (keyPath) await run('git', ['-C', repo.local_path, 'config', '--local', 'core.sshCommand', sshCommand(keyPath)])
+    await run('git', ['-C', repo.local_path, 'fetch', '--prune', 'origin'], { env: gitEnvironment })
   } else {
     await mkdir(dirname(repo.local_path), { recursive: true })
-    await run('git', ['clone', repo.clone_url, repo.local_path])
+    await run('git', ['clone', repo.clone_url, repo.local_path], { env: gitEnvironment })
+    if (keyPath) await run('git', ['-C', repo.local_path, 'config', '--local', 'core.sshCommand', sshCommand(keyPath)])
   }
 }
 

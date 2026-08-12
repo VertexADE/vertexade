@@ -31,6 +31,36 @@ export const githubSettings = definePortableSettings({
       placeholder: '-----BEGIN PRIVATE KEY-----',
     },
     {
+      name: 'accounts',
+      label: 'Token accounts',
+      type: 'object-list',
+      valuePath: 'accounts',
+      addLabel: 'Add GitHub account',
+      allowReorder: true,
+      maxItems: 20,
+      description: 'Assign repositories to encrypted tokens and optional SSH private-key paths.',
+      fields: [
+        { name: 'id', label: 'Stable id', type: 'text', required: true, placeholder: 'work' },
+        { name: 'label', label: 'Label', type: 'text', required: true },
+        { name: 'token', label: 'Personal access token', type: 'password', required: true, storedPath: 'has_token' },
+        {
+          name: 'repositories',
+          label: 'Repositories',
+          type: 'string-list',
+          required: true,
+          minItems: 1,
+          placeholder: 'owner/repository',
+        },
+        {
+          name: 'ssh_key_path',
+          label: 'SSH private-key path',
+          type: 'text',
+          placeholder: '/Users/name/.ssh/id_ed25519_work',
+          description: 'Absolute path on this server. The key contents are never copied into VertexADE.',
+        },
+      ],
+    },
+    {
       name: 'deployment_targets',
       label: 'Deployment targets',
       type: 'object-list',
@@ -135,8 +165,8 @@ export const githubSettings = definePortableSettings({
     {
       id: 'authentication',
       title: 'Authentication',
-      description: 'Use the existing gh authentication or encrypted GitHub App installation credentials.',
-      fields: ['active', 'app_id', 'installation_id', 'private_key'],
+      description: 'Route repositories to encrypted tokens, or use existing gh / GitHub App authentication as fallback.',
+      fields: ['accounts', 'active', 'app_id', 'installation_id', 'private_key'],
     },
     {
       id: 'deployments',

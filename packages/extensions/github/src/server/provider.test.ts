@@ -53,6 +53,17 @@ describe('GitHub SCM provider', () => {
     expect(run).toHaveBeenCalledWith('gh', ['api', 'user'])
   })
 
+  it('routes repository calls through the assigned token without mutating the process environment', async () => {
+    const original = process.env.GH_TOKEN
+    const run = vi.fn(async () => '[]')
+    const provider = createGitHubScmProvider(run, (repository) => (repository === 'acme/widget' ? 'account-token' : undefined))
+    await provider.listPullRequests('acme/widget', 'open', 10, ['number'])
+    expect(run).toHaveBeenCalledWith('gh', expect.any(Array), {
+      env: expect.objectContaining({ GH_TOKEN: 'account-token' }),
+    })
+    expect(process.env.GH_TOKEN).toBe(original)
+  })
+
   it('keeps pull-request mutations behind the SCM contract', async () => {
     const run = vi.fn(async (_command: string, args: string[]) => (args.includes('--input') ? JSON.stringify({ id: 7 }) : ''))
     const provider = createGitHubScmProvider(run)

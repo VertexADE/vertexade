@@ -8,9 +8,14 @@ import { registerGitHubReviewActions } from './review-actions.ts'
 import { registerGitHubSettingsRoutes } from './settings-routes.ts'
 import { normalizeGitHubDeploymentTargets } from './deployment-configuration.ts'
 import type { GitHubContext } from './types.ts'
+import { accountForRepository, normalizeGitHubTokenAccounts } from './account-configuration.ts'
 
 export function createExtension(context: GitHubContext): DashboardExtension {
-  const scm = createGitHubScmProvider(context.run)
+  const accounts = () => {
+    const stored = context.host.settings.read<{ accounts?: unknown }>('config', {})
+    return normalizeGitHubTokenAccounts(stored.accounts ?? [], [])
+  }
+  const scm = createGitHubScmProvider(context.run, (repository) => accountForRepository(accounts(), repository)?.token)
   const authentication = createGitHubAuthenticationLifecycle(context, scm)
   const refreshTrigger = createGitHubDeploymentsRefreshTrigger()
 
@@ -22,10 +27,16 @@ export function createExtension(context: GitHubContext): DashboardExtension {
     register({ providers, routes, triggers, actions }) {
       providers.scm.register(scm)
       providers.deployment.register(
-        createGitHubDeploymentProvider(context.run, context.host.cache, refreshTrigger, () => {
-          const stored = context.host.settings.read<{ deploymentTargets?: unknown }>('config', {})
-          return normalizeGitHubDeploymentTargets(stored.deploymentTargets)
-        }),
+        createGitHubDeploymentProvider(
+          context.run,
+          context.host.cache,
+          refreshTrigger,
+          () => {
+            const stored = context.host.settings.read<{ deploymentTargets?: unknown }>('config', {})
+            return normalizeGitHubDeploymentTargets(stored.deploymentTargets)
+          },
+          (repository) => accountForRepository(accounts(), repository)?.token,
+        ),
       )
       triggers.register(refreshTrigger.capability)
       registerGitHubReviewActions(actions, scm, context)

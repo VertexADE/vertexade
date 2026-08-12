@@ -15,6 +15,7 @@ export function createAgentThreadSpawner(input: {
   decorate(jobId: number, options: Record<string, unknown>): Record<string, unknown>
   resolveCommand(command: string): string
   tools(): Record<string, string>
+  environment?(cwd: string, jobId?: number): Record<string, string>
 }) {
   return (options: Record<string, unknown>, spawnOptions: SpawnOptions, explicitAgent?: Agent): SpawnedAgentThread => {
     const context = input.launchContext.getStore() || {}
@@ -23,10 +24,12 @@ export function createAgentThreadSpawner(input: {
     const decorated = localized.jobId ? input.decorate(Number(localized.jobId), localized) : localized
     const { jobId: _jobId, ...agentOptions } = decorated
     const launch = runtimeAgent.launch(agentOptions)
+    const cwd = String(spawnOptions.cwd || '')
     const child = spawn(input.resolveCommand(launch.command), launch.args, {
       ...spawnOptions,
       env: agentProcessEnvironment(process.env, runtimeAgent.environment?.() || {}, launch.env, {
         VERTEXADE_TOOL_PATHS: JSON.stringify(input.tools()),
+        ...input.environment?.(cwd, localized.jobId ? Number(localized.jobId) : undefined),
       }),
     }) as SpawnedAgentThread
     child.runtimeAgent = runtimeAgent

@@ -1,6 +1,7 @@
 import type { ScmProvider, ScmPullRequestRef } from '@vertexade/platform-contracts'
 
-type Run = (command: string, args: string[], options?: { input?: string }) => Promise<string>
+type Run = (command: string, args: string[], options?: { input?: string; env?: Record<string, string | undefined> }) => Promise<string>
+type TokenForRepository = (repository: string) => string | undefined
 
 function refArgs(ref: ScmPullRequestRef) {
   return [String(ref.number), '--repo', ref.repository]
@@ -14,7 +15,12 @@ function parsePages(output: string) {
     .flatMap((page) => JSON.parse(page))
 }
 
-export function createGitHubScmProvider(run: Run): ScmProvider {
+export function createGitHubScmProvider(run: Run, tokenForRepository: TokenForRepository = () => undefined): ScmProvider {
+  const routedRun = (repository: string, args: string[], options: { input?: string } = {}) => {
+    const token = tokenForRepository(repository)
+    if (token) return run('gh', args, { ...options, env: { ...process.env, GH_TOKEN: token } })
+    return options.input === undefined ? run('gh', args) : run('gh', args, options)
+  }
   return {
     id: 'github',
     name: 'GitHub',
@@ -54,17 +60,38 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
     },
     async listPullRequests(repository, state, limit, fields) {
       return JSON.parse(
-        await run('gh', ['pr', 'list', '--repo', repository, '--state', state, '--limit', String(limit), '--json', fields.join(',')]),
+        await routedRun(repository, [
+          'pr',
+          'list',
+          '--repo',
+          repository,
+          '--state',
+          state,
+          '--limit',
+          String(limit),
+          '--json',
+          fields.join(','),
+        ]),
       )
     },
     async listOpenPullRequests(repository) {
       return parsePages(
-        await run('gh', ['api', '--method', 'GET', '--paginate', `repos/${repository}/pulls`, '-f', 'state=open', '-f', 'per_page=100']),
+        await routedRun(repository, [
+          'api',
+          '--method',
+          'GET',
+          '--paginate',
+          `repos/${repository}/pulls`,
+          '-f',
+          'state=open',
+          '-f',
+          'per_page=100',
+        ]),
       )
     },
     async pullRequestStatus(repository) {
       return JSON.parse(
-        await run('gh', [
+        await routedRun(repository, [
           'pr',
           'list',
           '--repo',
@@ -79,16 +106,16 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
       )
     },
     async pullRequestDetails(ref, fields) {
-      return JSON.parse(await run('gh', ['pr', 'view', ...refArgs(ref), '--json', fields.join(',')]))
+      return JSON.parse(await routedRun(ref.repository, ['pr', 'view', ...refArgs(ref), '--json', fields.join(',')]))
     },
     pullRequestDiff(ref) {
-      return run('gh', ['pr', 'diff', ...refArgs(ref)])
+      return routedRun(ref.repository, ['pr', 'diff', ...refArgs(ref)])
     },
     async reviewThreads(ref) {
       const [owner, name] = ref.repository.split('/')
       const query = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved isOutdated viewerCanReply viewerCanResolve viewerCanUnresolve path line originalLine startLine originalStartLine diffSide comments(first:100){nodes{id databaseId body author{login}createdAt updatedAt url path line originalLine diffHunk}}}}}}}`
       return JSON.parse(
-        await run('gh', [
+        await routedRun(ref.repository, [
           'api',
           'graphql',
           '-f',
@@ -103,27 +130,41 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
       )
     },
     async listLabels(repository) {
-      return parsePages(await run('gh', ['api', '--method', 'GET', '--paginate', `repos/${repository}/labels`, '-f', 'per_page=100']))
+      return parsePages(
+        await routedRun(repository, ['api', '--method', 'GET', '--paginate', `repos/${repository}/labels`, '-f', 'per_page=100']),
+      )
     },
     async listCollaborators(repository) {
       return parsePages(
-        await run('gh', ['api', '--method', 'GET', '--paginate', `repos/${repository}/collaborators`, '-f', 'per_page=100']),
+        await routedRun(repository, ['api', '--method', 'GET', '--paginate', `repos/${repository}/collaborators`, '-f', 'per_page=100']),
       )
     },
     async addLabel(ref, label) {
       return JSON.parse(
-        await run('gh', ['api', '--method', 'POST', `repos/${ref.repository}/issues/${ref.number}/labels`, '-f', `labels[]=${label}`]),
+        await routedRun(ref.repository, [
+          'api',
+          '--method',
+          'POST',
+          `repos/${ref.repository}/issues/${ref.number}/labels`,
+          '-f',
+          `labels[]=${label}`,
+        ]),
       )
     },
     async removeLabel(ref, label) {
       return JSON.parse(
-        await run('gh', ['api', '--method', 'DELETE', `repos/${ref.repository}/issues/${ref.number}/labels/${encodeURIComponent(label)}`]),
+        await routedRun(ref.repository, [
+          'api',
+          '--method',
+          'DELETE',
+          `repos/${ref.repository}/issues/${ref.number}/labels/${encodeURIComponent(label)}`,
+        ]),
       )
     },
     async requestReviewers(ref, reviewers) {
       const args = ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/requested_reviewers`]
       for (const login of reviewers) args.push('-f', `reviewers[]=${login}`)
-      return JSON.parse(await run('gh', args))
+      return JSON.parse(await routedRun(ref.repository, args))
     },
     async createPullRequest(input) {
       const args = [
@@ -141,23 +182,23 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
         input.body,
       ]
       if (input.draft) args.push('--draft')
-      const url = (await run('gh', args)).trim()
+      const url = (await routedRun(input.repository, args)).trim()
       return { url, draft: input.draft, head: input.head, base: input.base }
     },
     async approve(ref, comment) {
       const args = ['pr', 'review', ...refArgs(ref), '--approve']
       if (comment) args.push('--body', comment)
-      await run('gh', args)
+      await routedRun(ref.repository, args)
     },
     async requestChanges(ref, comment) {
-      await run('gh', ['pr', 'review', ...refArgs(ref), '--request-changes', '--body', comment])
+      await routedRun(ref.repository, ['pr', 'review', ...refArgs(ref), '--request-changes', '--body', comment])
     },
     async enableAutoMerge(ref) {
-      await run('gh', ['pr', 'merge', ...refArgs(ref), '--auto', '--squash'])
+      await routedRun(ref.repository, ['pr', 'merge', ...refArgs(ref), '--auto', '--squash'])
     },
     async updateBranch(ref, expectedHeadSha) {
       return JSON.parse(
-        await run('gh', [
+        await routedRun(ref.repository, [
           'api',
           '--method',
           'PUT',
@@ -168,36 +209,44 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
       )
     },
     async markReady(ref) {
-      await run('gh', ['pr', 'ready', ...refArgs(ref)])
+      await routedRun(ref.repository, ['pr', 'ready', ...refArgs(ref)])
     },
     async postReviewComment(ref, body) {
-      await run('gh', ['pr', 'review', ...refArgs(ref), '--comment', '--body', body])
+      await routedRun(ref.repository, ['pr', 'review', ...refArgs(ref), '--comment', '--body', body])
     },
     async postReviewSuggestions(ref, body, comments) {
       return JSON.parse(
-        await run('gh', ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/reviews`, '--input', '-'], {
-          input: JSON.stringify({ event: 'COMMENT', body, comments }),
-        }),
+        await routedRun(
+          ref.repository,
+          ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/reviews`, '--input', '-'],
+          {
+            input: JSON.stringify({ event: 'COMMENT', body, comments }),
+          },
+        ),
       )
     },
     async postInlineComment(ref, comment) {
       return JSON.parse(
-        await run('gh', ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/comments`, '--input', '-'], {
-          input: JSON.stringify({
-            body: comment.body,
-            commit_id: comment.commitId,
-            path: comment.path,
-            line: comment.line,
-            side: comment.side,
-            ...(comment.startLine ? { start_line: comment.startLine, start_side: comment.startSide || comment.side } : {}),
-          }),
-        }),
+        await routedRun(
+          ref.repository,
+          ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/comments`, '--input', '-'],
+          {
+            input: JSON.stringify({
+              body: comment.body,
+              commit_id: comment.commitId,
+              path: comment.path,
+              line: comment.line,
+              side: comment.side,
+              ...(comment.startLine ? { start_line: comment.startLine, start_side: comment.startSide || comment.side } : {}),
+            }),
+          },
+        ),
       )
     },
     async replyToReviewComment(ref, commentId, body) {
       return JSON.parse(
-        await run(
-          'gh',
+        await routedRun(
+          ref.repository,
           ['api', '--method', 'POST', `repos/${ref.repository}/pulls/${ref.number}/comments/${commentId}/replies`, '--input', '-'],
           {
             input: JSON.stringify({ body }),
@@ -208,7 +257,7 @@ export function createGitHubScmProvider(run: Run): ScmProvider {
     async setReviewThreadResolved(_ref, threadId, resolved) {
       const action = resolved ? 'resolveReviewThread' : 'unresolveReviewThread'
       const query = `mutation($threadId:ID!){${action}(input:{threadId:$threadId}){thread{id isResolved}}}`
-      return JSON.parse(await run('gh', ['api', 'graphql', '-f', `query=${query}`, '-f', `threadId=${threadId}`]))
+      return JSON.parse(await routedRun(_ref.repository, ['api', 'graphql', '-f', `query=${query}`, '-f', `threadId=${threadId}`]))
     },
   }
 }

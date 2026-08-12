@@ -8,10 +8,17 @@ import {
   publicDeploymentTargetConfiguration,
   type GitHubDeploymentTargetConfiguration,
 } from './deployment-configuration.ts'
+import {
+  normalizeGitHubTokenAccounts,
+  publicGitHubTokenAccounts,
+  validateGitHubSshKeyPaths,
+  type GitHubTokenAccount,
+} from './account-configuration.ts'
 
 type GitHubAppConfig = GitHubAppCredentials & {
   active: boolean
   deploymentTargets: GitHubDeploymentTargetConfiguration[]
+  accounts: GitHubTokenAccount[]
 }
 
 const emptyCredentials: GitHubAppCredentials & { active: boolean } = {
@@ -51,6 +58,11 @@ async function saveGitHubSettings(request: Request, authentication: GitHubAuthen
   const value = settingsInput(input, readGitHubConfig(context, authentication.config()))
   const invalid = invalidActiveCredentials(value)
   if (invalid) return Response.json({ error: invalid }, { status: 400 })
+  try {
+    await validateGitHubSshKeyPaths(value.accounts)
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : 'Invalid SSH key path' }, { status: 400 })
+  }
   const exchange = await exchangeInstallationToken(value, context.fetch)
   if (exchange.error) return Response.json({ error: exchange.error }, { status: 400 })
 
@@ -64,7 +76,7 @@ async function saveGitHubSettings(request: Request, authentication: GitHubAuthen
 
 function deleteGitHubSettings(authentication: GitHubAuthenticationLifecycle, context: GitHubContext) {
   const current = readGitHubConfig(context, authentication.config())
-  const value: GitHubAppConfig = { ...emptyCredentials, deploymentTargets: current.deploymentTargets }
+  const value: GitHubAppConfig = { ...emptyCredentials, deploymentTargets: current.deploymentTargets, accounts: current.accounts }
   context.host.settings.write('config', value)
   context.host.cache?.invalidate()
   authentication.restore()
@@ -78,6 +90,7 @@ function settingsInput(input: Record<string, unknown>, current: GitHubAppConfig)
     appId: String(input.app_id || '').trim(),
     installationId: String(input.installation_id || '').trim(),
     privateKey: String(input.private_key || '').trim() || current.privateKey,
+    accounts: normalizeGitHubTokenAccounts(input.accounts ?? current.accounts, current.accounts),
     deploymentTargets: normalizeGitHubDeploymentTargets(input.deployment_targets ?? current.deploymentTargets),
   }
 }
@@ -89,6 +102,7 @@ function readGitHubConfig(context: GitHubContext, credentials: GitHubAppCredenti
     appId: String(stored.appId || ''),
     installationId: String(stored.installationId || ''),
     privateKey: String(stored.privateKey || ''),
+    accounts: normalizeGitHubTokenAccounts(stored.accounts ?? [], []),
     deploymentTargets: normalizeGitHubDeploymentTargets(stored.deploymentTargets),
   }
 }
@@ -130,6 +144,7 @@ function settingsResponse(value: GitHubAppConfig, authentication: GitHubAuthenti
     app_id: value.appId || '',
     installation_id: value.installationId || '',
     has_private_key: Boolean(value.privateKey),
+    accounts: publicGitHubTokenAccounts(value.accounts),
     deployment_targets: value.deploymentTargets.map(publicDeploymentTargetConfiguration),
     ...authentication.state(),
   }

@@ -1,7 +1,7 @@
 import type { GitHubExtensionHostServices } from './host-contract.ts'
 
 export type GitHubContext = {
-  run: (command: string, args: string[], options?: { input?: string }) => Promise<string>
+  run: (command: string, args: string[], options?: { input?: string; env?: Record<string, string | undefined> }) => Promise<string>
   host: GitHubExtensionHostServices
   fetch?: typeof globalThis.fetch
   authenticationRefreshMs?: number

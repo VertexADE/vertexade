@@ -80,6 +80,7 @@ import { createExtensionMigrationStore } from './server/dashboard/extension-migr
 import { EncryptedSettingsStore, JsonSettingsStore } from './server/settings/settings-store.ts'
 import { MobilePairingService } from './server/settings/mobile-pairing.ts'
 import { RepositoryEnvironmentProfileService } from './server/repository-environment-profiles.ts'
+import { createGitHubRepositoryCredentialResolver, repositoryCredentialEnvironment } from './server/github-repository-credentials.ts'
 import { SystemConfiguration } from './server/settings/system-configuration.ts'
 import { createPlatformManagementRoutes } from './server/platform/management-routes.ts'
 import { normalizeGeneratedWorkItemTitle, workItemTitlePrompt } from './server/platform/work-item-title.ts'
@@ -169,6 +170,7 @@ import {
   repositoryLabels,
   repositoryReviewers,
   ensureClone,
+  configureRepositoryCredentialResolver,
   bootstrapAgentRepository,
   repositoryAgentBootstrapped,
   failReviewSummary,
@@ -244,6 +246,8 @@ const drainingJobFollowUps = new Set<number>()
 const jobLogStatement = createJobLogQuery(db)
 const jobLifecycle = new JobLifecycle(db)
 const encryptedSettings = new EncryptedSettingsStore(db, SETTINGS_KEY)
+const githubCredentialsForRepository = createGitHubRepositoryCredentialResolver(encryptedSettings)
+configureRepositoryCredentialResolver(githubCredentialsForRepository)
 const mobilePairing = new MobilePairingService(encryptedSettings)
 const appSettings = new JsonSettingsStore(db)
 const worktreePreviewSettings = () => readWorktreePreviewSettings(appSettings)
@@ -640,6 +644,7 @@ const spawnAgentThread = createAgentThreadSpawner({
   decorate: (jobId, options) => subagentHarness.decorateLaunch(jobId, options),
   resolveCommand: (command) => systemConfiguration.tool(command),
   tools: () => systemConfiguration.read().tools,
+  environment: (cwd, jobId) => repositoryCredentialEnvironment(db, githubCredentialsForRepository, cwd, jobId),
 })
 const runReadOnlyContentGeneration = createReadOnlyContentGenerator({
   agents,

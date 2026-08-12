@@ -15,7 +15,11 @@ import {
   type GitHubDeploymentTargetConfiguration,
 } from './deployment-configuration.ts'
 
-type RunCommand = (command: string, args: string[], options?: { input?: string }) => Promise<string>
+type RunCommand = (
+  command: string,
+  args: string[],
+  options?: { input?: string; env?: Record<string, string | undefined> },
+) => Promise<string>
 type WorkflowRun = {
   id: number
   head_sha: string
@@ -268,6 +272,7 @@ export function createGitHubDeploymentProvider(
   cache?: ExtensionCacheServices,
   refreshTrigger?: CacheRefreshTrigger,
   configuration: DeploymentConfiguration = () => normalizeGitHubDeploymentTargets(undefined),
+  tokenForRepository: (repository: string) => string | undefined = () => undefined,
 ): DeploymentProvider {
   let fallbackCache: { key: string; at: number; value: DeploymentSnapshot | null } = { key: '', at: 0, value: null }
   return {
@@ -277,7 +282,18 @@ export function createGitHubDeploymentProvider(
       const targets = configuration().filter((target) => target.enabled)
       const identity = overviewIdentity(targets)
       const loader = async () => {
-        const services = (await Promise.all(targets.map((target) => loadTarget(run, target)))).flat()
+        const services = (
+          await Promise.all(
+            targets.map((target) => {
+              const token = tokenForRepository(target.repository)
+              const routedRun: RunCommand = (command, args, options = {}) => {
+                if (token) return run(command, args, { ...options, env: { ...process.env, GH_TOKEN: token } })
+                return options.input === undefined ? run(command, args) : run(command, args, options)
+              }
+              return loadTarget(routedRun, target)
+            }),
+          )
+        ).flat()
         const targetDetails = targets.map(publicTarget)
         const value: DeploymentSnapshot = {
           repository: targets.length === 1 ? targets[0].repository : `${targets.length} configured repositories`,
@@ -317,12 +333,15 @@ export function createGitHubDeploymentProvider(
       const targets = configuration().filter((target) => target.enabled)
       const target = targetId ? targets.find((candidate) => candidate.id === targetId) : targets.length === 1 ? targets[0] : undefined
       if (!target) throw new Error(targetId ? `Deployment target ${targetId} is not available` : 'Deployment target is required')
-      await run('gh', [
+      const args = [
         'api',
         '--method',
         'POST',
         `repos/${target.repository}/actions/runs/${runId}/${mode === 'failed' ? 'rerun-failed-jobs' : 'rerun'}`,
-      ])
+      ]
+      const token = tokenForRepository(target.repository)
+      if (token) await run('gh', args, { env: { ...process.env, GH_TOKEN: token } })
+      else await run('gh', args)
       cache?.invalidate({ tags: ['deployments'] })
       fallbackCache = { key: '', at: 0, value: null }
     },
