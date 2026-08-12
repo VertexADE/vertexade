@@ -46,8 +46,13 @@ async function availablePort() {
 }
 
 function startService(entry: string, environment: NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, [entry], {
-    env: { ...process.env, ...environment, ELECTRON_RUN_AS_NODE: '1' },
+  const child = spawn(process.execPath, [resourcePath('service-runner.mjs'), entry], {
+    env: {
+      ...process.env,
+      ...environment,
+      ELECTRON_RUN_AS_NODE: '1',
+      VERTEXADE_DESKTOP_PARENT_PID: String(process.pid),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   services.add(child)

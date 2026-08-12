@@ -84,6 +84,10 @@
         "to": "subagent-mcp.mjs"
       },
       {
+        "from": "dist/service-runner.mjs",
+        "to": "service-runner.mjs"
+      },
+      {
         "from": "dist/runtime",
         "to": "runtime"
       }
