@@ -16,17 +16,16 @@ function setup() {
 }
 
 describe('Work HTTP API', () => {
-  it('launches independent repository threads concurrently and reports partial outcomes', async () => {
+  it('launches one Work item agent with every selected repository', async () => {
     const { db, work } = setup()
     const item = work.create({
       title: 'Ship API and web',
       description: 'Implement the shared outcome',
       sequentialExecution: true,
     })!
-    let active = 0
-    let maximumActive = 0
     const calls: Array<{
       repository: string
+      repositories: string[]
       workItemId: number
       workItemKey: string
       workspaceMode: string
@@ -58,10 +57,9 @@ describe('Work HTTP API', () => {
       defaultAgentId: 'codex',
       launchReview: async () => ({}),
       launchRepositoryTask: async (repository, _title, prompt, _createPr, _branchType, _base, options) => {
-        active += 1
-        maximumActive = Math.max(maximumActive, active)
         calls.push({
           repository: repository.full_name,
+          repositories: options.repositories.map((value: any) => value.full_name),
           workItemId: Number(options.workItemId),
           prompt,
           approvalGated: Boolean(options.approvalGated),
@@ -71,19 +69,14 @@ describe('Work HTTP API', () => {
           model: options.model,
           reasoningEffort: options.reasoningEffort,
         })
-        await new Promise((resolve) => {
-          setTimeout(resolve, 5)
-        })
-        active -= 1
-        if (repository.id === 2) throw new Error('clone unavailable')
         return { id: 101, repo_id: repository.id }
       },
     } as any)
     expect(handled?.status).toBe(202)
-    expect(maximumActive).toBe(2)
     expect(
-      calls.map(({ repository, workItemId, workItemKey, workspaceMode }) => ({
+      calls.map(({ repository, repositories, workItemId, workItemKey, workspaceMode }) => ({
         repository,
+        repositories,
         workItemId,
         workItemKey,
         workspaceMode,
@@ -91,12 +84,7 @@ describe('Work HTTP API', () => {
     ).toEqual([
       {
         repository: 'example/api',
-        workItemId: item.id,
-        workItemKey: item.key,
-        workspaceMode: 'combined',
-      },
-      {
-        repository: 'example/web',
+        repositories: ['example/api', 'example/web'],
         workItemId: item.id,
         workItemKey: item.key,
         workspaceMode: 'combined',
@@ -116,17 +104,17 @@ describe('Work HTTP API', () => {
     expect(response).toMatchObject({
       status: 202,
       value: {
-        status: 'partial',
+        status: 'started',
         execution_mode: 'sequential',
         threads: [{ id: 101, full_name: 'example/api' }],
         workspace_mode: 'combined',
-        errors: [{ repository: 'example/web', error: 'clone unavailable' }],
+        errors: [],
       },
     })
-    expect(work.get(item.id)?.attention).toContain('example/web: clone unavailable')
+    expect(work.get(item.id)?.attention).toBeNull()
     expect(work.get(item.id)?.repository_names).toEqual(['example/api', 'example/web'])
     expect(work.get(item.id)?.events[0]).toMatchObject({
-      event_type: 'thread_batch_partial',
+      event_type: 'thread_batch_started',
     })
     expect(work.get(item.id)?.events.find((event: any) => event.event_type === 'sequential_execution_requested')).toMatchObject({
       payload: { repositoryCount: 2, approvalRequired: true },

@@ -161,67 +161,75 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
     source: aiOptions.workSource,
   })
   const workspaceMode = workItemLaunchWorkspaceMode(launchOptions.workspaceMode)
-  let failedWorktree: string | null = null
-  let failedBranch: string | null = null
+  const selectedRepositories =
+    Array.isArray(launchOptions.repositories) && launchOptions.repositories.length ? launchOptions.repositories : [repo]
+  const failedAllocations: Array<{ repositoryPath: string; worktree: string; branchName: string | null }> = []
   try {
-    await ensureClone(repo)
-    const origin = (await run('git', ['-C', repo.local_path, 'remote', 'get-url', 'origin'])).trim()
-    if (parseRepo(origin).toLowerCase() !== repo.full_name.toLowerCase()) {
-      throw new Error(`Repository origin mismatch: expected ${repo.full_name}, found ${origin}`)
-    }
-    let baseRef = base?.revision
-    if (!baseRef) {
-      try {
-        baseRef = (await run('git', ['-C', repo.local_path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim()
-      } catch {
-        for (const candidate of ['origin/main', 'origin/master']) {
-          try {
-            await run('git', ['-C', repo.local_path, 'rev-parse', '--verify', candidate])
-            baseRef = candidate
-            break
-          } catch {}
+    if (!readOnly && !allowedBranchTypes.has(branchType)) throw new Error('Choose a valid branch type')
+    const taskSlug =
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40) || 'task'
+    const workspaces: any[] = []
+    for (const repository of selectedRepositories) {
+      await ensureClone(repository)
+      const origin = (await run('git', ['-C', repository.local_path, 'remote', 'get-url', 'origin'])).trim()
+      if (parseRepo(origin).toLowerCase() !== repository.full_name.toLowerCase()) {
+        throw new Error(`Repository origin mismatch: expected ${repository.full_name}, found ${origin}`)
+      }
+      let baseRef = repository.id === repo.id ? base?.revision : null
+      if (!baseRef) {
+        try {
+          baseRef = (await run('git', ['-C', repository.local_path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim()
+        } catch {
+          for (const candidate of ['origin/main', 'origin/master']) {
+            try {
+              await run('git', ['-C', repository.local_path, 'rev-parse', '--verify', candidate])
+              baseRef = candidate
+              break
+            } catch {}
+          }
         }
       }
-    }
-    if (!baseRef) throw new Error('Could not determine the repository default branch')
-    let headSha = (await run('git', ['-C', repo.local_path, 'rev-parse', baseRef])).trim()
-    let branchName: string | null = null
-    if (!readOnly) {
-      const taskSlug =
-        title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 40) || 'task'
-      if (!allowedBranchTypes.has(branchType)) throw new Error('Choose a valid branch type')
-      branchName = `${branchType}/${taskSlug}-${randomUUID().slice(0, 8)}`
-    }
-    const allocation = await createAgentWorktree(repo, runtimeAgent, baseRef, branchName, {
-      mode: workspaceMode,
-      workItemKey: launchOptions.workItemKey || workItem.key,
-    })
-    const { worktree, baseGitDir, sessionCwd } = allocation
-    if (!allocation.created) {
-      const reused = reusedCombinedWorktree(db, allocation, {
-        workItemId: workItem.id,
-        repositoryId: repo.id,
-        repositoryName: repo.full_name,
-        fallbackHeadSha: headSha,
+      if (!baseRef) throw new Error(`Could not determine the default branch for ${repository.full_name}`)
+      let headSha = (await run('git', ['-C', repository.local_path, 'rev-parse', baseRef])).trim()
+      let branchName: string | null = readOnly ? null : `${branchType}/${taskSlug}-${randomUUID().slice(0, 8)}`
+      const allocation = await createAgentWorktree(repository, runtimeAgent, baseRef, branchName, {
+        mode: workspaceMode,
+        workItemKey: launchOptions.workItemKey || workItem.key,
       })
-      headSha = reused.headSha
-      branchName = reused.branchName
+      if (allocation.created) {
+        failedAllocations.push({ repositoryPath: repository.local_path, worktree: allocation.worktree, branchName })
+      } else {
+        const reused = reusedCombinedWorktree(db, allocation, {
+          workItemId: workItem.id,
+          repositoryId: repository.id,
+          repositoryName: repository.full_name,
+          fallbackHeadSha: headSha,
+        })
+        headSha = reused.headSha
+        branchName = reused.branchName
+      }
+      if (!readOnly && !branchName) {
+        throw new Error(`${repository.full_name} does not have an implementation branch in its combined worktree`)
+      }
+      if (branchName) linkImplementationBranch(workItem.id, repository, branchName)
+      workspaces.push({
+        repository,
+        ...allocation,
+        headSha,
+        branchName,
+        baseBranch: repository.id === repo.id && base?.branch ? base.branch : baseRef.replace(/^origin\//, ''),
+      })
     }
-    if (!readOnly && !branchName) {
-      throw new Error(`${repo.full_name} does not have an implementation branch in its combined worktree`)
-    }
-    if (branchName) linkImplementationBranch(workItem.id, repo, branchName)
-    failedWorktree = allocation.created ? worktree : null
-    failedBranch = allocation.created ? branchName : null
-    const baseBranch = base?.branch || baseRef.replace(/^origin\//, '')
+    const primaryWorkspace = workspaces[0]
+    const { worktree, baseGitDir, sessionCwd, headSha, branchName, baseBranch } = primaryWorkspace
     const publishInstruction = readOnly
       ? '\nThis is a read-only assessment. Do not modify files, create commits or branches, publish a pull request, or mutate external systems.'
       : createPr
-        ? `\nWhen the requested work is complete and verified, commit it with a Conventional Commit, push branch ${branchName}, and create a draft pull request targeting ${baseBranch}. Do not stop before the draft PR has been created unless a concrete blocker requires user input.`
+        ? `\nWhen the requested work is complete and verified, commit each changed repository with a Conventional Commit, push its assigned branch, and create a draft pull request targeting its listed base branch. Do not stop before all required draft PRs have been created unless a concrete blocker requires user input.`
         : '\nDo not create or publish a pull request unless the user asks in a follow-up.'
     const sourceContext = base?.pr ? `\nStacked on pull request: #${base.pr.number} — ${base.pr.title}\nSource PR URL: ${base.pr.url}` : ''
     const continuationInstruction = readOnly
@@ -229,10 +237,15 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
       : launchOptions.approvalGated
         ? 'This run is approval-gated. Complete only the requested read-only decomposition in the initial turn, then ask the concrete approval question and wait. The approval requirement takes precedence over the generic autonomous-completion behavior. After explicit approval in a later turn, continue autonomously through the approved implementation and verification.'
         : 'Continue autonomously until the requested work is fully complete and verified. Progress messages, acknowledgements, and plans are not completion. End only with the completed outcome or a concrete blocking question that requires user input.'
-    const workspaceDescription = `Work item workspace: ${sessionCwd}\nShared repository worktree: ${worktree}\nAssigned repository directory: ${relativeWorktreePath(sessionCwd, worktree)}`
+    const workspaceDescription = `Work item workspace: ${sessionCwd}\nRepository worktrees:\n${workspaces
+      .map(
+        (entry) =>
+          `- ${entry.repository.full_name}: ${relativeWorktreePath(sessionCwd, entry.worktree)} (branch ${entry.branchName || 'read-only'}, base ${entry.baseBranch})`,
+      )
+      .join('\n')}`
     const workspaceInstruction =
-      'Start from the Work item workspace. This Work item keeps exactly one reusable worktree per repository. Use sibling repository worktrees for cross-repository context, but make changes only in the assigned repository worktree.'
-    const context = `\n\nTask: ${title}\nRepository: ${repo.full_name}\nOriginal checkout: ${repo.local_path}\n${workspaceDescription}\nBase branch: ${baseBranch}${sourceContext}\n${workspaceInstruction} The assigned worktree is linked to the original checkout through shared Git metadata.${publishInstruction}\n\n${continuationInstruction}`
+      'Start from the Work item workspace. One agent owns this complete Work item and may inspect and edit every listed repository worktree. Keep repository-specific commits and pull requests separate.'
+    const context = `\n\nTask: ${title}\nRepositories: ${selectedRepositories.map((repository) => repository.full_name).join(', ')}\n${workspaceDescription}${sourceContext}\n${workspaceInstruction} Each worktree is linked to its original checkout through shared Git metadata.${publishInstruction}\n\n${continuationInstruction}`
     const taskPrompt = launchOptions.workSource
       ? untrustedExternalTask(prompt, `${launchOptions.workSource.provider || 'external'} ${launchOptions.workSource.kind || 'work item'}`)
       : `${agentSafetyBoundary({ fullAccess: launchOptions.permissionMode === 'full' })}\n\n${prompt.trim()}`
@@ -269,6 +282,7 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
     const jobId = Number(result.lastInsertRowid)
     if (jobKind === 'work_review') work.attachUpfrontReviewJob(workItem.id, jobId, repo.full_name)
     else work.attachJob(workItem.id, jobId, `Started implementation thread for ${repo.full_name}`)
+    const { repositories: _repositories, ...agentLaunchOptions } = launchOptions
     const started = startMonitoredJob({
       jobId,
       logPath,
@@ -278,17 +292,18 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
         cwd: sessionCwd,
         base: repo.local_path,
         prompt: finalPrompt,
-        ...launchOptions,
+        ...agentLaunchOptions,
         ephemeral,
         writableRoots: memoryLaunch.writableRoots,
         mcpServers: launch.mcpServers,
       },
     })
-    failedWorktree = null
-    failedBranch = null
+    failedAllocations.length = 0
     return started
   } catch (error) {
-    await cleanupFailedLaunch(repo.local_path, failedWorktree, failedBranch)
+    for (const allocation of failedAllocations.reverse()) {
+      await cleanupFailedLaunch(allocation.repositoryPath, allocation.worktree, allocation.branchName)
+    }
     work.launchFailed(workItem.id, `${repo.full_name}: ${error instanceof Error ? error.message : String(error)}`)
     throw error
   }

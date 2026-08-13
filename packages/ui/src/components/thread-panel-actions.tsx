@@ -27,6 +27,7 @@ import {
 
 type ThreadPanelActionsProps = {
   activityOnly: boolean
+  composerOwnsRunControls: boolean
   job: JobLog | null
   outcome: ThreadOutcome | null
   savingTasks: boolean
@@ -170,7 +171,9 @@ function MobileThreadActions({ props, availability }: { props: ThreadPanelAction
       hidden={props.activityOnly}
       className="flex shrink-0 items-center justify-end gap-2 border-t bg-background/95 p-3 backdrop-blur sm:hidden"
     >
-      <PrimaryRunAction {...props} />
+      {!props.composerOwnsRunControls || primaryActionKind(props.job, props.onSubmitReview) !== 'stop' ? (
+        <PrimaryRunAction {...props} />
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button size="sm" variant="outline">
@@ -293,9 +296,10 @@ function DesktopThreadActions({ props, availability }: { props: ThreadPanelActio
 }
 
 function DesktopPrimaryActions({ props, availability }: { props: ThreadPanelActionsProps; availability: ActionAvailability }) {
+  const primaryKind = primaryActionKind(props.job, props.onSubmitReview)
   return (
     <div className="contents sm:flex sm:flex-wrap sm:gap-2">
-      {primaryActionKind(props.job, props.onSubmitReview) !== 'close' ? <PrimaryRunAction {...props} /> : null}
+      {primaryKind !== 'close' && (!props.composerOwnsRunControls || primaryKind !== 'stop') ? <PrimaryRunAction {...props} /> : null}
       {availability.canSaveTasks ? (
         <Button variant="outline" size="sm" disabled={props.savingTasks} onClick={props.onSaveTasks}>
           <ListPlus />

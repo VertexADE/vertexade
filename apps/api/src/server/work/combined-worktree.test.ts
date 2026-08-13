@@ -6,10 +6,10 @@ import { reusedCombinedWorktree } from './combined-worktree.ts'
 function database(status = 'completed') {
   const db = new DatabaseSync(':memory:')
   db.exec(`CREATE TABLE jobs (
-    id INTEGER PRIMARY KEY, work_item_id INTEGER, repo_id INTEGER, worktree_path TEXT, status TEXT, head_sha TEXT
+    id INTEGER PRIMARY KEY, work_item_id INTEGER, repo_id INTEGER, worktree_path TEXT, session_cwd TEXT, status TEXT, head_sha TEXT
   )`)
-  db.prepare(`INSERT INTO jobs (id,work_item_id,repo_id,worktree_path,status,head_sha)
-    VALUES (1,42,7,'/managed/work-items/W-0042/acme--api',?,'original-base')`).run(status)
+  db.prepare(`INSERT INTO jobs (id,work_item_id,repo_id,worktree_path,session_cwd,status,head_sha)
+    VALUES (1,42,7,'/managed/work-items/W-0042/acme--api','/managed/work-items/W-0042',?,'original-base')`).run(status)
   return drizzleDashboardDatabase(db)
 }
 
@@ -40,6 +40,21 @@ describe('combined repository worktree reuse', () => {
         repositoryName: 'acme/api',
         fallbackHeadSha: 'remote-main',
       }),
+    ).toThrow('already has an active thread #1')
+  })
+
+  it('prevents another agent from editing a sibling repository in the same Work item folder', () => {
+    expect(() =>
+      reusedCombinedWorktree(
+        database('running'),
+        { ...allocation, worktree: '/managed/work-items/W-0042/acme--web' },
+        {
+          workItemId: 42,
+          repositoryId: 8,
+          repositoryName: 'acme/web',
+          fallbackHeadSha: 'remote-main',
+        },
+      ),
     ).toThrow('already has an active thread #1')
   })
 })

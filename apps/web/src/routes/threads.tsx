@@ -73,6 +73,7 @@ function ThreadsPage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [mobileLimit, setMobileLimit] = useState(12)
   const [forkSource, setForkSource] = useState<Job | null>(null)
+  const [focusedThreadId, setFocusedThreadId] = useState<number | null>(search.thread ?? null)
   const [hiddenThreadIds, setHiddenThreadIds] = useState<Set<number>>(() => new Set())
   const isMobile = useIsMobile()
   const repository = search.repo || 'all'
@@ -137,6 +138,7 @@ function ThreadsPage() {
   const stats = useMemo(() => threadPriorityStats(threads), [threads])
   const selectedJob =
     visible.find((thread) => thread.id === search.thread) ||
+    visible.find((thread) => thread.id === focusedThreadId) ||
     (statusFilter === 'completed' || sort !== 'priority' || Boolean(query)
       ? visible[0]
       : visible.find((thread) => threadPriority(thread) !== 'history')) ||
@@ -155,6 +157,7 @@ function ThreadsPage() {
       })
       return
     }
+    setFocusedThreadId(jobId)
     void navigate({
       search: (current) => ({ ...current, thread: jobId, view }),
       replace: true,
@@ -178,10 +181,14 @@ function ThreadsPage() {
     setMobileLimit(12)
   }, [agent, archiveView, query, repository, sort, statusFilter])
 
+  useEffect(() => {
+    if (search.thread) setFocusedThreadId(search.thread)
+  }, [search.thread])
+
   return (
     <>
       <GlobalHighlights rules={highlights} />
-      <WorkspacePage className="px-2 py-3 xl:px-5 xl:py-3">
+      <WorkspacePage className="max-w-none px-2 py-3 xl:px-3 xl:py-3">
         <WorkspaceHeader
           className="mb-3 flex-row items-start justify-between [&_[data-slot=page-actions]]:w-auto xl:mb-2 xl:items-center xl:[&_[data-slot=page-description]]:mt-0 xl:[&_[data-slot=page-eyebrow]]:hidden xl:[&_[data-slot=page-header-content]]:flex xl:[&_[data-slot=page-header-content]]:items-baseline xl:[&_[data-slot=page-header-content]]:gap-3 xl:[&_[data-slot=page-title]]:text-lg"
           eyebrow="Priority queue"
@@ -264,7 +271,7 @@ function ThreadsPage() {
         </div>
 
         <section
-          className="hidden h-[calc(100dvh-9.5rem)] min-h-[34rem] min-w-0 overflow-hidden rounded-lg border border-border/55 bg-card/62 xl:grid xl:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)]"
+          className="hidden h-[calc(100dvh-9.5rem)] min-h-[34rem] min-w-0 overflow-hidden xl:grid xl:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)]"
           data-audit-agents-layout="master-detail"
         >
           <aside className="flex min-h-0 min-w-0 flex-col border-r border-border/55 bg-muted/[.10]">

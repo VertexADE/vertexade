@@ -450,9 +450,8 @@ export function FollowUpComposer({
               <Badge variant="outline" className="border-blue-500/40 text-xs text-blue-400">
                 Live turn
               </Badge>
-            ) : (
-              <AgentOptionsPicker compact lockedAgentId={job.agent_id} value={options} onChange={onOptionsChange} />
-            )}
+            ) : null}
+            <AgentOptionsPicker compact lockedAgentId={job.agent_id} value={options} onChange={onOptionsChange} />
           </div>
         </div>
         {queued.length > 0 && (
@@ -493,7 +492,7 @@ export function FollowUpComposer({
               </span>
             </PromptInputTools>
             <div className="ml-auto flex items-center justify-end gap-1.5">
-              {compact && view.active && <StopAction stopping={stopping} onStop={onInterrupt} />}
+              {view.active && <StopAction stopping={stopping} onStop={onInterrupt} />}
               {hasPrompt && (
                 <>
                   {view.steering && (

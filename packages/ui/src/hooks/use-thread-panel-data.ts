@@ -49,7 +49,7 @@ export function useThreadPanelData(jobId: number | null, changesActive: boolean)
     setJob: (value: SetStateAction<JobLog | null>) => {
       queryClient.setQueryData<JobLog | null>(jobQueryKey, (current) => (typeof value === 'function' ? value(current ?? null) : value))
     },
-    loading: jobQuery.isFetching,
+    loading: jobQuery.isPending,
     suggestions,
     setSuggestions,
     diffPreview: diffQuery.data ?? null,

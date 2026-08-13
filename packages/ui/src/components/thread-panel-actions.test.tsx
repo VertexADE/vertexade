@@ -25,6 +25,7 @@ function render(current: JobLog, activityOnly = false) {
   return renderToStaticMarkup(
     <ThreadPanelActions
       activityOnly={activityOnly}
+      composerOwnsRunControls={false}
       job={current}
       outcome={null}
       savingTasks={false}

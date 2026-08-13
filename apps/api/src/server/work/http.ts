@@ -242,25 +242,6 @@ function synchronizeContextReferences(work: WorkService, workItem: any, input: a
   return work.get(workItem.id) || workItem
 }
 
-async function settledRepositoryLaunches(selectedRepositories: any[], launch: (repository: any) => Promise<unknown>) {
-  const launches = await Promise.allSettled(selectedRepositories.map(launch))
-  return {
-    threads: launches.flatMap((result, index) =>
-      result.status === 'fulfilled' ? [{ ...(result.value as any), full_name: selectedRepositories[index].full_name }] : [],
-    ),
-    errors: launches.flatMap((result, index) =>
-      result.status === 'rejected'
-        ? [
-            {
-              repository: selectedRepositories[index].full_name,
-              error: errorMessage(result.reason),
-            },
-          ]
-        : [],
-    ),
-  }
-}
-
 function batchLaunchStatus(jobCount: number, errorCount: number) {
   if (!errorCount) return 'started'
   return jobCount ? 'partial' : 'failed'
@@ -450,9 +431,12 @@ async function handleThread(request: Request, identifier: string, dependencies: 
     const workspaceMode = workItemLaunchWorkspaceMode(undefined)
     for (const repository of selectedRepositories) work.linkRepository(workItem.id, repository)
     if (sequential) work.recordSequentialLaunch(workItem.id, selectedRepositories.length)
-    const { threads, errors } = await settledRepositoryLaunches(selectedRepositories, (repository) =>
-      dependencies.launchRepositoryTask(
-        repository,
+    const primaryRepository = selectedRepositories[0]
+    let threads: any[] = []
+    let errors: Array<{ repository: string; error: string }> = []
+    try {
+      const thread = await dependencies.launchRepositoryTask(
+        primaryRepository,
         workItem.title,
         prompt,
         input.create_pr !== false,
@@ -467,9 +451,13 @@ async function handleThread(request: Request, identifier: string, dependencies: 
           approvalGated: sequential,
           workspaceMode,
           workItemKey: currentWorkItem.key,
+          repositories: selectedRepositories,
         },
-      ),
-    )
+      )
+      threads = [{ ...(thread as any), full_name: primaryRepository.full_name }]
+    } catch (error) {
+      errors = [{ repository: selectedRepositories.map((repository) => repository.full_name).join(', '), error: errorMessage(error) }]
+    }
     work.launchBatchFinished(workItem.id, threads.length, errors)
     return json(202, {
       status: batchLaunchStatus(threads.length, errors.length),

@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { dirname } from 'node:path'
+import { and, asc, desc, eq, inArray, or } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { jobs } from '../database/schema/tables.ts'
 
@@ -13,7 +14,7 @@ export function assertCombinedWorktreeIdle(db: DrizzleDashboardDatabase, worktre
   const active = db
     .select({ id: jobs.id })
     .from(jobs)
-    .where(and(eq(jobs.worktreePath, worktree), inArray(jobs.status, ['starting', 'running'])))
+    .where(and(or(eq(jobs.worktreePath, worktree), eq(jobs.sessionCwd, dirname(worktree))), inArray(jobs.status, ['starting', 'running'])))
     .orderBy(desc(jobs.id))
     .limit(1)
     .get()

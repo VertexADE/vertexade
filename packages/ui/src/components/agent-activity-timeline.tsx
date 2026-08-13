@@ -107,18 +107,6 @@ function eventTone(event: TimelineEvent) {
   return tones[event.status || ''] || tones[event.kind] || 'border-border bg-card text-muted-foreground'
 }
 
-function RawEvent({ event }: { event: TimelineEvent }) {
-  if (!event.data) return null
-  return (
-    <details className="mt-2 rounded-md border bg-background/70 text-xs text-muted-foreground">
-      <summary className="cursor-pointer px-2.5 py-1.5 font-medium">Technical details</summary>
-      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all border-t p-2.5 leading-relaxed">
-        {JSON.stringify(event.data, null, 2)}
-      </pre>
-    </details>
-  )
-}
-
 function EventMeta({ event }: { event: TimelineEvent }) {
   return (
     <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -186,7 +174,7 @@ function MessageEvent({
         >
           <Icon className="size-3.5" />
         </span>
-        <strong className="min-w-0 flex-1 truncate">{event.title}</strong>
+        {user ? <strong className="min-w-0 flex-1 truncate">{event.title}</strong> : <span className="min-w-0 flex-1" />}
         <EventMeta event={event} />
       </div>
       <ThreadMarkdownContent content={event.text} onOpenFile={onOpenFile} worktreePath={worktreePath} className="text-sm" />
@@ -363,47 +351,15 @@ function actionPayload(event: TimelineEvent) {
   }, {})
 }
 
-function ActionEvent({ event }: { event: TimelineEvent }) {
-  if (!event.text) return null
+function actionSummary(event: TimelineEvent) {
   const payload = actionPayload(event)
   const command = typeof payload.command === 'string' ? payload.command : undefined
-  const input = payload.input && typeof payload.input === 'object' ? payload.input : undefined
-  const resultLabel = command || input ? 'Result' : 'Details'
-  return (
-    <div className="mt-2 space-y-2">
-      {command && (
-        <pre className="overflow-x-auto rounded-lg border bg-muted/35 px-2.5 py-2 font-mono text-xs leading-relaxed text-foreground">
-          <code>{command}</code>
-        </pre>
-      )}
-      {!command && input && (
-        <details className="group rounded-lg border bg-muted/20">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-2 text-xs font-medium">
-            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
-            Input
-          </summary>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t px-2.5 py-2 font-mono text-xs leading-relaxed">
-            {JSON.stringify(input, null, 2)}
-          </pre>
-        </details>
-      )}
-      <details className="group rounded-lg border bg-background/60" open={event.status === 'failed'}>
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-muted-foreground">
-          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
-          {resultLabel}
-        </summary>
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t px-2.5 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
-          {event.text}
-        </pre>
-      </details>
-    </div>
-  )
+  return command || event.text.split('\n', 1)[0] || event.title
 }
 
 function EventText({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: (reference: FileReference) => void }) {
   if (!event.text) return null
   if (event.kind === 'changes') return <ChangesEvent event={event} onOpenFile={onOpenFile} />
-  if (event.kind === 'action') return <ActionEvent event={event} />
   return <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">{event.text}</p>
 }
 
@@ -417,6 +373,17 @@ function eventCardClass(event: TimelineEvent) {
 
 function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: (reference: FileReference) => void }) {
   const terminal = event.kind === 'completed'
+  if (event.kind === 'action') {
+    return (
+      <li className="relative flex min-w-0 items-center gap-2 py-0.5 text-[11px] text-muted-foreground">
+        <EventIcon event={event} />
+        <strong className="shrink-0 font-medium text-foreground/80">{event.title}</strong>
+        <span className="min-w-0 flex-1 truncate font-mono">{actionSummary(event)}</span>
+        <EventStatus event={event} />
+        <ActionDuration event={event} />
+      </li>
+    )
+  }
   return (
     <li className="relative grid grid-cols-[2rem_minmax(0,1fr)] gap-2.5 pb-3 last:pb-0 sm:grid-cols-[2.25rem_minmax(0,1fr)] sm:gap-3">
       <span className={cn('relative z-10 grid size-8 place-items-center rounded-full border border-border/55 sm:size-9', eventTone(event))}>
@@ -431,32 +398,8 @@ function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: 
           <EventMeta event={event} />
           <CopyAction event={event} />
         </div>
-        <RawEvent event={event} />
       </article>
     </li>
-  )
-}
-
-function TimelineDiagnostics({ events, content }: { events: TimelineEvent[]; content: string }) {
-  return (
-    <details className="border-y border-border/55 bg-muted/[.08] p-3">
-      <summary className="cursor-pointer text-xs font-medium uppercase tracking-[.12em] text-muted-foreground">
-        Diagnostics{events.length ? ` · ${events.length} system ${events.length === 1 ? 'event' : 'events'}` : ''}
-      </summary>
-      <div className="mt-3 space-y-3">
-        {events.length ? (
-          <div className="space-y-2">
-            {events.map((event) => (
-              <RawEvent key={event.key} event={event} />
-            ))}
-          </div>
-        ) : null}
-        <details className="rounded-md border bg-background/70 text-xs text-muted-foreground">
-          <summary className="cursor-pointer px-2.5 py-1.5 font-medium">Raw session log</summary>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all border-t p-2.5 leading-relaxed">{content}</pre>
-        </details>
-      </div>
-    </details>
   )
 }
 
@@ -485,7 +428,6 @@ function TimelineEntry({
 
 export function AgentActivityTimeline({
   events,
-  content,
   state,
   onOpenFile,
   worktreePath,
@@ -505,7 +447,6 @@ export function AgentActivityTimeline({
 }) {
   const timeline = buildAgentTimeline(events, state)
   const visible = timeline.filter((event) => event.kind !== 'technical')
-  const technical = timeline.filter((event) => event.kind === 'technical')
   const summary = timelineSummary(timeline, state)
   const sessions = buildThreadWorkSessions(visible, state === 'completed')
   return (
@@ -528,7 +469,6 @@ export function AgentActivityTimeline({
           <WorkSession key={session.key} session={session} onOpenFile={onOpenFile} worktreePath={worktreePath} />
         ))}
       </div>
-      <TimelineDiagnostics events={technical} content={content} />
     </section>
   )
 }

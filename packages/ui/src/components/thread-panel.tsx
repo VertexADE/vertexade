@@ -156,6 +156,7 @@ function ThreadPanelBody({ props, workspace }: { props: ThreadPanelProps; worksp
       <ThreadTabsSection jobId={props.jobId} activityOnly={activityOnly} workspace={workspace} />
       <ThreadPanelActions
         activityOnly={activityOnly}
+        composerOwnsRunControls={presentation.showFollowUpComposer}
         job={data.job}
         outcome={presentation.outcome}
         savingTasks={actions.savingTasks}
