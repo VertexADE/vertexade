@@ -1,9 +1,11 @@
 import { toast } from 'sonner'
+import { FolderOpen, GitBranch } from 'lucide-react'
+import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { Label } from '@vertexade/ui/components/ui/label'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 
-type RepositoryOption = Pick<Repository, 'id' | 'full_name'>
+type RepositoryOption = Pick<Repository, 'id' | 'full_name'> & Partial<Pick<Repository, 'source_kind' | 'workspace_strategy'>>
 
 export function RepositoryMultiSelect({
   repositories,
@@ -34,9 +36,16 @@ export function RepositoryMultiSelect({
       </legend>
       <div className="grid max-h-40 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
         {repositories.map((repository) => (
-          <Label key={repository.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent">
+          <Label key={repository.id} className="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-xs hover:bg-accent">
             <Checkbox checked={selected.includes(repository.id)} onCheckedChange={(value) => toggle(repository.id, Boolean(value))} />
-            <span className="truncate">{repository.full_name}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{repository.full_name}</span>
+              <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                {repository.source_kind === 'directory' ? <FolderOpen /> : <GitBranch />}
+                {repository.source_kind === 'directory' ? 'Local directory' : 'Git repository'}
+              </span>
+            </span>
+            <Badge variant="outline">{repositoryBehavior(repository)}</Badge>
           </Label>
         ))}
         {!repositories.length && <p className="col-span-full p-3 text-center text-xs text-muted-foreground">{emptyMessage}</p>}
@@ -46,4 +55,13 @@ export function RepositoryMultiSelect({
       </small>
     </fieldset>
   )
+}
+
+function repositoryBehavior(repository: RepositoryOption) {
+  if (repository.source_kind === 'directory') {
+    if (repository.workspace_strategy === 'move') return 'Move on apply'
+    if (repository.workspace_strategy === 'copy') return 'Copy'
+    return 'Direct'
+  }
+  return repository.workspace_strategy === 'direct' ? 'Direct' : 'Worktree'
 }

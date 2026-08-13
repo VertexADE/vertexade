@@ -108,6 +108,21 @@ export type RepositoryIdentity = {
   cloneUrl: string
 }
 
+export type ScmRepositorySearchResult = RepositoryIdentity & {
+  name: string
+  description?: string
+  private: boolean
+  ownerType?: 'user' | 'organization'
+  source: 'authenticated' | 'public'
+  updatedAt?: string
+}
+
+export type ScmRepositorySearchPage = {
+  repositories: ScmRepositorySearchResult[]
+  source: 'authenticated' | 'public'
+  hasMore: boolean
+}
+
 export type ScmUser = {
   login: string
   avatarUrl?: string
@@ -172,6 +187,7 @@ export type ScmProvider = {
   parsePullRequestUrl?(url: string): ScmPullRequestRef | null
   referencePresentation?(repository: string): ScmReferencePresentation
   parseRepository(input: string): RepositoryIdentity
+  searchRepositories?(query: string, limit: number, context?: ProviderContext): Promise<ScmRepositorySearchPage>
   currentUser(context?: ProviderContext): Promise<ScmUser>
   listPullRequests(
     repository: string,

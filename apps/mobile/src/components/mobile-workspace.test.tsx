@@ -12,7 +12,14 @@ jest.mock('@/mobile-detail-service', () => ({
 }))
 
 const workspace: MobileWorkspace = {
-  repositories: [{ id: 1, fullName: 'dovo/local', backendId: 'local', backendName: 'Local' }],
+  repositories: [{
+    id: 1,
+    fullName: 'dovo/local',
+    sourceKind: 'git',
+    workspaceStrategy: 'worktree',
+    backendId: 'local',
+    backendName: 'Local',
+  }],
   pullRequests: [{
     id: 10,
     workItemId: null,

@@ -7,6 +7,7 @@ import { MobileAgentOptions } from './mobile-agent-options'
 import { MobileModalSafeArea } from './mobile-modal-safe-area'
 import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileWorkspaceCreation, type MobileCreateMode } from './use-mobile-workspace-creation'
+import { MobileRepositorySearch } from './mobile-repository-search'
 
 export type { MobileCreateMode } from './use-mobile-workspace-creation'
 
@@ -54,7 +55,7 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
             onSelect={creation.chooseBackend}
           />
           <CreationTarget mode={props.mode} creation={creation} />
-          <RepositoryTarget mode={props.mode} creation={creation} />
+          <RepositoryTarget mode={props.mode} creation={creation} serviceUrl={props.serviceUrl} />
           <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
           {props.mode !== 'work' && creation.selectedBackend ? (
             <MobileAgentOptions
@@ -65,7 +66,11 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
             />
           ) : null}
           {props.mode === 'thread' ? (
-            <DraftPullRequestSwitch value={creation.createPullRequest} onChange={creation.setCreatePullRequest} />
+            <DraftPullRequestSwitch
+              available={creation.supportsPullRequests}
+              value={creation.createPullRequest}
+              onChange={creation.setCreatePullRequest}
+            />
           ) : null}
           {creation.error ? (
             <Text accessibilityRole="alert" style={styles.error}>
@@ -146,20 +151,41 @@ function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: 
   )
 }
 
-function RepositoryTarget({ mode, creation }: { mode: MobileCreateMode; creation: CreationModel }) {
-  if (mode === 'work' && !creation.repositories.length) return null
+function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMode; creation: CreationModel; serviceUrl: string }) {
+  const repositories = mode === 'pullRequest'
+    ? creation.repositories.filter((repository) => repository.sourceKind === 'git')
+    : creation.repositories
   return (
-    <OptionGroup
-      label={mode === 'pullRequest' ? 'Repository' : 'Repository (optional)'}
-      empty="No repositories are available on this server. Add or sync one in VertexADE web first."
+    <View style={styles.inputGroup}>
+      <OptionGroup
+      label={mode === 'pullRequest' ? 'Git repository' : 'Workspace'}
+      hint={mode === 'pullRequest'
+        ? 'Draft PR delivery requires a Git repository.'
+        : 'Choose an isolated general workspace or a configured project source.'}
+      empty="No compatible Git repositories are available on this server. Add or sync one in VertexADE web first."
       options={[
-        ...(mode === 'pullRequest' ? [] : [{ id: 'general', label: 'General workspace', meta: 'No repository or Git required' }]),
-        ...creation.repositories.map((repository) => ({ id: String(repository.id), label: repository.fullName })),
+        ...(mode === 'pullRequest'
+          ? []
+          : [{ id: 'general', label: 'General workspace', meta: 'Managed · isolated · no repository or Git required' }]),
+        ...repositories.map((repository) => ({
+          id: String(repository.id),
+          label: repository.fullName,
+          meta: repositoryDescription(repository),
+        })),
       ]}
       selectedId={creation.repositoryId === null && mode !== 'pullRequest' ? 'general' : String(creation.repositoryId || '')}
       testIdPrefix="create-repository"
       onSelect={(id) => creation.setRepositoryId(id === 'general' ? null : Number(id))}
-    />
+      />
+      {creation.selectedBackend ? (
+        <MobileRepositorySearch
+          serviceUrl={serviceUrl}
+          backend={creation.selectedBackend}
+          added={creation.repositories.map((repository) => repository.fullName)}
+          onSelect={(repository) => creation.addRepository(repository.id)}
+        />
+      ) : null}
+    </View>
   )
 }
 
@@ -188,16 +214,22 @@ function PromptInput({ mode, value, onChange }: { mode: MobileCreateMode; value:
   )
 }
 
-function DraftPullRequestSwitch({ value, onChange }: { value: boolean; onChange(value: boolean): void }) {
+function DraftPullRequestSwitch({ available, value, onChange }: { available: boolean; value: boolean; onChange(value: boolean): void }) {
   return (
     <View style={styles.switchRow}>
       <View style={styles.switchCopy}>
         <Text style={styles.inputLabel}>Publish a draft PR</Text>
-        <Text style={styles.inputHint}>The agent creates the PR after it has an implementation to publish.</Text>
+        <Text style={styles.inputHint}>
+          {available
+            ? 'The agent creates the PR after it has an implementation to publish.'
+            : 'Available when the selected workspace is a Git repository.'}
+        </Text>
       </View>
       <Switch
         accessibilityLabel="Publish a draft pull request"
-        value={value}
+        accessibilityState={{ disabled: !available }}
+        disabled={!available}
+        value={available && value}
         onValueChange={onChange}
         trackColor={{ true: colors.accentSoft }}
         thumbColor={value ? colors.accent : colors.muted}
@@ -206,8 +238,9 @@ function DraftPullRequestSwitch({ value, onChange }: { value: boolean; onChange(
   )
 }
 
-function OptionGroup({ label, empty, options, selectedId, testIdPrefix, onSelect }: {
+function OptionGroup({ label, hint, empty, options, selectedId, testIdPrefix, onSelect }: {
   label: string
+  hint?: string
   empty?: string
   options: Array<{ id: string; label: string; meta?: string }>
   selectedId: string
@@ -217,6 +250,7 @@ function OptionGroup({ label, empty, options, selectedId, testIdPrefix, onSelect
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
+      {hint ? <Text style={styles.inputHint}>{hint}</Text> : null}
       {options.length ? (
         <View style={styles.options}>
           {options.map((option) => (
@@ -234,6 +268,15 @@ function OptionGroup({ label, empty, options, selectedId, testIdPrefix, onSelect
       )}
     </View>
   )
+}
+
+function repositoryDescription(repository: CreationModel['repositories'][number]) {
+  if (repository.sourceKind === 'directory') {
+    if (repository.workspaceStrategy === 'move') return 'Local directory · move changes on apply'
+    if (repository.workspaceStrategy === 'copy') return 'Local directory · isolated copy'
+    return 'Local directory · work directly'
+  }
+  return repository.workspaceStrategy === 'direct' ? 'Git repository · work directly' : 'Git repository · isolated worktree'
 }
 
 function CreationOption({ option, selected, testID, onSelect }: {

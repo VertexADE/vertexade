@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   DESKTOP_BRIDGE_GLOBAL,
+  DESKTOP_DIALOG_CHANNELS,
   DESKTOP_ONBOARDING_CHANNELS,
   type DesktopOnboardingState,
   type VertexADEDesktopBridge,
@@ -11,6 +12,9 @@ const bridge: VertexADEDesktopBridge = {
   onboarding: {
     status: () => ipcRenderer.invoke(DESKTOP_ONBOARDING_CHANNELS.status) as Promise<DesktopOnboardingState>,
     complete: () => ipcRenderer.invoke(DESKTOP_ONBOARDING_CHANNELS.complete) as Promise<DesktopOnboardingState>,
+  },
+  dialog: {
+    chooseDirectory: () => ipcRenderer.invoke(DESKTOP_DIALOG_CHANNELS.chooseDirectory) as Promise<string | null>,
   },
 }
 

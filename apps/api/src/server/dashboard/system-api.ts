@@ -124,6 +124,7 @@ import {
 } from '../settings/linked-servers.ts'
 import { serverRuntimeStatus, updateServerRuntimeConfiguration } from '../settings/server-runtime.ts'
 import { MobilePairingError } from '../settings/mobile-pairing.ts'
+import { browseServerDirectories, DirectoryBrowserError } from '../directory-browser.ts'
 
 function repositoryRow(id: number) {
   const row = db.select().from(repositories).where(eq(repositories.id, id)).get()
@@ -141,7 +142,9 @@ function pullRequestRow(repoId: number, number: number) {
 
 function linkedServerErrorResponse(error: unknown): Response {
   const status = error instanceof LinkedServerAccessError ? (error.code === 'operator_token_not_configured' ? 503 : 401) : 400
-  return json(status, { error: error instanceof Error ? error.message : 'Invalid linked server' })
+  return json(status, {
+    error: error instanceof Error ? error.message : 'Invalid linked server',
+  })
 }
 
 function mobilePairingErrorResponse(error: unknown): Response {
@@ -227,6 +230,35 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     profiles: repositoryEnvironments,
   })
   if (repositoryEnvironmentResponse) return repositoryEnvironmentResponse
+  if (request.method === 'GET' && url.pathname === '/api/scm/repositories') {
+    const provider = scmProvider()
+    if (!provider.searchRepositories) return json(501, { error: `${provider.name} does not support repository search` })
+    try {
+      const query = String(url.searchParams.get('q') || '')
+        .trim()
+        .slice(0, 200)
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit') || 20) || 20))
+      return json(200, await provider.searchRepositories(query, limit))
+    } catch (error) {
+      return json(502, { error: error instanceof Error ? error.message : 'Repositories could not be searched' })
+    }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/system/directories') {
+    try {
+      return json(
+        200,
+        await browseServerDirectories(
+          url.searchParams.get('path') || undefined,
+          Number(url.searchParams.get('offset') || 0),
+          Number(url.searchParams.get('limit') || 100),
+        ),
+      )
+    } catch (error) {
+      return json(error instanceof DirectoryBrowserError ? error.status : 500, {
+        error: error instanceof Error ? error.message : 'Directory could not be listed',
+      })
+    }
+  }
   if (request.method === 'GET' && url.pathname === '/api/settings/workspace-overview') {
     return json(200, {
       repositories: db
@@ -318,7 +350,10 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
         }
         await verifyLinkedServerAccess(server.url, request.headers.get('authorization'), API_TOKEN)
         const duplicate = current.find((candidate) => candidate.id === server.id || candidate.url === server.url)
-        if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
+        if (duplicate)
+          return json(409, {
+            error: `Linked server conflicts with ${duplicate.label}`,
+          })
         writeLinkedServers(appSettings, [...current, server])
         notifyClients('linked_servers_updated')
         return json(201, server)
@@ -342,10 +377,17 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     }
     try {
       const patch = await body(request)
-      const next = normalizeLinkedServer({ ...current[index], ...patch, id: current[index].id })
+      const next = normalizeLinkedServer({
+        ...current[index],
+        ...patch,
+        id: current[index].id,
+      })
       if (next.url !== current[index].url) await verifyLinkedServerAccess(next.url, request.headers.get('authorization'), API_TOKEN)
       const duplicate = current.find((candidate, candidateIndex) => candidateIndex !== index && candidate.url === next.url)
-      if (duplicate) return json(409, { error: `Linked server conflicts with ${duplicate.label}` })
+      if (duplicate)
+        return json(409, {
+          error: `Linked server conflicts with ${duplicate.label}`,
+        })
       const updated = [...current]
       updated[index] = next
       writeLinkedServers(appSettings, updated)
@@ -369,7 +411,10 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
           .slice(0, 50),
         serviceTier: value?.agentId === 'codex' && value?.serviceTier === 'priority' ? 'priority' : '',
       })
-      const value = { workItem: clean(input.workItem), review: clean(input.review) }
+      const value = {
+        workItem: clean(input.workItem),
+        review: clean(input.review),
+      }
       agents.require(value.workItem.agentId)
       agents.require(value.review.agentId)
       appSettings.write('thread_runtime_defaults', value)
@@ -388,7 +433,9 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       const input = await body(request)
       const requestedConcurrency = input.concurrency === undefined ? reviewAutomationSettings().concurrency : Number(input.concurrency)
       if (!Number.isInteger(requestedConcurrency) || requestedConcurrency < 1 || requestedConcurrency > 8)
-        return json(400, { error: 'Automatic review concurrency must be an integer from 1 to 8' })
+        return json(400, {
+          error: 'Automatic review concurrency must be an integer from 1 to 8',
+        })
       const cleanRules = (values) =>
         [...new Set((Array.isArray(values) ? values : []).map((value) => String(value).trim().toLowerCase()).filter(Boolean))].slice(0, 50)
       const value = {
@@ -421,10 +468,17 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
   if (request.method === 'POST' && deploymentRerunMatch) {
     const input = await body(request)
     const mode = input.mode === 'all' ? 'all' : 'failed'
-    const providerId = selectedProviderId('deployment', { explicit: String(input.provider || '') })
+    const providerId = selectedProviderId('deployment', {
+      explicit: String(input.provider || ''),
+    })
     const targetId = String(input.target_id || '').trim()
     await extensions.providers.deployment.require(providerId).rerun(Number(deploymentRerunMatch[1]), mode, targetId || undefined)
-    return json(202, { accepted: true, mode, provider: providerId, target_id: targetId || null })
+    return json(202, {
+      accepted: true,
+      mode,
+      provider: providerId,
+      target_id: targetId || null,
+    })
   }
   if (request.method === 'POST' && url.pathname === '/api/highlights') {
     const input = await body(request)
@@ -432,11 +486,17 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     const color = String(input.color || '')
       .trim()
       .toLowerCase()
-    if (!text || text.length > 100) return json(400, { error: 'Highlight text must contain 1–100 characters' })
+    if (!text || text.length > 100)
+      return json(400, {
+        error: 'Highlight text must contain 1–100 characters',
+      })
     if (!/^#[0-9a-f]{6}$/.test(color)) return json(400, { error: 'Choose a valid highlight color' })
     db.insert(highlightRules)
       .values({ text, color })
-      .onConflictDoUpdate({ target: highlightRules.text, set: { color, updatedAt: sql`CURRENT_TIMESTAMP` } })
+      .onConflictDoUpdate({
+        target: highlightRules.text,
+        set: { color, updatedAt: sql`CURRENT_TIMESTAMP` },
+      })
       .run()
     notifyClients('highlights')
     return json(200, highlightRuleRecord(db.select().from(highlightRules).where(eq(highlightRules.text, text)).get()!))
@@ -463,7 +523,10 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     if (!prompt) return json(400, { error: 'Preset message is required' })
     db.insert(presets)
       .values({ name, prompt })
-      .onConflictDoUpdate({ target: presets.name, set: { prompt, updatedAt: sql`CURRENT_TIMESTAMP` } })
+      .onConflictDoUpdate({
+        target: presets.name,
+        set: { prompt, updatedAt: sql`CURRENT_TIMESTAMP` },
+      })
       .run()
     notifyClients('presets')
     return json(200, presetRecord(db.select().from(presets).where(eq(presets.name, name)).get()!))
@@ -565,10 +628,14 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       .get()
     if (!row) return json(404, { error: 'Agent thread not found' })
     if (row.sourceKind !== 'directory' || !['copy', 'move'].includes(row.strategy)) {
-      return json(400, { error: 'This thread does not use an applicable directory workspace' })
+      return json(400, {
+        error: 'This thread does not use an applicable directory workspace',
+      })
     }
     if (['starting', 'running'].includes(row.status))
-      return json(409, { error: 'Wait for the agent session to finish before applying changes' })
+      return json(409, {
+        error: 'Wait for the agent session to finish before applying changes',
+      })
     const strategy = row.strategy as 'copy' | 'move'
     if (request.method === 'GET' || directoryApplyMatch[2]) {
       return json(200, await previewDirectoryApply(row.source, row.workspace, strategy))
@@ -606,7 +673,12 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
         })
       }
       const existing = db.select().from(repositories).where(eq(repositories.localPath, localPath)).get()
-      if (existing) return json(200, { repo: repositoryRecord(existing), open_prs: 0, agent_bootstrapped: false })
+      if (existing)
+        return json(200, {
+          repo: repositoryRecord(existing),
+          open_prs: 0,
+          agent_bootstrapped: false,
+        })
       const label =
         String(input.name || basename(localPath))
           .trim()
@@ -617,11 +689,21 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
         fullName = `Local/${label} ${suffix++}`
       }
       db.insert(repositories)
-        .values({ fullName, cloneUrl: localPath, localPath, sourceKind: git ? 'git' : 'directory', workspaceStrategy })
+        .values({
+          fullName,
+          cloneUrl: localPath,
+          localPath,
+          sourceKind: git ? 'git' : 'directory',
+          workspaceStrategy,
+        })
         .run()
       const stored = db.select().from(repositories).where(eq(repositories.fullName, fullName)).get()!
       notifyClients('repository')
-      return json(201, { repo: repositoryRecord(stored), open_prs: 0, agent_bootstrapped: false })
+      return json(201, {
+        repo: repositoryRecord(stored),
+        open_prs: 0,
+        agent_bootstrapped: false,
+      })
     }
     const identity = scmProvider(input.repository).parseRepository(input.repository)
     const fullName = identity.id
@@ -636,7 +718,11 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       repo = repositoryRow(repo.id)
     }
     const count = await syncRepository(repo)
-    return json(200, { repo, open_prs: count, agent_bootstrapped: needsBootstrap })
+    return json(200, {
+      repo,
+      open_prs: count,
+      agent_bootstrapped: needsBootstrap,
+    })
   }
   const syncMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/sync$/)
   if (request.method === 'POST' && syncMatch) {
@@ -687,7 +773,10 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
       .from(jobs)
       .where(and(eq(jobs.repoId, repo.id), eq(jobs.kind, 'stack_analysis'), inArray(jobs.status, ['starting', 'running'])))
       .get()
-    if (active) return json(409, { error: `Stack analysis run #${active.id} is already active` })
+    if (active)
+      return json(409, {
+        error: `Stack analysis run #${active.id} is already active`,
+      })
     return json(202, await launchStackAnalysis(repo))
   }
   return null

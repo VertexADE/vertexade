@@ -5,6 +5,10 @@ export const DESKTOP_ONBOARDING_CHANNELS = {
   complete: 'desktop:onboarding:complete',
 } as const
 
+export const DESKTOP_DIALOG_CHANNELS = {
+  chooseDirectory: 'desktop:dialog:choose-directory',
+} as const
+
 export type DesktopOnboardingState = {
   currentVersion: number
   completedVersion: number | null
@@ -17,5 +21,8 @@ export type VertexADEDesktopBridge = {
   readonly onboarding: {
     status(): Promise<DesktopOnboardingState>
     complete(): Promise<DesktopOnboardingState>
+  }
+  readonly dialog: {
+    chooseDirectory(): Promise<string | null>
   }
 }

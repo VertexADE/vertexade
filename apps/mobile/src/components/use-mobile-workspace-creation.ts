@@ -3,9 +3,11 @@ import { defaultMobileAgentOptions, type MobileAgentOptions } from '@/mobile-age
 import type { MobileBackend } from '@/platform-service'
 import {
   createMobileWorkItem,
+  addMobileRepository,
   startMobileThread,
   type MobileWorkItem,
   type MobileWorkspace,
+  type MobileRepository,
 } from '@/mobile-workspace-service'
 
 export type MobileCreateMode = 'pullRequest' | 'work' | 'thread'
@@ -33,16 +35,19 @@ type CreationOptions = {
 
 export function useMobileWorkspaceCreation(options: CreationOptions) {
   const [state, setState] = useState<CreationState>(() => initialCreationState(options))
+  const [addedRepositories, setAddedRepositories] = useState<MobileRepository[]>([])
   const selectedBackend = options.backends.find((backend) => backendKey(backend) === state.backendId) || null
   const repositories = useMemo(
-    () => options.workspace.repositories.filter((repository) => belongsToBackend(repository, selectedBackend)),
-    [options.workspace.repositories, selectedBackend],
+    () => [...options.workspace.repositories, ...addedRepositories].filter((repository) => belongsToBackend(repository, selectedBackend)),
+    [addedRepositories, options.workspace.repositories, selectedBackend],
   )
   const workItems = useMemo(
     () => options.workspace.workItems.filter((item) => belongsToBackend(item, selectedBackend) && !item.archived && item.state !== 'done'),
     [options.workspace.workItems, selectedBackend],
   )
   const selectedWorkItem = workItems.find((item) => item.id === state.workItemId) || null
+  const selectedRepository = repositories.find((repository) => repository.id === state.repositoryId) || null
+  const supportsPullRequests = Boolean(selectedRepository && selectedRepository.sourceKind === 'git')
   const valid = validCreation(options.mode, state, selectedWorkItem)
 
   function update(patch: Partial<CreationState>) {
@@ -75,20 +80,40 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     }
   }
 
+  async function addRepository(repository: string) {
+    if (!selectedBackend) throw new Error('Choose a server')
+    update({ error: '' })
+    try {
+      const added = await addMobileRepository(selectedBackend.serviceUrl || options.serviceUrl, selectedBackend, repository)
+      setAddedRepositories((current) => [...current.filter((candidate) => candidate.id !== added.id), added])
+      update({ repositoryId: added.id })
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Repository could not be added'
+      update({ error: message })
+      throw reason
+    }
+  }
+
   return {
     ...state,
     repositories,
     workItems,
     selectedWorkItem,
+    selectedRepository,
     selectedBackend,
+    supportsPullRequests,
     valid,
     setTitle: (title: string) => update({ title }),
     setPrompt: (prompt: string) => update({ prompt }),
-    setRepositoryId: (repositoryId: number | null) => update({ repositoryId }),
+    setRepositoryId: (repositoryId: number | null) => {
+      const repository = repositories.find((candidate) => candidate.id === repositoryId)
+      update({ repositoryId, ...(!repository || repository.sourceKind !== 'git' ? { createPullRequest: false } : {}) })
+    },
     setCreatePullRequest: (createPullRequest: boolean) => update({ createPullRequest }),
     setAgentOptions: (agentOptions: MobileAgentOptions) => update({ agentOptions }),
     chooseBackend,
     chooseWorkItem,
+    addRepository,
     submit,
   }
 }

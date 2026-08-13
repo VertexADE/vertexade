@@ -16,6 +16,17 @@ type MobileSource = {
 export type MobileRepository = MobileSource & {
   id: number
   fullName: string
+  sourceKind: 'git' | 'directory' | 'workspace'
+  workspaceStrategy: 'worktree' | 'direct' | 'copy' | 'move'
+}
+
+export type MobileRepositorySearchResult = {
+  id: string
+  name: string
+  description: string
+  private: boolean
+  ownerType: 'user' | 'organization'
+  source: 'authenticated' | 'public'
 }
 
 export type MobilePullRequest = MobileSource & {
@@ -162,6 +173,50 @@ export async function createMobileWorkItem(serviceUrl: string, input: CreateMobi
   }
 }
 
+export async function searchMobileRepositories(
+  serviceUrl: string,
+  backendId: string,
+  query: string,
+): Promise<{ repositories: MobileRepositorySearchResult[]; source: 'authenticated' | 'public' }> {
+  const params = new URLSearchParams({ q: query.trim().slice(0, 200), limit: '30' })
+  const payload = await createMobilePlatformClient(serviceUrl, backendId).request<unknown>(`/api/scm/repositories?${params}`)
+  const record = requiredRecord(payload, 'VertexADE returned an invalid repository search')
+  const source = record.source === 'public' ? 'public' : 'authenticated'
+  return {
+    source,
+    repositories: (Array.isArray(record.repositories) ? record.repositories : []).map((value) => {
+      const repository = requiredRecord(value, 'VertexADE returned an invalid repository result')
+      return {
+        id: requiredString(repository.id, 'Repository ID', 500),
+        name: requiredString(repository.name, 'Repository name', 500),
+        description: optionalString(repository.description, 2_000),
+        private: Boolean(repository.private),
+        ownerType: repository.ownerType === 'organization' ? 'organization' : 'user',
+        source: repository.source === 'public' ? 'public' : 'authenticated',
+      }
+    }),
+  }
+}
+
+export async function addMobileRepository(serviceUrl: string, backend: MobileBackend, repository: string): Promise<MobileRepository> {
+  const payload = await createMobilePlatformClient(serviceUrl, backend.id).request<unknown>('/api/repositories', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ repository }),
+  })
+  const response = requiredRecord(payload, 'VertexADE returned an invalid add-repository response')
+  const record = requiredRecord(response.repo, 'VertexADE returned an invalid repository')
+  return {
+    backendId: backend.id,
+    backendName: backend.label,
+    serviceUrl: backend.serviceUrl || serviceUrl,
+    id: requiredPositiveInteger(record.id, 'Repository ID'),
+    fullName: requiredString(record.full_name, 'Repository name', 500),
+    sourceKind: choice(record.source_kind, ['git', 'directory', 'workspace'] as const, 'git'),
+    workspaceStrategy: choice(record.workspace_strategy, ['worktree', 'direct', 'copy', 'move'] as const, 'worktree'),
+  }
+}
+
 export async function startMobileThread(serviceUrl: string, input: StartMobileThreadInput): Promise<void> {
   const prompt = input.prompt.trim().slice(0, 20_000)
   if (!prompt) throw new Error('A task prompt is required')
@@ -197,6 +252,8 @@ function parseRepository(value: unknown, backends: MobileBackend[], defaultBacke
     ...source(record, backends, defaultBackend),
     id: requiredPositiveInteger(record.id, 'Repository ID'),
     fullName: requiredString(record.full_name, 'Repository name', 500),
+    sourceKind: choice(record.source_kind, ['git', 'directory', 'workspace'] as const, 'git'),
+    workspaceStrategy: choice(record.workspace_strategy, ['worktree', 'direct', 'copy', 'move'] as const, 'worktree'),
   }
 }
 

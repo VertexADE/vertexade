@@ -3,7 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
-import { DESKTOP_ONBOARDING_CHANNELS } from '@vertexade/platform-contracts'
+import { DESKTOP_DIALOG_CHANNELS, DESKTOP_ONBOARDING_CHANNELS } from '@vertexade/platform-contracts'
 import { desktopRuntimeModeEnvironment, desktopServiceEnvironment } from './desktop-environment.ts'
 import { DesktopOnboardingStateStore, desktopStartupPath } from './desktop-onboarding-state.ts'
 import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
@@ -190,6 +190,15 @@ function assertTrustedDesktopRenderer(event: IpcMainInvokeEvent): void {
 }
 
 function registerDesktopIpc(): void {
+  ipcMain.handle(DESKTOP_DIALOG_CHANNELS.chooseDirectory, async (event) => {
+    assertTrustedDesktopRenderer(event)
+    if (!desktopWindow) return null
+    const result = await dialog.showOpenDialog(desktopWindow, {
+      title: 'Choose a local directory',
+      properties: ['openDirectory'],
+    })
+    return result.canceled ? null : result.filePaths[0] || null
+  })
   ipcMain.handle(DESKTOP_ONBOARDING_CHANNELS.status, async (event) => {
     assertTrustedDesktopRenderer(event)
     return requireOnboardingStateStore().read()
@@ -275,6 +284,7 @@ void app
   .catch(showStartupError)
 
 app.on('will-quit', () => {
+  ipcMain.removeHandler(DESKTOP_DIALOG_CHANNELS.chooseDirectory)
   ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.status)
   ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.complete)
   stopUpdater?.()

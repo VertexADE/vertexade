@@ -40,7 +40,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { SearchInput } from '@vertexade/ui/components/ui/search-input'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
-import { api, isNotificationEvent, isPlatformApiError, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
+import { api, backendApi, isNotificationEvent, isPlatformApiError, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
 import type { DashboardData, Repository } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 import {
@@ -166,7 +166,11 @@ async function workspaceSettingsOverview(): Promise<WorkspaceSettingsOverview> {
   } catch (error) {
     if (!isPlatformApiError(error) || error.status !== 404) throw error
     const dashboard = await api<DashboardData>('/api/dashboard')
-    return { repositories: dashboard.repositories, presets: dashboard.presets, highlights: dashboard.highlights }
+    return {
+      repositories: dashboard.repositories,
+      presets: dashboard.presets,
+      highlights: dashboard.highlights,
+    }
   }
 }
 
@@ -231,9 +235,21 @@ function SettingsOverview({ workspace, onNavigate }: { workspace: WorkspaceSetti
         icon={Home}
         badge="Local desktop"
         summary={[
-          { label: 'Repositories', value: String(workspace.repositories.length), detail: 'Workspace sources' },
-          { label: 'Prompt presets', value: String(workspace.presets.length), detail: 'Reusable instructions' },
-          { label: 'Highlights', value: String(workspace.highlights.length), detail: 'Browser rules' },
+          {
+            label: 'Repositories',
+            value: String(workspace.repositories.length),
+            detail: 'Workspace sources',
+          },
+          {
+            label: 'Prompt presets',
+            value: String(workspace.presets.length),
+            detail: 'Reusable instructions',
+          },
+          {
+            label: 'Highlights',
+            value: String(workspace.highlights.length),
+            detail: 'Browser rules',
+          },
         ]}
       />
       <SettingsGroup
@@ -300,8 +316,20 @@ function SettingsPage() {
     permissionMode: 'read-only',
   })
   const [threadDefaults, setThreadDefaults] = useState<ThreadRuntimeDefaults>({
-    workItem: { agentId: '', model: '', reasoningEffort: '', serviceTier: '', allowSubagents: false },
-    review: { agentId: '', model: '', reasoningEffort: '', serviceTier: '', allowSubagents: false },
+    workItem: {
+      agentId: '',
+      model: '',
+      reasoningEffort: '',
+      serviceTier: '',
+      allowSubagents: false,
+    },
+    review: {
+      agentId: '',
+      model: '',
+      reasoningEffort: '',
+      serviceTier: '',
+      allowSubagents: false,
+    },
   })
   const [systemConfiguration, setSystemConfiguration] = useState<SystemConfigurationValue>(emptySystemConfiguration)
   const [loadError, setLoadError] = useState('')
@@ -351,9 +379,12 @@ function SettingsPage() {
     [load],
   )
 
-  async function addRepository(input: { repository: string } | { local_path: string; name?: string; workspace_strategy?: string }) {
+  async function addRepository(
+    input: { repository: string } | { local_path: string; name?: string; workspace_strategy?: string },
+    backendId?: string,
+  ) {
     try {
-      const result = await api<{ repo: Repository; open_prs: number }>('/api/repositories', {
+      const result = await backendApi<{ repo: Repository; open_prs: number }>(backendId, '/api/repositories', {
         method: 'POST',
         body: JSON.stringify(input),
       })
@@ -479,13 +510,21 @@ function SettingsPage() {
                     icon={FolderCog}
                     badge="Server-owned"
                     summary={[
-                      { label: 'Repositories', value: String(workspace.repositories.length), detail: 'Available sources' },
+                      {
+                        label: 'Repositories',
+                        value: String(workspace.repositories.length),
+                        detail: 'Available sources',
+                      },
                       {
                         label: 'Preview gateway',
                         value: previewSettings.domain || 'Disabled',
                         detail: `Port ${previewSettings.gatewayPort}`,
                       },
-                      { label: 'Policies', value: 'Per repository', detail: 'Validation + readiness' },
+                      {
+                        label: 'Policies',
+                        value: 'Per repository',
+                        detail: 'Validation + readiness',
+                      },
                     ]}
                   />
                   <SettingsGroup
@@ -536,9 +575,21 @@ function SettingsPage() {
                     icon={Network}
                     badge="Security-sensitive"
                     summary={[
-                      { label: 'Phone access', value: 'Pair links', detail: 'One-time invitations' },
-                      { label: 'Shared surface', value: 'Web gateway', detail: 'Authenticated' },
-                      { label: 'Backend API', value: 'Loopback', detail: 'Desktop enforced' },
+                      {
+                        label: 'Phone access',
+                        value: 'Pair links',
+                        detail: 'One-time invitations',
+                      },
+                      {
+                        label: 'Shared surface',
+                        value: 'Web gateway',
+                        detail: 'Authenticated',
+                      },
+                      {
+                        label: 'Backend API',
+                        value: 'Loopback',
+                        detail: 'Desktop enforced',
+                      },
                     ]}
                   />
                   <SettingsGroup
@@ -590,7 +641,11 @@ function SettingsPage() {
                         value: threadDefaults.workItem.agentId && threadDefaults.review.agentId ? 'Configured' : 'Incomplete',
                         detail: 'Work + reviews',
                       },
-                      { label: 'Prompt presets', value: String(workspace.presets.length), detail: 'Reusable' },
+                      {
+                        label: 'Prompt presets',
+                        value: String(workspace.presets.length),
+                        detail: 'Reusable',
+                      },
                     ]}
                   />
                   <SettingsGroup
@@ -643,9 +698,21 @@ function SettingsPage() {
                     icon={Bot}
                     badge="Extensible"
                     summary={[
-                      { label: 'Skills', value: 'Workspace catalog', detail: 'Reusable guidance' },
-                      { label: 'MCP servers', value: 'Managed here', detail: 'External tools' },
-                      { label: 'Activation', value: 'Per Work item', detail: 'Least privilege' },
+                      {
+                        label: 'Skills',
+                        value: 'Workspace catalog',
+                        detail: 'Reusable guidance',
+                      },
+                      {
+                        label: 'MCP servers',
+                        value: 'Managed here',
+                        detail: 'External tools',
+                      },
+                      {
+                        label: 'Activation',
+                        value: 'Per Work item',
+                        detail: 'Least privilege',
+                      },
                     ]}
                   />
                   <SettingsGroup
@@ -668,9 +735,21 @@ function SettingsPage() {
                     icon={Palette}
                     badge="Browser-local"
                     summary={[
-                      { label: 'Theme', value: 'Live preview', detail: 'Light + dark' },
-                      { label: 'Typography', value: 'Interface + code', detail: 'Independent' },
-                      { label: 'Highlights', value: String(workspace.highlights.length), detail: 'Global rules' },
+                      {
+                        label: 'Theme',
+                        value: 'Live preview',
+                        detail: 'Light + dark',
+                      },
+                      {
+                        label: 'Typography',
+                        value: 'Interface + code',
+                        detail: 'Independent',
+                      },
+                      {
+                        label: 'Highlights',
+                        value: String(workspace.highlights.length),
+                        detail: 'Global rules',
+                      },
                     ]}
                   />
                   <SettingsGroup

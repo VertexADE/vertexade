@@ -1,7 +1,9 @@
 import { createPlatformClient } from '@vertexade/platform-client'
 import {
   createMobileWorkItem,
+  addMobileRepository,
   loadMobileWorkspace,
+  searchMobileRepositories,
   startMobileThread,
 } from './mobile-workspace-service'
 
@@ -114,6 +116,31 @@ describe('mobile workspace service', () => {
         model: 'gpt-5.6',
         reasoning_effort: 'high',
       }),
+    }))
+  })
+
+  test('searches and adds repositories through the selected backend', async () => {
+    const request = jest.fn()
+      .mockResolvedValueOnce({
+        source: 'authenticated',
+        repositories: [{ id: 'acme/private-app', name: 'acme/private-app', private: true, ownerType: 'organization', source: 'authenticated' }],
+      })
+      .mockResolvedValueOnce({ repo: { id: 12, full_name: 'acme/private-app', source_kind: 'git', workspace_strategy: 'worktree' } })
+    createClient.mockReturnValue({ request } as unknown as ReturnType<typeof createPlatformClient>)
+    const backend = { id: 'team', label: 'Team', isDefault: false }
+
+    await expect(searchMobileRepositories('http://fixture:4173', 'team', 'private')).resolves.toMatchObject({
+      repositories: [{ id: 'acme/private-app', private: true, ownerType: 'organization' }],
+    })
+    await expect(addMobileRepository('http://fixture:4173', backend, 'acme/private-app')).resolves.toMatchObject({
+      id: 12,
+      fullName: 'acme/private-app',
+      backendId: 'team',
+    })
+    expect(request).toHaveBeenNthCalledWith(1, '/api/scm/repositories?q=private&limit=30')
+    expect(request).toHaveBeenNthCalledWith(2, '/api/repositories', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ repository: 'acme/private-app' }),
     }))
   })
 })

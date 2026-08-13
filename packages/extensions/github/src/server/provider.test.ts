@@ -64,6 +64,60 @@ describe('GitHub SCM provider', () => {
     expect(process.env.GH_TOKEN).toBe(original)
   })
 
+  it('searches authenticated private organization repositories before public repositories', async () => {
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args.includes('user/repos')) {
+        return `${JSON.stringify([
+          {
+            full_name: 'acme/private-app',
+            html_url: 'https://github.com/acme/private-app',
+            ssh_url: 'git@github.com:acme/private-app.git',
+            private: true,
+            owner: { type: 'Organization' },
+            updated_at: '2026-08-12T12:00:00Z',
+          },
+        ])}\n`
+      }
+      return JSON.stringify({ items: [] })
+    })
+    const provider = createGitHubScmProvider(run, undefined, () => ['org-token'])
+
+    await expect(provider.searchRepositories?.('private', 20)).resolves.toMatchObject({
+      source: 'authenticated',
+      repositories: [{ id: 'acme/private-app', private: true, ownerType: 'organization' }],
+    })
+    expect(run).toHaveBeenCalledOnce()
+    expect(run).toHaveBeenCalledWith('gh', expect.arrayContaining(['user/repos']), {
+      env: expect.objectContaining({ GH_TOKEN: 'org-token' }),
+    })
+  })
+
+  it('falls back to public search only when authenticated repositories have no match', async () => {
+    const run = vi.fn(async (_command: string, args: string[]) =>
+      args.includes('user/repos')
+        ? '[]\n'
+        : JSON.stringify({
+            total_count: 1,
+            items: [
+              {
+                full_name: 'public/example',
+                html_url: 'https://github.com/public/example',
+                ssh_url: 'git@github.com:public/example.git',
+                private: false,
+                owner: { type: 'Organization' },
+              },
+            ],
+          }),
+    )
+    const provider = createGitHubScmProvider(run)
+
+    await expect(provider.searchRepositories?.('example', 20)).resolves.toMatchObject({
+      source: 'public',
+      repositories: [{ id: 'public/example', source: 'public' }],
+    })
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps pull-request mutations behind the SCM contract', async () => {
     const run = vi.fn(async (_command: string, args: string[]) => (args.includes('--input') ? JSON.stringify({ id: 7 }) : ''))
     const provider = createGitHubScmProvider(run)

@@ -120,14 +120,18 @@ export function useNewWorkDialog({
     const draft = readNewWorkDraft()
     const preferences = readWorkLaunchPreferences()
     const hasDraft = Boolean(draft.title || draft.description)
+    const suggestedRepositories = suggestedWorkRepositories(data, draft.repositories, preferences.repositories)
+    const supportsPullRequests =
+      suggestedRepositories.length > 0 &&
+      suggestedRepositories.every((repositoryId) => repositorySupportsPullRequests(data.repositories, repositoryId))
     form.reset({
       title: draft.title || '',
       description: draft.description || '',
       kind: draft.kind || 'implementation',
       priority: draft.priority || 'normal',
-      repositories: suggestedWorkRepositories(data, draft.repositories, preferences.repositories),
+      repositories: suggestedRepositories,
       startThread: initialStartThread ?? (hasDraft && draft.startThread !== undefined ? draft.startThread : true),
-      createPr: draft.createPr ?? preferences.createPr,
+      createPr: supportsPullRequests && (draft.createPr ?? preferences.createPr),
       splitWorkItem: draft.splitWorkItem ?? preferences.splitWorkItem,
       references: [],
     })
@@ -159,6 +163,17 @@ export function useNewWorkDialog({
     } finally {
       setGeneratingTitle(false)
     }
+  }
+
+  async function addRepository(repository: string) {
+    const result = await backendApi<{ repo: WorkBoardData['repositories'][number] }>(backendId, '/api/repositories', {
+      method: 'POST',
+      body: JSON.stringify({ repository }),
+    })
+    form.setFieldValue('repositories', [...new Set([...form.getFieldValue('repositories'), result.repo.id])])
+    await queryClient.invalidateQueries({ queryKey: ['platform'] })
+    onCreated()
+    toast.success(`Added ${result.repo.full_name}`)
   }
 
   async function finishCreatedItem(
@@ -209,7 +224,12 @@ export function useNewWorkDialog({
     priority,
     setPriority: (value: WorkItem['priority']) => form.setFieldValue('priority', value),
     repositories,
-    setRepositories: (value: number[]) => form.setFieldValue('repositories', value),
+    setRepositories: (value: number[]) => {
+      form.setFieldValue('repositories', value)
+      const supportsPullRequests =
+        value.length > 0 && value.every((repositoryId) => repositorySupportsPullRequests(data.repositories, repositoryId))
+      if (!supportsPullRequests) form.setFieldValue('createPr', false)
+    },
     startThread,
     setStartThread: (value: boolean) => form.setFieldValue('startThread', value),
     createPr,
@@ -238,6 +258,12 @@ export function useNewWorkDialog({
       )
     },
     generateTitle,
+    addRepository,
     submit,
   }
+}
+
+function repositorySupportsPullRequests(repositories: WorkBoardData['repositories'], repositoryId: number) {
+  const sourceKind = repositories.find((repository) => repository.id === repositoryId)?.source_kind
+  return sourceKind !== 'directory' && sourceKind !== 'workspace'
 }

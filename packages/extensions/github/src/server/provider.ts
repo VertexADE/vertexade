@@ -1,7 +1,8 @@
-import type { ScmProvider, ScmPullRequestRef } from '@vertexade/platform-contracts'
+import type { ScmProvider, ScmPullRequestRef, ScmRepositorySearchResult } from '@vertexade/platform-contracts'
 
 type Run = (command: string, args: string[], options?: { input?: string; env?: Record<string, string | undefined> }) => Promise<string>
 type TokenForRepository = (repository: string) => string | undefined
+type SearchTokens = () => string[]
 
 function refArgs(ref: ScmPullRequestRef) {
   return [String(ref.number), '--repo', ref.repository]
@@ -15,7 +16,35 @@ function parsePages(output: string) {
     .flatMap((page) => JSON.parse(page))
 }
 
-export function createGitHubScmProvider(run: Run, tokenForRepository: TokenForRepository = () => undefined): ScmProvider {
+type GitHubRepository = {
+  full_name: string
+  html_url: string
+  ssh_url: string
+  description?: string | null
+  private?: boolean
+  updated_at?: string
+  owner?: { type?: string }
+}
+
+function searchResult(repository: GitHubRepository, source: 'authenticated' | 'public'): ScmRepositorySearchResult {
+  return {
+    id: repository.full_name,
+    name: repository.full_name,
+    webUrl: repository.html_url,
+    cloneUrl: repository.ssh_url,
+    description: repository.description || undefined,
+    private: Boolean(repository.private),
+    ownerType: repository.owner?.type === 'Organization' ? 'organization' : 'user',
+    source,
+    updatedAt: repository.updated_at,
+  }
+}
+
+export function createGitHubScmProvider(
+  run: Run,
+  tokenForRepository: TokenForRepository = () => undefined,
+  searchTokens: SearchTokens = () => [],
+): ScmProvider {
   const routedRun = (repository: string, args: string[], options: { input?: string } = {}) => {
     const token = tokenForRepository(repository)
     if (token) return run('gh', args, { ...options, env: { ...process.env, GH_TOKEN: token } })
@@ -37,6 +66,61 @@ export function createGitHubScmProvider(run: Run, tokenForRepository: TokenForRe
       if (!match) throw new Error('Use owner/repository or a GitHub repository URL')
       const id = `${match[1]}/${match[2]}`
       return { id, webUrl: `https://github.com/${id}`, cloneUrl: `git@github.com:${id}.git` }
+    },
+    async searchRepositories(query, limit) {
+      const needle = query.trim().toLowerCase()
+      const tokens = [...new Set(searchTokens().filter(Boolean))]
+      const outputs = await Promise.all(
+        (tokens.length ? tokens : [undefined]).map((token) =>
+          run(
+            'gh',
+            [
+              'api',
+              '--method',
+              'GET',
+              '--paginate',
+              'user/repos',
+              '-f',
+              'affiliation=owner,collaborator,organization_member',
+              '-f',
+              'sort=updated',
+              '-f',
+              'per_page=100',
+            ],
+            token ? { env: { ...process.env, GH_TOKEN: token } } : undefined,
+          ),
+        ),
+      )
+      const accessible = new Map<string, GitHubRepository>()
+      for (const output of outputs) {
+        for (const repository of parsePages(output) as GitHubRepository[]) accessible.set(repository.full_name.toLowerCase(), repository)
+      }
+      const matched = [...accessible.values()]
+        .filter((repository) => !needle || `${repository.full_name} ${repository.description || ''}`.toLowerCase().includes(needle))
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.private)) - Number(Boolean(left.private)) ||
+            Number(right.owner?.type === 'Organization') - Number(left.owner?.type === 'Organization') ||
+            String(right.updated_at || '').localeCompare(String(left.updated_at || '')),
+        )
+      if (matched.length || !needle) {
+        return {
+          repositories: matched.slice(0, limit).map((repository) => searchResult(repository, 'authenticated')),
+          source: 'authenticated',
+          hasMore: matched.length > limit,
+        }
+      }
+      const args = ['api', '--method', 'GET', 'search/repositories', '-f', `q=${query.trim()}`, '-f', `per_page=${limit}`]
+      const token = tokens[0]
+      const response = JSON.parse(await run('gh', args, token ? { env: { ...process.env, GH_TOKEN: token } } : undefined)) as {
+        items?: GitHubRepository[]
+        total_count?: number
+      }
+      return {
+        repositories: (response.items || []).map((repository) => searchResult(repository, 'public')),
+        source: 'public',
+        hasMore: Number(response.total_count || 0) > limit,
+      }
     },
     branchUrl(repository, branch) {
       return `https://github.com/${encodeURI(repository)}/tree/${encodeURIComponent(branch)}`

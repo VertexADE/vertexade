@@ -1,17 +1,35 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
-import { createMobileWorkItem, startMobileThread, type MobileWorkspace } from '@/mobile-workspace-service'
+import { addMobileRepository, createMobileWorkItem, searchMobileRepositories, startMobileThread, type MobileWorkspace } from '@/mobile-workspace-service'
 import { MobileWorkspaceCreateModal } from './mobile-workspace-create-modal'
 
 jest.mock('@/mobile-workspace-service', () => ({
   createMobileWorkItem: jest.fn(),
+  addMobileRepository: jest.fn(),
+  searchMobileRepositories: jest.fn(),
   startMobileThread: jest.fn(),
 }))
 
 const createWork = jest.mocked(createMobileWorkItem)
 const startThread = jest.mocked(startMobileThread)
+const searchRepositories = jest.mocked(searchMobileRepositories)
+const addRepository = jest.mocked(addMobileRepository)
 const backends = [{ id: 'local', label: 'Local', isDefault: true }, { id: 'team', label: 'Team', isDefault: false }]
 const workspace: MobileWorkspace = {
-  repositories: [{ id: 1, fullName: 'dovo/local', backendId: 'local', backendName: 'Local' }],
+  repositories: [{
+    id: 1,
+    fullName: 'dovo/local',
+    sourceKind: 'git',
+    workspaceStrategy: 'worktree',
+    backendId: 'local',
+    backendName: 'Local',
+  }, {
+    id: 4,
+    fullName: 'Local notes',
+    sourceKind: 'directory',
+    workspaceStrategy: 'copy',
+    backendId: 'local',
+    backendName: 'Local',
+  }],
   pullRequests: [],
   workItems: [{
     id: 2,
@@ -37,6 +55,8 @@ describe('MobileWorkspaceCreateModal', () => {
   beforeEach(() => {
     createWork.mockReset()
     startThread.mockReset()
+    searchRepositories.mockReset().mockResolvedValue({ repositories: [], source: 'authenticated' })
+    addRepository.mockReset()
   })
 
   test('creates Work and starts an agent configured to publish a draft PR', async () => {
@@ -127,5 +147,45 @@ describe('MobileWorkspaceCreateModal', () => {
     fireEvent.press(screen.getByTestId('create-submit'))
 
     await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://two:4173', expect.objectContaining({ backendId: 'local', title: 'Second server work' })))
+  })
+
+  test('creates repository-free Work in an explicit general workspace', async () => {
+    createWork.mockResolvedValue({ id: 5, key: 'W-0005', title: 'Plan launch', backendId: 'local', backendName: 'Local' })
+    const onCompleted = jest.fn().mockResolvedValue(undefined)
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
+
+    fireEvent.changeText(screen.getByLabelText('Work title'), 'Plan launch')
+    fireEvent.press(screen.getByTestId('create-repository-general'))
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', {
+      backendId: 'local',
+      title: 'Plan launch',
+      description: '',
+    }))
+    expect(screen.getByText('Managed · isolated · no repository or Git required')).toBeOnTheScreen()
+  })
+
+  test('searches, adds, and selects an authenticated repository without leaving the modal', async () => {
+    searchRepositories.mockResolvedValue({
+      source: 'authenticated',
+      repositories: [{ id: 'acme/private-app', name: 'acme/private-app', description: '', private: true, ownerType: 'organization', source: 'authenticated' }],
+    })
+    addRepository.mockResolvedValue({
+      id: 12,
+      fullName: 'acme/private-app',
+      sourceKind: 'git',
+      workspaceStrategy: 'worktree',
+      backendId: 'local',
+      backendName: 'Local',
+    })
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={jest.fn()} />)
+
+    fireEvent.changeText(screen.getByTestId('create-repository-search'), 'private')
+    await waitFor(() => expect(screen.getByText('acme/private-app')).toBeOnTheScreen())
+    fireEvent.press(screen.getByText('acme/private-app'))
+
+    await waitFor(() => expect(addRepository).toHaveBeenCalledWith('http://fixture:4173', backends[0], 'acme/private-app'))
+    expect(screen.getByTestId('create-repository-12')).toHaveProp('accessibilityState', { selected: true })
   })
 })

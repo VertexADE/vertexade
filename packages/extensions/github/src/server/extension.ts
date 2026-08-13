@@ -15,7 +15,11 @@ export function createExtension(context: GitHubContext): DashboardExtension {
     const stored = context.host.settings.read<{ accounts?: unknown }>('config', {})
     return normalizeGitHubTokenAccounts(stored.accounts ?? [], [])
   }
-  const scm = createGitHubScmProvider(context.run, (repository) => accountForRepository(accounts(), repository)?.token)
+  const scm = createGitHubScmProvider(
+    context.run,
+    (repository) => accountForRepository(accounts(), repository)?.token,
+    () => accounts().map((account) => account.token),
+  )
   const authentication = createGitHubAuthenticationLifecycle(context, scm)
   const refreshTrigger = createGitHubDeploymentsRefreshTrigger()
 
