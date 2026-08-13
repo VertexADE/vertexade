@@ -1,8 +1,11 @@
 import { createPlatformClient } from '@vertexade/platform-client'
 import {
   createMobileWorkItem,
+  addMobileLocalFolder,
   addMobileRepository,
+  browseMobileDirectories,
   loadMobileWorkspace,
+  loadMobileAgentResourceSelection,
   searchMobileRepositories,
   startMobileThread,
 } from './mobile-workspace-service'
@@ -71,12 +74,12 @@ describe('mobile workspace service', () => {
       backendId: 'team',
       title: '  Ship mobile  ',
       description: ' Native first ',
-      repositoryId: 1_000_000_002,
+      repositoryIds: [1_000_000_002, 1_000_000_003],
     })).resolves.toMatchObject({ id: 9, key: 'team~W-0009', backendId: 'team' })
     expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', getAccessToken: expect.any(Function), headers: { 'x-vertexade-backend': 'team' } })
     expect(request).toHaveBeenCalledWith('/api/work-items', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ title: 'Ship mobile', description: 'Native first', kind: 'implementation', priority: 'normal', repository_ids: [1_000_000_002] }),
+      body: JSON.stringify({ title: 'Ship mobile', description: 'Native first', kind: 'implementation', priority: 'normal', repository_ids: [1_000_000_002, 1_000_000_003] }),
     }))
   })
 
@@ -87,7 +90,7 @@ describe('mobile workspace service', () => {
     await startMobileThread('http://fixture:4173', {
       backendId: 'team',
       workItemId: 1_000_000_009,
-      repositoryId: 1_000_000_002,
+      repositoryIds: [1_000_000_002, 1_000_000_003],
       prompt: ' Implement it ',
       createPullRequest: true,
       agentOptions: {
@@ -109,7 +112,7 @@ describe('mobile workspace service', () => {
         'x-agent-subagents': 'true',
       }),
       body: JSON.stringify({
-        repository_ids: [1_000_000_002],
+        repository_ids: [1_000_000_002, 1_000_000_003],
         prompt: 'Implement it',
         create_pr: true,
         agent_id: 'codex',
@@ -142,5 +145,38 @@ describe('mobile workspace service', () => {
       method: 'POST',
       body: JSON.stringify({ repository: 'acme/private-app' }),
     }))
+  })
+
+  test('browses and adds a direct local folder through the selected backend', async () => {
+    const request = jest.fn()
+      .mockResolvedValueOnce({ path: '/srv/projects', parent: '/srv', home: '/home/vertex', entries: [{ name: 'app', path: '/srv/projects/app' }], has_more: false })
+      .mockResolvedValueOnce({ repo: { id: 21, full_name: 'Client app', source_kind: 'directory', workspace_strategy: 'direct' } })
+    createClient.mockReturnValue({ request } as unknown as ReturnType<typeof createPlatformClient>)
+    const backend = { id: 'team', label: 'Team', isDefault: false }
+
+    await expect(browseMobileDirectories('http://fixture:4173', 'team', '/srv/projects')).resolves.toMatchObject({
+      path: '/srv/projects', entries: [{ name: 'app', path: '/srv/projects/app' }], hasMore: false,
+    })
+    await expect(addMobileLocalFolder('http://fixture:4173', backend, {
+      localPath: '/srv/projects/app', name: 'Client app', workspaceStrategy: 'direct',
+    })).resolves.toMatchObject({ id: 21, fullName: 'Client app', workspaceStrategy: 'direct' })
+    expect(request).toHaveBeenNthCalledWith(1, '/api/system/directories?limit=200&path=%2Fsrv%2Fprojects')
+    expect(request).toHaveBeenNthCalledWith(2, '/api/repositories', expect.objectContaining({
+      body: JSON.stringify({ local_path: '/srv/projects/app', name: 'Client app', workspace_strategy: 'direct' }),
+    }))
+  })
+
+  test('loads Work-specific skills and MCP server selection', async () => {
+    const request = jest.fn().mockResolvedValue({
+      skills: [{ id: 'review', name: 'Review', enabled: true, defaultEnabled: true, source: 'dovo', skill: 'review' }],
+      mcpServers: [{ id: 'github', name: 'GitHub', enabled: false, defaultEnabled: false, transport: 'stdio' }],
+    })
+    createClient.mockReturnValue({ request } as unknown as ReturnType<typeof createPlatformClient>)
+
+    await expect(loadMobileAgentResourceSelection('http://fixture:4173', 'team', 42)).resolves.toEqual({
+      skills: [expect.objectContaining({ id: 'review', enabled: true })],
+      mcpServers: [expect.objectContaining({ id: 'github', transport: 'stdio' })],
+    })
+    expect(request).toHaveBeenCalledWith('/api/agent-resources/selection?work_item_id=42')
   })
 })

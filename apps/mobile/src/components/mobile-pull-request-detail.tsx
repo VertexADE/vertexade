@@ -62,6 +62,8 @@ export function MobilePullRequestDetail({
       eyebrow={`${pullRequest.backendName.toUpperCase()} · ${pullRequest.fullName} #${pullRequest.number}`}
       title={detail.value?.title || pullRequest.title}
       subtitle={`${pullRequest.headRef || 'head'} → ${pullRequest.baseRef || 'base'}`}
+      compactHeader
+      headerContent={detail.value ? <PullRequestHeaderSummary detail={detail.value} /> : undefined}
       tabs={tabs}
       activeTab={tab}
       loading={detail.loading}
@@ -95,6 +97,18 @@ export function MobilePullRequestDetail({
       ) : null}
     </MobileDetailShell>
   )
+}
+
+function PullRequestHeaderSummary({ detail }: { detail: MobilePullRequestDetails }) {
+  const failed = detail.checks.filter((check) => check.status.toLowerCase().includes('fail')).length
+  const status = failed ? `${failed} checks failed` : detail.draft ? 'Draft' : 'Ready for review'
+  return <View style={styles.entitySummary}>
+    <View style={styles.entitySummaryMain}>
+      <Text style={[styles.entityStatus, failed > 0 && styles.entityStatusDanger]}>{status}</Text>
+      <Text numberOfLines={1} style={styles.entityContext}>{detail.headRef || 'head'} → {detail.baseRef || 'base'}</Text>
+    </View>
+    <Text style={styles.entityMeta}>{detail.files.length} files · +{detail.additions} −{detail.deletions}</Text>
+  </View>
 }
 
 function PullRequestTabContent({

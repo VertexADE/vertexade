@@ -166,9 +166,17 @@ export function useNewWorkDialog({
   }
 
   async function addRepository(repository: string) {
+    return addRepositoryInput({ repository })
+  }
+
+  async function addLocalFolder(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' | 'move' }) {
+    return addRepositoryInput(input)
+  }
+
+  async function addRepositoryInput(input: Record<string, unknown>) {
     const result = await backendApi<{ repo: WorkBoardData['repositories'][number] }>(backendId, '/api/repositories', {
       method: 'POST',
-      body: JSON.stringify({ repository }),
+      body: JSON.stringify(input),
     })
     form.setFieldValue('repositories', [...new Set([...form.getFieldValue('repositories'), result.repo.id])])
     await queryClient.invalidateQueries({ queryKey: ['platform'] })
@@ -259,6 +267,7 @@ export function useNewWorkDialog({
     },
     generateTitle,
     addRepository,
+    addLocalFolder,
     submit,
   }
 }

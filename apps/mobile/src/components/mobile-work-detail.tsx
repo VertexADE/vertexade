@@ -63,6 +63,8 @@ export function MobileWorkDetail({
       eyebrow={`${item.backendName.toUpperCase()} · ${item.key}`}
       title={detail.value?.title || item.title}
       subtitle={`${detail.value?.state || item.state} · ${detail.value?.repositoryNames.join(', ') || 'No repository'}`}
+      compactHeader
+      headerContent={detail.value ? <WorkHeaderSummary detail={detail.value} /> : undefined}
       tabs={tabs}
       activeTab={tab}
       loading={detail.loading}
@@ -92,6 +94,16 @@ export function MobileWorkDetail({
       ) : null}
     </MobileDetailShell>
   )
+}
+
+function WorkHeaderSummary({ detail }: { detail: MobileWorkItemDetails }) {
+  return <View style={styles.entitySummary}>
+    <View style={styles.entitySummaryMain}>
+      <Text style={styles.entityStatus}>{detail.state.replaceAll('_', ' ')}</Text>
+      <Text numberOfLines={1} style={styles.entityContext}>{detail.repositoryNames.join(', ') || 'General workspace'}</Text>
+    </View>
+    <Text style={styles.entityMeta}>{detail.threads.length} threads · {detail.priority}</Text>
+  </View>
 }
 
 function WorkTabContent({

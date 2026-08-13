@@ -16,6 +16,7 @@ import {
   ExternalLink,
   PackageCheck,
   Pin,
+  PlugZap,
   RefreshCw,
   Settings2,
   ShieldCheck,
@@ -24,6 +25,7 @@ import {
 import { toast } from 'sonner'
 import { ExtensionSettingsPanel } from '@vertexade/ui/extensions/settings-panel'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
+import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
@@ -152,6 +154,19 @@ export function ExtensionsPage() {
       />
 
       <section aria-label="Browse extensions" className="space-y-3">
+        <details className="rounded-lg border bg-card/30">
+          <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 marker:hidden">
+            <PlugZap className="size-4 text-violet-400" />
+            <span className="min-w-0 flex-1">
+              <strong className="block text-sm">Agent extensions</strong>
+              <span className="block text-xs text-muted-foreground">Skills and MCP servers installed for Work-item agents</span>
+            </span>
+            <Badge variant="secondary">Skills + MCP</Badge>
+          </summary>
+          <div className="border-t p-3">
+            <AgentResourceSettings section="context" />
+          </div>
+        </details>
         {diagnostics.length > 0 && (
           <StatusPanel tone="danger">
             <AlertTriangle />

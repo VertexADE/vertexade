@@ -190,7 +190,7 @@ describe('MobileWorkspaceScreen', () => {
     />)
 
     expect(screen.getByDisplayValue('Office')).toBeOnTheScreen()
-    expect(screen.getByText('Agent resources')).toBeOnTheScreen()
+    expect(screen.getAllByText('Extensions').length).toBeGreaterThan(0)
     expect(screen.queryByText('http://fixture:4173')).not.toBeOnTheScreen()
     fireEvent.changeText(screen.getByLabelText('Connection name for Office'), 'Home Mac')
     fireEvent.press(screen.getByText('Save name'))

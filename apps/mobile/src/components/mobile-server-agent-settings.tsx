@@ -6,9 +6,11 @@ import {
   removeMobileAgentResource,
   saveMobileCustomAgent,
   saveMobileMcpServer,
+  searchMobileMcpRegistry,
   setMobileResourceDefault,
   type MobileAgentResourceCatalog,
   type MobileCustomAgent,
+  type MobileMcpRegistryResult,
 } from '@/mobile-agent-resources'
 import { colors } from '@/theme'
 import { MobileModalSafeArea } from './mobile-modal-safe-area'
@@ -33,7 +35,7 @@ export function MobileServerAgentSettings({ backendId, serverName, serviceUrl, v
 
   return <Modal allowSwipeDismissal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
     <MobileModalSafeArea style={styles.screen}>
-      <MobileSheetHeader title={serverName} subtitle="Agents, skills, and MCP servers" trailingLabel="Done" onTrailing={onClose} />
+      <MobileSheetHeader title="Extensions" subtitle={`${serverName} · agents, skills, and MCP servers`} trailingLabel="Done" onTrailing={onClose} />
       <View style={styles.tabs}>{(['agents', 'skills', 'mcp'] as const).map((item) => <Pressable key={item} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}><Text style={[styles.tabText, section === item && styles.tabTextActive]}>{item === 'mcp' ? 'MCP' : item[0].toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
       <SettingsContent loading={loading} error={error} section={section} catalog={catalog} serviceUrl={serviceUrl} backendId={backendId} reload={load} />
     </MobileModalSafeArea>
@@ -63,12 +65,19 @@ function SkillsSection({ catalog, ...context }: SettingsSectionProps) {
 }
 
 function McpSection({ catalog, ...context }: SettingsSectionProps) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<MobileMcpRegistryResult[]>([])
   const [name, setName] = useState('')
   const [endpoint, setEndpoint] = useState('')
+  const [args, setArgs] = useState<string[]>([])
   const [transport, setTransport] = useState<'stdio' | 'sse'>('stdio')
-  async function add() { if (!name.trim() || !endpoint.trim()) return contextError('Name and command or URL are required'); await saveMobileMcpServer(context.serviceUrl, context.backendId, { name: name.trim(), endpoint: endpoint.trim(), transport }); setName(''); setEndpoint(''); await context.reload() }
-  return <><SectionHeading title="MCP servers" text="Configure a local command or remote SSE endpoint for this server." />
-    <View style={styles.form}><TextInput accessibilityLabel="MCP server name" value={name} onChangeText={setName} placeholder="Server name" placeholderTextColor={colors.muted} style={styles.input} /><View style={styles.tabs}><Choice label="Command" selected={transport === 'stdio'} onPress={() => setTransport('stdio')} /><Choice label="SSE" selected={transport === 'sse'} onPress={() => setTransport('sse')} /></View><TextInput accessibilityLabel="MCP endpoint" value={endpoint} onChangeText={setEndpoint} autoCapitalize="none" autoCorrect={false} placeholder={transport === 'stdio' ? 'Command path' : 'https://…'} placeholderTextColor={colors.muted} style={styles.input} /><Action label="Add MCP server" onPress={() => void run(add)} /></View>
+  async function search() { if (!query.trim()) return; setResults(await searchMobileMcpRegistry(context.serviceUrl, context.backendId, query)) }
+  function configure(result: MobileMcpRegistryResult) { if (!result.installable || !result.transport) return; setName(result.name); setTransport(result.transport); setEndpoint(result.transport === 'stdio' ? result.command || '' : result.url || ''); setArgs(result.args || []); if (result.requiredInputs.length) Alert.alert('Configuration required', `Add these values after installation: ${result.requiredInputs.join(', ')}`) }
+  async function add() { if (!name.trim() || !endpoint.trim()) return contextError('Name and command or URL are required'); await saveMobileMcpServer(context.serviceUrl, context.backendId, { name: name.trim(), endpoint: endpoint.trim(), transport, args }); setName(''); setEndpoint(''); setArgs([]); await context.reload() }
+  return <><SectionHeading title="MCP servers" text="Search the official MCP Registry or configure a server manually." />
+    <InlineForm value={query} placeholder="Search official MCP Registry" onChange={setQuery} onSave={() => void run(search)} label="Search" />
+    {results.map((result) => <View key={`${result.id}@${result.version}`} style={styles.row}><View style={styles.rowCopy}><Text style={styles.rowTitle}>{result.name}</Text><Text numberOfLines={2} style={styles.rowDetail}>{result.description}</Text><Text numberOfLines={1} style={styles.rowDetail}>{result.id}@{result.version}</Text></View><Action label={result.installable ? 'Configure' : 'Unsupported'} onPress={() => configure(result)} /></View>)}
+    <View style={styles.form}><TextInput accessibilityLabel="MCP server name" value={name} onChangeText={setName} placeholder="Server name" placeholderTextColor={colors.muted} style={styles.input} /><View style={styles.tabs}><Choice label="Command" selected={transport === 'stdio'} onPress={() => setTransport('stdio')} /><Choice label="SSE" selected={transport === 'sse'} onPress={() => setTransport('sse')} /></View><TextInput accessibilityLabel="MCP endpoint" value={endpoint} onChangeText={setEndpoint} autoCapitalize="none" autoCorrect={false} placeholder={transport === 'stdio' ? 'Command path' : 'https://…'} placeholderTextColor={colors.muted} style={styles.input} />{transport === 'stdio' ? <TextInput accessibilityLabel="MCP arguments" value={args.join('\n')} onChangeText={(value) => setArgs(value.split(/\r?\n/).filter(Boolean))} multiline placeholder="One argument per line" placeholderTextColor={colors.muted} style={[styles.input, styles.textarea]} /> : null}<Action label="Add MCP server" onPress={() => void run(add)} /></View>
     {catalog.mcpServers.map((server) => <ResourceRow key={server.id} name={server.name} detail={server.transport === 'stdio' ? server.command || '' : server.url || ''} enabled={server.defaultEnabled} onToggle={(enabled) => void run(async () => { await setMobileResourceDefault(context.serviceUrl, context.backendId, 'mcp', server.id, enabled); await context.reload() })} onRemove={() => confirmRemove(server.name, async () => { await removeMobileAgentResource(context.serviceUrl, context.backendId, 'mcp', server.id); await context.reload() })} />)}
     {!catalog.mcpServers.length ? <Empty text="No MCP servers configured." /> : null}</>
 }

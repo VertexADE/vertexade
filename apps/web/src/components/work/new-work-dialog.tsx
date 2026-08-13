@@ -12,6 +12,8 @@ import {
   Settings2,
   Sparkles,
 } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { AgentResourcePicker, emptyAgentResourceSelection } from '@vertexade/ui/components/agent-resource-picker'
 import { PromptImageTextarea } from '@vertexade/ui/components/prompt-images'
@@ -32,6 +34,7 @@ import { SegmentedControl, SegmentedControlItem } from '@vertexade/ui/components
 import type { WorkBoardData, WorkItem } from '@vertexade/ui/lib/dashboard-types'
 
 import { useNewWorkDialog } from './use-new-work-dialog'
+import { ServerDirectoryBrowserDialog } from '../settings/server-directory-browser-dialog'
 export function NewWorkDialog({
   open,
   onOpenChange,
@@ -76,6 +79,7 @@ export function NewWorkDialog({
     setBackendId,
     generateTitle,
     addRepository,
+    addLocalFolder,
     submit,
   } = useNewWorkDialog({ open, onOpenChange, data, onCreated, initialStartThread })
   const targetRepositories = data.repositories.filter((repository) => !repository.backend_id || repository.backend_id === backendId)
@@ -93,21 +97,19 @@ export function NewWorkDialog({
     : 'Add to Work · start later'
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden sm:max-w-2xl">
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-0 sm:max-w-[42rem]">
         <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <DialogHeader>
-            <DialogTitle>New work</DialogTitle>
-            <DialogDescription>Describe the outcome, confirm its workspace, and go.</DialogDescription>
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle>Create Work</DialogTitle>
+            <DialogDescription>Define the outcome first. Everything else can be adjusted later.</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             <FieldGroup>
               <Field aria-labelledby="work-outcome">
-                <div className="flex items-center justify-between gap-3">
-                  <Label id="work-outcome" htmlFor="work-title" className="text-sm font-semibold">
-                    Outcome
-                  </Label>
-                  <span className="text-[11px] text-muted-foreground">Draft saved</span>
-                </div>
+                <Label id="work-outcome" htmlFor="work-title" className="text-sm font-semibold">
+                  <span className="mr-2 text-[10px] font-semibold tracking-[.12em] text-primary">1 · OUTCOME</span>
+                  What should be different when this is done?
+                </Label>
                 <Input
                   id="work-title"
                   autoFocus
@@ -146,7 +148,8 @@ export function NewWorkDialog({
               >
                 <div className="min-w-0">
                   <Label id="work-start-mode" className="text-xs font-semibold">
-                    Launch
+                    <span className="mr-2 text-[10px] tracking-[.12em] text-primary">2 · LAUNCH</span>
+                    Choose when to start
                   </Label>
                   <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                     {startThread ? 'Create the outcome and start its agent.' : 'Save the outcome without starting an agent.'}
@@ -173,7 +176,8 @@ export function NewWorkDialog({
                 <Field aria-label="Agent workspace">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="flex items-center gap-1.5 text-xs font-semibold">
-                      <GitBranch className="size-3.5 text-blue-400" /> Workspace
+                      <GitBranch className="size-3.5 text-primary" />{' '}
+                      <span className="text-[10px] tracking-[.12em] text-primary">3 · WORKSPACE</span>
                     </h3>
                     <span className="text-[11px] text-muted-foreground">Recent workspace suggested</span>
                   </div>
@@ -183,6 +187,8 @@ export function NewWorkDialog({
                     backendId={backendId}
                     onChange={setRepositories}
                     onAdd={addRepository}
+                    onAddLocal={addLocalFolder}
+                    backendName={backends.find((backend) => backend.id === backendId)?.label || 'server'}
                   />
                 </Field>
               )}
@@ -301,7 +307,7 @@ export function NewWorkDialog({
               </details>
             </FieldGroup>
           </div>
-          <DialogFooter className="items-center sm:justify-between">
+          <DialogFooter className="border-t bg-muted/[.04] px-5 py-3 sm:items-center sm:justify-between">
             <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">{launchSummary}</span>
             <div className="flex w-full justify-end gap-2 sm:w-auto">
               <Button type="button" variant="outline" className="hidden sm:inline-flex" onClick={() => onOpenChange(false)}>
@@ -331,13 +337,22 @@ function RepositoryChooser({
   backendId,
   onChange,
   onAdd,
+  onAddLocal,
+  backendName,
 }: {
   repositories: WorkBoardData['repositories']
   selected: number[]
   backendId: string
   onChange(ids: number[]): void
   onAdd(repository: string): Promise<void>
+  onAddLocal(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' | 'move' }): Promise<void>
+  backendName: string
 }) {
+  const [browserOpen, setBrowserOpen] = useState(false)
+  const [localPath, setLocalPath] = useState('')
+  const [localName, setLocalName] = useState('')
+  const [localStrategy, setLocalStrategy] = useState<'direct' | 'copy' | 'move'>('direct')
+  const [addingLocal, setAddingLocal] = useState(false)
   const selectedRepositories = repositories.filter((repository) => selected.includes(repository.id))
   const names = selectedRepositories.map((repository) => repository.full_name)
   const generalWorkspace = selected.length === 0
@@ -378,6 +393,70 @@ function RepositoryChooser({
             backendId={backendId}
             added={repositories.map((repository) => repository.full_name)}
             onSelect={(repository) => onAdd(repository.id)}
+          />
+          <div className="grid gap-2 rounded-lg border bg-muted/[.05] p-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+            <div className="flex min-w-0 gap-2">
+              <Input
+                aria-label="Local folder path"
+                className="min-w-0 font-mono text-xs"
+                placeholder="/path/on/server"
+                value={localPath}
+                onChange={(event) => setLocalPath(event.target.value)}
+              />
+              <Button type="button" variant="outline" onClick={() => setBrowserOpen(true)}>
+                <FolderOpen /> Browse
+              </Button>
+            </div>
+            <Input
+              aria-label="Local folder name"
+              placeholder="Name (optional)"
+              value={localName}
+              onChange={(event) => setLocalName(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Select value={localStrategy} onValueChange={(value) => setLocalStrategy(value as typeof localStrategy)}>
+                <SelectTrigger aria-label="Local folder behavior">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="direct">Direct</SelectItem>
+                  <SelectItem value="copy">Copy</SelectItem>
+                  <SelectItem value="move">Move</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                disabled={!localPath.trim() || addingLocal}
+                onClick={() =>
+                  void (async () => {
+                    setAddingLocal(true)
+                    try {
+                      await onAddLocal({
+                        local_path: localPath.trim(),
+                        ...(localName.trim() ? { name: localName.trim() } : {}),
+                        workspace_strategy: localStrategy,
+                      })
+                      setLocalPath('')
+                      setLocalName('')
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : 'Local folder could not be added')
+                    } finally {
+                      setAddingLocal(false)
+                    }
+                  })()
+                }
+              >
+                {addingLocal ? <Loader2 className="animate-spin" /> : <Plus />} Add
+              </Button>
+            </div>
+          </div>
+          <ServerDirectoryBrowserDialog
+            open={browserOpen}
+            backendId={backendId}
+            backendName={backendName}
+            initialPath={localPath}
+            onOpenChange={setBrowserOpen}
+            onSelect={setLocalPath}
           />
         </>
       ) : (

@@ -1,12 +1,13 @@
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { allocateAgentWorktree } from './agent-worktree.ts'
 
 describe('agent worktree allocation', () => {
-  it('uses a plain local directory directly without invoking Git', async () => {
+  it('links a direct local directory into the combined Work-item folder without invoking Git', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-direct-'))
+    const workItemWorkspaceRoot = join(root, 'work-items')
     const prepare = vi.fn()
     const run = vi.fn()
     const result = await allocateAgentWorktree(
@@ -14,12 +15,18 @@ describe('agent worktree allocation', () => {
       { workspaceRoot: join(root, 'agents') },
       '',
       null,
-      { workItemKey: 'W-0001' },
-      { run, prepare, cleanup: vi.fn() },
+      { mode: 'combined', workItemKey: 'W-0001' },
+      { run, prepare, cleanup: vi.fn(), workItemWorkspaceRoot },
     )
-    expect(result).toMatchObject({ worktree: root, sessionCwd: root, workspaceStrategy: 'direct', baseGitDir: null })
+    expect(result).toMatchObject({
+      worktree: join(workItemWorkspaceRoot, 'W-0001', 'Local--docs'),
+      sessionCwd: join(workItemWorkspaceRoot, 'W-0001'),
+      workspaceStrategy: 'direct',
+      baseGitDir: null,
+    })
+    await expect(realpath(result.worktree)).resolves.toBe(await realpath(root))
     expect(run).not.toHaveBeenCalled()
-    expect(prepare).toHaveBeenCalledOnce()
+    expect(prepare).toHaveBeenCalledWith(expect.anything(), result.worktree, expect.anything())
   })
 
   it('reuses the stable combined repository worktree', async () => {

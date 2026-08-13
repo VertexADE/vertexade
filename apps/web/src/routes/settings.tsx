@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
-  ArrowRight,
   Bot,
+  ArrowRight,
   BookOpen,
   Braces,
   Container,
@@ -24,7 +24,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GlobalHighlights } from '@vertexade/ui/components/global-highlights'
-import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
 import {
   emptySystemConfiguration,
   PromptPolicySettings,
@@ -33,6 +32,7 @@ import {
   type SystemConfigurationValue,
 } from '@vertexade/ui/components/system-configuration-settings'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
+import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
@@ -62,8 +62,8 @@ import { LinkedServersSettings } from '../components/settings/linked-servers-set
 import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
 import { BrowserPairingSettings } from '../components/settings/browser-pairing-settings'
 
-type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'capabilities' | 'appearance'
-const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'capabilities', 'appearance'])
+type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'appearance'
+const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'appearance'])
 const legacySettingsSections: Record<string, SettingsSection> = {
   general: 'workspace',
   servers: 'connectivity',
@@ -132,14 +132,6 @@ const settingsSections: Array<{
     icon: Gauge,
     keywords:
       'runtime concurrency execution limits generation titles summaries provider model read-only prompts policies presets instructions',
-  },
-  {
-    id: 'capabilities',
-    group: 'agents',
-    label: 'AI capabilities',
-    description: 'Skills & MCP servers',
-    icon: Bot,
-    keywords: 'ai skills mcp servers agents',
   },
   {
     id: 'appearance',
@@ -677,6 +669,15 @@ function SettingsPage() {
                   </SettingsGroup>
                   <SettingsSectionDivider />
                   <SettingsGroup
+                    id="agents-custom"
+                    title="Custom agents"
+                    description="Create reusable agent presets. Skills and MCP servers are managed under Extensions."
+                    icon={Bot}
+                  >
+                    <AgentResourceSettings section="agents" />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
                     id="agents-runtime"
                     title="Runtime & tools"
                     description="Control executable discovery, retry behavior, concurrency, and automation limits."
@@ -685,43 +686,6 @@ function SettingsPage() {
                   >
                     <ToolPathSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
                     <RuntimeSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                  </SettingsGroup>
-                </section>
-              </TabsContent>
-              <TabsContent value="capabilities">
-                <section data-slot="settings-section" aria-labelledby="capability-settings" className={settingsSectionClass}>
-                  <SettingsPageHeader
-                    id="capability-settings"
-                    eyebrow="Agents"
-                    title="AI capabilities"
-                    description="Manage reusable skills and MCP servers once, then choose the active resources for each Work item."
-                    icon={Bot}
-                    badge="Extensible"
-                    summary={[
-                      {
-                        label: 'Skills',
-                        value: 'Workspace catalog',
-                        detail: 'Reusable guidance',
-                      },
-                      {
-                        label: 'MCP servers',
-                        value: 'Managed here',
-                        detail: 'External tools',
-                      },
-                      {
-                        label: 'Activation',
-                        value: 'Per Work item',
-                        detail: 'Least privilege',
-                      },
-                    ]}
-                  />
-                  <SettingsGroup
-                    id="capabilities-resources"
-                    title="Agent resources"
-                    description="Install and maintain capabilities at workspace level without enabling everything for every thread."
-                    icon={Bot}
-                  >
-                    <AgentResourceSettings />
                   </SettingsGroup>
                 </section>
               </TabsContent>

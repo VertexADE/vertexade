@@ -67,6 +67,12 @@ export const mobileDetailStyles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   headerMetricValue: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  entitySummary: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', paddingHorizontal: spacing.md },
+  entitySummaryMain: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm, minWidth: 0 },
+  entityStatus: { backgroundColor: colors.accentSoft, borderRadius: 999, color: colors.accent, fontSize: 10, fontWeight: '700', overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, textTransform: 'capitalize' },
+  entityStatusDanger: { backgroundColor: '#3a1b22', color: colors.danger },
+  entityContext: { color: colors.muted, flex: 1, fontSize: 11 },
+  entityMeta: { color: colors.muted, fontSize: 10, fontVariant: ['tabular-nums'] },
   close: {
     color: colors.accent,
     fontSize: 14,

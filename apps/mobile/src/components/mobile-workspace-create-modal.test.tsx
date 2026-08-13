@@ -1,10 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
-import { addMobileRepository, createMobileWorkItem, searchMobileRepositories, startMobileThread, type MobileWorkspace } from '@/mobile-workspace-service'
+import { addMobileLocalFolder, addMobileRepository, browseMobileDirectories, createMobileWorkItem, loadMobileAgentResourceSelection, searchMobileRepositories, startMobileThread, type MobileWorkspace } from '@/mobile-workspace-service'
 import { MobileWorkspaceCreateModal } from './mobile-workspace-create-modal'
 
 jest.mock('@/mobile-workspace-service', () => ({
   createMobileWorkItem: jest.fn(),
   addMobileRepository: jest.fn(),
+  addMobileLocalFolder: jest.fn(),
+  browseMobileDirectories: jest.fn(),
+  loadMobileAgentResourceSelection: jest.fn(),
   searchMobileRepositories: jest.fn(),
   startMobileThread: jest.fn(),
 }))
@@ -13,6 +16,9 @@ const createWork = jest.mocked(createMobileWorkItem)
 const startThread = jest.mocked(startMobileThread)
 const searchRepositories = jest.mocked(searchMobileRepositories)
 const addRepository = jest.mocked(addMobileRepository)
+const addLocalFolder = jest.mocked(addMobileLocalFolder)
+const browseDirectories = jest.mocked(browseMobileDirectories)
+const loadAgentResources = jest.mocked(loadMobileAgentResourceSelection)
 const backends = [{ id: 'local', label: 'Local', isDefault: true }, { id: 'team', label: 'Team', isDefault: false }]
 const workspace: MobileWorkspace = {
   repositories: [{
@@ -57,6 +63,9 @@ describe('MobileWorkspaceCreateModal', () => {
     startThread.mockReset()
     searchRepositories.mockReset().mockResolvedValue({ repositories: [], source: 'authenticated' })
     addRepository.mockReset()
+    addLocalFolder.mockReset()
+    browseDirectories.mockReset().mockResolvedValue({ path: '/Users/dom', parent: '/Users', home: '/Users/dom', entries: [], hasMore: false })
+    loadAgentResources.mockReset().mockResolvedValue({ skills: [], mcpServers: [] })
   })
 
   test('creates Work and starts an agent configured to publish a draft PR', async () => {
@@ -74,12 +83,12 @@ describe('MobileWorkspaceCreateModal', () => {
       backendId: 'local',
       title: 'New delivery',
       description: 'Implement and verify it',
-      repositoryId: 1,
+      repositoryIds: [1],
     }))
     expect(startThread).toHaveBeenCalledWith('http://fixture:4173', {
       backendId: 'local',
       workItemId: 3,
-      repositoryId: 1,
+      repositoryIds: [1],
       prompt: 'Implement and verify it',
       createPullRequest: true,
       agentOptions: {
@@ -98,13 +107,15 @@ describe('MobileWorkspaceCreateModal', () => {
     const onCompleted = jest.fn().mockResolvedValue(undefined)
     render(<MobileWorkspaceCreateModal mode="thread" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} initialWorkItem={workspace.workItems[0]} onClose={jest.fn()} onCompleted={onCompleted} />)
 
+    fireEvent.press(screen.getByText('More options'))
+    await waitFor(() => expect(screen.getByText('No skills or MCP servers are configured on this server.')).toBeOnTheScreen())
     fireEvent(screen.getByLabelText('Publish a draft pull request'), 'valueChange', true)
     fireEvent.press(screen.getByTestId('create-submit'))
 
     await waitFor(() => expect(startThread).toHaveBeenCalledWith('http://fixture:4173', {
       backendId: 'local',
       workItemId: 2,
-      repositoryId: 1,
+      repositoryIds: [1],
       prompt: 'Finish the existing outcome',
       createPullRequest: true,
       agentOptions: {
@@ -114,6 +125,7 @@ describe('MobileWorkspaceCreateModal', () => {
         reasoningEffort: '',
         serviceTier: '',
       },
+      resourceSelection: { skills: [], mcpServers: [] },
     }))
     expect(createWork).not.toHaveBeenCalled()
     expect(onCompleted).toHaveBeenCalledWith('W-0002 agent thread started with draft PR delivery enabled.')
@@ -166,6 +178,54 @@ describe('MobileWorkspaceCreateModal', () => {
     expect(screen.getByText('Managed · isolated · no repository or Git required')).toBeOnTheScreen()
   })
 
+  test('starts newly created Work with selected agent skills and MCP servers', async () => {
+    createWork.mockResolvedValue({ id: 7, key: 'W-0007', title: 'Configured work', backendId: 'local', backendName: 'Local' })
+    startThread.mockResolvedValue()
+    loadAgentResources.mockResolvedValue({
+      skills: [{ id: 'skill-review', name: 'Review', enabled: true, defaultEnabled: true }],
+      mcpServers: [{ id: 'mcp-github', name: 'GitHub', enabled: false, defaultEnabled: false, transport: 'stdio' }],
+    })
+    const onCompleted = jest.fn().mockResolvedValue(undefined)
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
+
+    fireEvent.changeText(screen.getByLabelText('Work title'), 'Configured work')
+    fireEvent.press(screen.getByText('More options'))
+    fireEvent(screen.getByLabelText('Start agent now'), 'valueChange', true)
+    await waitFor(() => expect(screen.getByText('GitHub')).toBeOnTheScreen())
+    fireEvent.press(screen.getByText('GitHub'))
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', expect.objectContaining({
+      resourceSelection: { skills: ['skill-review'], mcpServers: ['mcp-github'] },
+    })))
+    expect(startThread).toHaveBeenCalledWith('http://fixture:4173', expect.objectContaining({
+      workItemId: 7,
+      prompt: 'Configured work',
+      createPullRequest: false,
+      resourceSelection: { skills: ['skill-review'], mcpServers: ['mcp-github'] },
+    }))
+    expect(onCompleted).toHaveBeenCalledWith('W-0007 created and its agent started.')
+  })
+
+  test('creates one Work item spanning multiple project sources', async () => {
+    createWork.mockResolvedValue({ id: 6, key: 'W-0006', title: 'Shared delivery', backendId: 'local', backendName: 'Local' })
+    const onCompleted = jest.fn().mockResolvedValue(undefined)
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
+
+    fireEvent.changeText(screen.getByLabelText('Work title'), 'Shared delivery')
+    fireEvent.press(screen.getByTestId('create-repository-1'))
+    fireEvent.press(screen.getByTestId('create-repository-4'))
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', {
+      backendId: 'local',
+      title: 'Shared delivery',
+      description: '',
+      repositoryIds: [1, 4],
+    }))
+    expect(screen.getByText('2 projects')).toBeOnTheScreen()
+  })
+
   test('searches, adds, and selects an authenticated repository without leaving the modal', async () => {
     searchRepositories.mockResolvedValue({
       source: 'authenticated',
@@ -187,5 +247,30 @@ describe('MobileWorkspaceCreateModal', () => {
 
     await waitFor(() => expect(addRepository).toHaveBeenCalledWith('http://fixture:4173', backends[0], 'acme/private-app'))
     expect(screen.getByTestId('create-repository-12')).toHaveProp('accessibilityState', { selected: true })
+  })
+
+  test('browses, adds, and selects a direct local folder without leaving the modal', async () => {
+    browseDirectories.mockResolvedValueOnce({
+      path: '/Users/dom/Projects', parent: '/Users/dom', home: '/Users/dom',
+      entries: [{ name: 'client', path: '/Users/dom/Projects/client' }], hasMore: false,
+    }).mockResolvedValueOnce({
+      path: '/Users/dom/Projects/client', parent: '/Users/dom/Projects', home: '/Users/dom', entries: [], hasMore: false,
+    })
+    addLocalFolder.mockResolvedValue({
+      id: 18, fullName: 'Client files', sourceKind: 'directory', workspaceStrategy: 'direct', backendId: 'local', backendName: 'Local',
+    })
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={jest.fn()} />)
+
+    fireEvent.press(screen.getByTestId('create-local-folder-open'))
+    await waitFor(() => expect(screen.getByText('client')).toBeOnTheScreen())
+    fireEvent.press(screen.getByTestId('create-local-folder-entry-client'))
+    await waitFor(() => expect(screen.getByTestId('create-local-folder-path')).toHaveProp('value', '/Users/dom/Projects/client'))
+    fireEvent.changeText(screen.getByTestId('create-local-folder-name'), 'Client files')
+    fireEvent.press(screen.getByTestId('create-local-folder-add'))
+
+    await waitFor(() => expect(addLocalFolder).toHaveBeenCalledWith('http://fixture:4173', backends[0], {
+      localPath: '/Users/dom/Projects/client', name: 'Client files', workspaceStrategy: 'direct',
+    }))
+    expect(screen.getByTestId('create-repository-18')).toHaveProp('accessibilityState', { selected: true })
   })
 })

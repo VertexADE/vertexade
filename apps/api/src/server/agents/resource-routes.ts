@@ -1,5 +1,6 @@
 import type { AgentResourceService } from './resources.ts'
 import { HttpError, readJsonObject } from '@vertexade/platform-server/http'
+import { searchMcpRegistry } from './mcp-registry.ts'
 
 function response(status: number, value: unknown) {
   return Response.json(value, { status })
@@ -44,6 +45,9 @@ async function exactRoute(request: Request, url: URL, service: AgentResourceServ
     'GET /api/agent-resources/selection': () => service.selection(Number(url.searchParams.get('work_item_id') || 0) || null),
     'GET /api/agent-resources/skills/search': async () => ({
       results: await service.searchSkills(url.searchParams.get('query')),
+    }),
+    'GET /api/agent-resources/mcp/search': async () => ({
+      results: await searchMcpRegistry(url.searchParams.get('query') || ''),
     }),
     'POST /api/agent-resources/skills': async () => service.addSkill(await readJsonObject(request)),
     'POST /api/agent-resources/mcp': async () => service.upsertMcpServer(await readJsonObject(request)),

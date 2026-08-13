@@ -29,6 +29,35 @@ export type MobileRepositorySearchResult = {
   source: 'authenticated' | 'public'
 }
 
+export type MobileDirectoryListing = {
+  path: string
+  parent: string | null
+  home: string
+  entries: Array<{ name: string; path: string }>
+  hasMore: boolean
+}
+
+export type AddMobileLocalFolderInput = {
+  localPath: string
+  name?: string
+  workspaceStrategy: 'direct' | 'copy' | 'move'
+}
+
+export type MobileAgentResourceSelection = { skills: string[]; mcpServers: string[] }
+export type MobileSelectableAgentResource = {
+  id: string
+  name: string
+  enabled: boolean
+  defaultEnabled: boolean
+  transport?: 'stdio' | 'sse'
+  source?: string
+  skill?: string
+}
+export type MobileAgentResourceSelectionCatalog = {
+  skills: MobileSelectableAgentResource[]
+  mcpServers: MobileSelectableAgentResource[]
+}
+
 export type MobilePullRequest = MobileSource & {
   id: number
   workItemId: number | null
@@ -56,6 +85,7 @@ export type MobileWorkItem = MobileSource & {
   state: 'backlog' | 'active' | 'review' | 'deploy' | 'done'
   priority: 'low' | 'normal' | 'high' | 'urgent'
   primaryRepositoryId: number | null
+  repositoryIds?: number[]
   repositoryNames: string[]
   threadCount: number
   attention: string | null
@@ -90,16 +120,18 @@ export type CreateMobileWorkItemInput = {
   backendId: string
   title: string
   description: string
-  repositoryId?: number
+  repositoryIds?: number[]
+  resourceSelection?: MobileAgentResourceSelection
 }
 
 export type StartMobileThreadInput = {
   backendId: string
   workItemId: number
-  repositoryId?: number
+  repositoryIds?: number[]
   prompt: string
   createPullRequest: boolean
   agentOptions?: MobileAgentOptions
+  resourceSelection?: MobileAgentResourceSelection
 }
 
 export type CreatedMobileWorkItem = MobileSource & {
@@ -156,7 +188,8 @@ export async function createMobileWorkItem(serviceUrl: string, input: CreateMobi
       description: input.description.trim().slice(0, 20_000),
       kind: 'implementation',
       priority: 'normal',
-      repository_ids: input.repositoryId === undefined ? [] : [input.repositoryId],
+      repository_ids: boundedRepositoryIds(input.repositoryIds),
+      ...(input.resourceSelection ? { resource_selection: input.resourceSelection } : {}),
     }),
   })
   const record = requiredRecord(payload, 'VertexADE returned an invalid Work item')
@@ -199,10 +232,26 @@ export async function searchMobileRepositories(
 }
 
 export async function addMobileRepository(serviceUrl: string, backend: MobileBackend, repository: string): Promise<MobileRepository> {
+  return addMobileRepositoryInput(serviceUrl, backend, { repository })
+}
+
+export async function addMobileLocalFolder(
+  serviceUrl: string,
+  backend: MobileBackend,
+  input: AddMobileLocalFolderInput,
+): Promise<MobileRepository> {
+  return addMobileRepositoryInput(serviceUrl, backend, {
+    local_path: input.localPath.trim(),
+    ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+    workspace_strategy: input.workspaceStrategy,
+  })
+}
+
+async function addMobileRepositoryInput(serviceUrl: string, backend: MobileBackend, input: Record<string, string>): Promise<MobileRepository> {
   const payload = await createMobilePlatformClient(serviceUrl, backend.id).request<unknown>('/api/repositories', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ repository }),
+    body: JSON.stringify(input),
   })
   const response = requiredRecord(payload, 'VertexADE returned an invalid add-repository response')
   const record = requiredRecord(response.repo, 'VertexADE returned an invalid repository')
@@ -217,6 +266,43 @@ export async function addMobileRepository(serviceUrl: string, backend: MobileBac
   }
 }
 
+export async function browseMobileDirectories(
+  serviceUrl: string,
+  backendId: string,
+  path?: string,
+): Promise<MobileDirectoryListing> {
+  const params = new URLSearchParams({ limit: '200' })
+  if (path) params.set('path', path)
+  const payload = await createMobilePlatformClient(serviceUrl, backendId).request<unknown>(`/api/system/directories?${params}`)
+  const record = requiredRecord(payload, 'VertexADE returned an invalid directory listing')
+  return {
+    path: requiredString(record.path, 'Directory path', 4_000),
+    parent: optionalString(record.parent, 4_000) || null,
+    home: requiredString(record.home, 'Home path', 4_000),
+    entries: (Array.isArray(record.entries) ? record.entries : []).map((value) => {
+      const entry = requiredRecord(value, 'VertexADE returned an invalid directory entry')
+      return { name: requiredString(entry.name, 'Directory name', 500), path: requiredString(entry.path, 'Directory path', 4_000) }
+    }),
+    hasMore: Boolean(record.has_more),
+  }
+}
+
+export async function loadMobileAgentResourceSelection(
+  serviceUrl: string,
+  backendId: string,
+  workItemId?: number,
+): Promise<MobileAgentResourceSelectionCatalog> {
+  const query = workItemId ? `?work_item_id=${encodeURIComponent(String(workItemId))}` : ''
+  const payload = requiredRecord(
+    await createMobilePlatformClient(serviceUrl, backendId).request<unknown>(`/api/agent-resources/selection${query}`),
+    'VertexADE returned invalid agent resources',
+  )
+  return {
+    skills: parseSelectableResources(payload.skills),
+    mcpServers: parseSelectableResources(payload.mcpServers),
+  }
+}
+
 export async function startMobileThread(serviceUrl: string, input: StartMobileThreadInput): Promise<void> {
   const prompt = input.prompt.trim().slice(0, 20_000)
   if (!prompt) throw new Error('A task prompt is required')
@@ -226,15 +312,37 @@ export async function startMobileThread(serviceUrl: string, input: StartMobileTh
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(input.agentOptions ? mobileAgentHeaders(input.agentOptions) : {}) },
       body: JSON.stringify({
-        repository_ids: input.repositoryId === undefined ? [] : [input.repositoryId],
+        repository_ids: boundedRepositoryIds(input.repositoryIds),
         prompt,
         create_pr: input.createPullRequest,
+        ...(input.resourceSelection ? { resource_selection: input.resourceSelection } : {}),
         ...(input.agentOptions?.agentId ? { agent_id: input.agentOptions.agentId } : {}),
         ...(input.agentOptions?.model ? { model: input.agentOptions.model } : {}),
         ...(input.agentOptions?.reasoningEffort ? { reasoning_effort: input.agentOptions.reasoningEffort } : {}),
       }),
     },
   )
+}
+
+function parseSelectableResources(value: unknown): MobileSelectableAgentResource[] {
+  return (Array.isArray(value) ? value : []).map((candidate) => {
+    const resource = requiredRecord(candidate, 'VertexADE returned an invalid agent resource')
+    return {
+      id: requiredString(resource.id, 'Agent resource ID', 1_000),
+      name: requiredString(resource.name, 'Agent resource name', 1_000),
+      enabled: Boolean(resource.enabled),
+      defaultEnabled: Boolean(resource.defaultEnabled),
+      ...(resource.transport === 'stdio' || resource.transport === 'sse' ? { transport: resource.transport } : {}),
+      ...(optionalString(resource.source, 1_000) ? { source: optionalString(resource.source, 1_000) } : {}),
+      ...(optionalString(resource.skill, 1_000) ? { skill: optionalString(resource.skill, 1_000) } : {}),
+    }
+  })
+}
+
+function boundedRepositoryIds(values: number[] | undefined): number[] {
+  const ids = [...new Set((values || []).filter((value) => Number.isInteger(value) && value > 0))]
+  if (ids.length > 8) throw new Error('Choose no more than 8 repositories')
+  return ids
 }
 
 function collectionValues(payload: unknown, collection: ReadModelCollection): unknown[] {
@@ -281,6 +389,12 @@ function parsePullRequest(value: unknown, backends: MobileBackend[], defaultBack
 
 function parseWorkItem(value: unknown, backends: MobileBackend[], defaultBackend: MobileBackend): MobileWorkItem {
   const record = requiredRecord(value, 'VertexADE returned an invalid Work item')
+  const primaryRepositoryId = optionalPositiveInteger(record.primary_repository_id)
+  const resourceRepositoryIds = (Array.isArray(record.resources) ? record.resources : [])
+    .map((resource) => requiredRecord(resource, 'VertexADE returned an invalid Work resource'))
+    .filter((resource) => resource.kind === 'repository')
+    .map((resource) => optionalPositiveInteger(resource.repository_id))
+    .filter((id): id is number => id !== null)
   return {
     ...source(record, backends, defaultBackend),
     id: requiredPositiveInteger(record.id, 'Work item ID'),
@@ -290,7 +404,8 @@ function parseWorkItem(value: unknown, backends: MobileBackend[], defaultBackend
     kind: choice(record.kind, workKinds, 'implementation'),
     state: choice(record.state, workStates, 'backlog'),
     priority: choice(record.priority, workPriorities, 'normal'),
-    primaryRepositoryId: optionalPositiveInteger(record.primary_repository_id),
+    primaryRepositoryId,
+    repositoryIds: [...new Set([...(primaryRepositoryId ? [primaryRepositoryId] : []), ...resourceRepositoryIds])],
     repositoryNames: stringArray(record.repository_names),
     threadCount: Array.isArray(record.threads) ? record.threads.length : 0,
     attention: optionalString(record.attention, 2_000) || null,

@@ -40,11 +40,11 @@ type WorkspaceRow = MobileWorkspaceDetailSelection | { kind: 'thread'; value: Mo
 type CreateRequest = { mode: MobileCreateMode; workItem?: MobileWorkItem }
 
 const viewCopy: Record<WorkspaceView, { title: string; subtitle: string; action?: string }> = {
-  focus: { title: 'Focus', subtitle: 'Decisions, active work, and agents that need you.', action: '+ Work' },
-  pullRequests: { title: 'Pull requests', subtitle: 'Review state across every paired server.', action: '+ Draft PR' },
-  work: { title: 'Work', subtitle: 'Outcomes queued, active, and moving to delivery.', action: '+ Work' },
-  threads: { title: 'Threads', subtitle: 'Live agent execution and recent activity.', action: '+ Thread' },
-  more: { title: 'More', subtitle: 'Connected servers and portable extensions.' },
+  focus: { title: 'Focus', subtitle: 'What needs your attention now.', action: '+ Work' },
+  pullRequests: { title: 'Pull requests', subtitle: 'Review state across your servers.', action: '+ Draft PR' },
+  work: { title: 'Work', subtitle: 'Outcomes from idea to delivery.', action: '+ Work' },
+  threads: { title: 'Threads', subtitle: 'Agent execution and recent activity.', action: '+ Thread' },
+  more: { title: 'Settings', subtitle: 'Connections, agent capabilities, voice, and appearance.' },
 }
 const createModeByView: Record<WorkspaceView, MobileCreateMode> = {
   focus: 'work',
@@ -279,7 +279,7 @@ function WorkspaceHeader({ view, copy, query, onCreate, onChangeQuery }: {
     <View style={styles.topRow}>
       <View style={styles.heading}>
         <Text style={styles.title}>{copy.title}</Text>
-        <Text style={styles.subtitle}>{copy.subtitle}</Text>
+        <Text numberOfLines={1} style={styles.subtitle}>{copy.subtitle}</Text>
       </View>
       {copy.action ? <Pressable
         testID={`create-${view}`}
@@ -394,12 +394,12 @@ function PullRequestCard({ item, onOpen, onError }: {
     <View style={styles.cardHeader}>
       <View style={styles.cardCopy}>
         <Text style={styles.cardEyebrow}>{item.backendName.toUpperCase()} · {item.fullName} #{item.number}</Text>
-        <Text style={styles.cardTitle}>{item.title}</Text>
+        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
       </View>
       <View style={styles.cardAccessory}><Text style={[styles.badge, item.checksFailed > 0 && styles.badgeDanger]}>{status}</Text><CardChevron /></View>
     </View>
-    <Text style={styles.cardText}>{item.author ? `By ${item.author} · ` : ''}{item.headRef || 'head'} → {item.baseRef || 'base'}</Text>
-    <Text style={styles.metadata}>{pullRequestChecks(item)}{item.updatedAt ? ` · Updated ${relativeDate(item.updatedAt)}` : ''}</Text>
+    <Text numberOfLines={1} style={styles.cardText}>{item.author ? `By ${item.author} · ` : ''}{item.headRef || 'head'} → {item.baseRef || 'base'}</Text>
+    <Text numberOfLines={1} style={styles.metadata}>{pullRequestChecks(item)}{item.updatedAt ? ` · Updated ${relativeDate(item.updatedAt)}` : ''}</Text>
     {item.url ? <CardAction role="link" label="Open web" onPress={() => void openExternalUrl(item.url, onError)} /> : null}
   </CardShell>
 }
@@ -413,12 +413,12 @@ function WorkItemCard({ item, onOpen, onStartThread }: {
     <View style={styles.cardHeader}>
       <View style={styles.cardCopy}>
         <Text style={styles.cardEyebrow}>{item.backendName.toUpperCase()} · {item.key}</Text>
-        <Text style={styles.cardTitle}>{item.title}</Text>
+        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
       </View>
       <View style={styles.cardAccessory}><Text style={styles.badge}>{item.state}</Text><CardChevron /></View>
     </View>
     {item.description ? <Text numberOfLines={3} style={styles.cardText}>{item.description}</Text> : null}
-    <Text style={styles.metadata}>{item.repositoryNames.join(', ') || 'No repository'} · {item.threadCount} {item.threadCount === 1 ? 'thread' : 'threads'} · {item.priority} priority</Text>
+    <Text numberOfLines={1} style={styles.metadata}>{item.repositoryNames.join(', ') || 'General workspace'} · {item.threadCount} {item.threadCount === 1 ? 'thread' : 'threads'} · {item.priority}</Text>
     {item.attention ? <Text style={styles.error}>{item.attention}</Text> : null}
     {item.state !== 'done' ? <CardAction role="button" label="Start thread" onPress={() => onStartThread(item)} /> : null}
   </CardShell>
@@ -434,12 +434,12 @@ function ThreadCard({ item, onOpen, onError }: {
     <View style={styles.cardHeader}>
       <View style={styles.cardCopy}>
         <Text style={styles.cardEyebrow}>{item.backendName.toUpperCase()} · {item.fullName}</Text>
-        <Text style={styles.cardTitle}>{title}</Text>
+        <Text numberOfLines={2} style={styles.cardTitle}>{title}</Text>
       </View>
       <View style={styles.cardAccessory}><Text style={[styles.badge, item.status === 'failed' && styles.badgeDanger]}>{item.status}</Text><CardChevron /></View>
     </View>
     {item.latestActivity && item.latestActivity !== title ? <Text numberOfLines={3} style={styles.cardText}>{item.latestActivity}</Text> : null}
-    <Text style={styles.metadata}>{item.agentName}{item.branchName ? ` · ${item.branchName}` : ''}{item.activityAt ? ` · ${relativeDate(item.activityAt)}` : ''}</Text>
+    <Text numberOfLines={1} style={styles.metadata}>{item.agentName}{item.branchName ? ` · ${item.branchName}` : ''}{item.activityAt ? ` · ${relativeDate(item.activityAt)}` : ''}</Text>
     {item.pullRequestUrl ? <CardAction role="link" label={`Open PR #${item.pullRequestNumber}`} onPress={() => void openExternalUrl(item.pullRequestUrl, onError)} /> : null}
   </CardShell>
 }
@@ -533,7 +533,7 @@ function ConnectionNameEditor({ session, status, onSave, onManage }: { session: 
     <TextInput accessibilityLabel={`Connection name for ${session.name || 'server'}`} autoCapitalize="words" autoCorrect placeholder="Server name" placeholderTextColor={colors.muted} style={styles.connectionNameInput} value={name} onChangeText={setName} />
     <Text style={styles.optionMeta}>{status}</Text>
     <View style={styles.cardActions}>
-      {onManage ? <Pressable accessibilityRole="button" onPress={onManage} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Agent resources</Text></Pressable> : null}
+      {onManage ? <Pressable accessibilityRole="button" onPress={onManage} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Extensions</Text></Pressable> : null}
       {changed ? <Pressable accessibilityRole="button" onPress={() => void onSave(session.serviceUrl, name)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Save name</Text></Pressable> : null}
     </View>
   </View>

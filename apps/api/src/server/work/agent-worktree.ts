@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { cp, mkdir, rm, rmdir, stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { cp, lstat, mkdir, realpath, rm, rmdir, stat, symlink } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 import { parseWorkItemWorkspaceMode, workItemWorkspaceLayout } from './workspace-layout.ts'
 
@@ -125,19 +125,6 @@ export async function allocateAgentWorktree(
   dependencies: Dependencies,
 ) {
   const strategy = repository.workspace_strategy || 'worktree'
-  if (strategy === 'direct') {
-    await dependencies.prepare(repository, repository.local_path, agent)
-    return {
-      worktree: repository.local_path,
-      baseGitDir: repository.source_kind === 'directory' ? null : await commonGitDirectory(dependencies.run, repository.local_path),
-      sessionCwd: repository.local_path,
-      workspaceMode: 'repository' as const,
-      branchName: null,
-      headSha: repository.source_kind === 'directory' ? null : revision,
-      created: false,
-      workspaceStrategy: strategy,
-    }
-  }
   const mode = parseWorkItemWorkspaceMode(workspace.mode, 'repository')
   const layout = workItemWorkspaceLayout({
     agentWorkspaceRoot: agent.workspaceRoot,
@@ -148,6 +135,29 @@ export async function allocateAgentWorktree(
     mode,
     identifier: randomUUID(),
   })
+  if (strategy === 'direct') {
+    await mkdir(dirname(layout.worktree), { recursive: true })
+    try {
+      const existing = await lstat(layout.worktree)
+      if (!existing.isSymbolicLink() || (await realpath(layout.worktree)) !== (await realpath(repository.local_path))) {
+        throw new Error(`${repository.full_name} already has a different Work-item workspace`)
+      }
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') throw error
+      await symlink(repository.local_path, layout.worktree, 'dir')
+    }
+    await dependencies.prepare(repository, layout.worktree, agent)
+    return {
+      worktree: layout.worktree,
+      baseGitDir: repository.source_kind === 'directory' ? null : await commonGitDirectory(dependencies.run, repository.local_path),
+      sessionCwd: layout.root,
+      workspaceMode: mode,
+      branchName: null,
+      headSha: repository.source_kind === 'directory' ? null : revision,
+      created: false,
+      workspaceStrategy: strategy,
+    }
+  }
   if (repository.source_kind === 'directory' || repository.source_kind === 'workspace') {
     if (!['copy', 'move'].includes(strategy)) throw new Error('Plain directories require direct, copy, or move workspace mode')
     await mkdir(layout.root, { recursive: true })

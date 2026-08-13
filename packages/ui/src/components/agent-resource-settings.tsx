@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { PlugZap, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ExternalLink, PlugZap, Search, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import { Badge } from '@vertexade/ui/components/ui/badge'
@@ -35,6 +35,19 @@ type Mcp = {
 }
 type Catalog = { skills: Skill[]; mcpServers: Mcp[]; profiles: CustomAgentProfile[] }
 type SkillResult = { source: string; skill: string; name: string; installs: string; url: string }
+type McpRegistryResult = {
+  id: string
+  name: string
+  description: string
+  version: string
+  repositoryUrl: string
+  installable: boolean
+  transport?: 'stdio' | 'sse'
+  command?: string
+  args?: string[]
+  url?: string
+  requiredInputs: string[]
+}
 const emptyCatalog: Catalog = { skills: [], mcpServers: [], profiles: [] }
 
 function pairs(value: string) {
@@ -193,12 +206,37 @@ function SkillResultRow({ item, installed, onAdd }: { item: SkillResult; install
 }
 
 function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload(): void } & ResourceActions) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<McpRegistryResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState('')
   const [transport, setTransport] = useState<'stdio' | 'sse'>('stdio')
   const [endpoint, setEndpoint] = useState('')
   const [args, setArgs] = useState('')
   const [secrets, setSecrets] = useState('')
   const [defaultEnabled, setDefaultEnabled] = useState(false)
+  async function searchRegistry(event: React.FormEvent) {
+    event.preventDefault()
+    setSearching(true)
+    try {
+      const result = await api<{ results: McpRegistryResult[] }>(`/api/agent-resources/mcp/search?query=${encodeURIComponent(query)}`)
+      setResults(result.results)
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSearching(false)
+    }
+  }
+  function configure(result: McpRegistryResult) {
+    if (!result.installable || !result.transport) return
+    setName(result.name)
+    setTransport(result.transport)
+    setEndpoint(result.transport === 'stdio' ? result.command || '' : result.url || '')
+    setArgs((result.args || []).join('\n'))
+    setSecrets(result.requiredInputs.map((input) => `${input.replace(/ \(secret\)$/, '')}=`).join('\n'))
+    setFormOpen(true)
+  }
   async function save(event: React.FormEvent) {
     event.preventDefault()
     try {
@@ -211,6 +249,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
       setArgs('')
       setSecrets('')
       setDefaultEnabled(false)
+      setFormOpen(false)
       toast.success('MCP server added')
       reload()
     } catch (error) {
@@ -230,7 +269,24 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
-        <details className="group rounded-lg border bg-background/25">
+        <form onSubmit={searchRegistry} className="flex gap-2">
+          <Input
+            required
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search the official MCP Registry…"
+          />
+          <Button disabled={searching} variant="outline">
+            <Search />
+            {searching ? 'Searching…' : 'Search'}
+          </Button>
+        </form>
+        <McpRegistryResults results={results} installed={servers} onConfigure={configure} />
+        <details
+          open={formOpen}
+          onToggle={(event) => setFormOpen(event.currentTarget.open)}
+          className="group rounded-lg border bg-background/25"
+        >
           <summary
             data-audit-action="settings.mcp.add"
             className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium marker:hidden"
@@ -276,6 +332,53 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
         <ResourceList items={servers} kind="mcp" {...actions} />
       </CardContent>
     </Card>
+  )
+}
+
+function McpRegistryResults({
+  results,
+  installed,
+  onConfigure,
+}: {
+  results: McpRegistryResult[]
+  installed: Mcp[]
+  onConfigure(result: McpRegistryResult): void
+}) {
+  if (!results.length) return null
+  return (
+    <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-1">
+      {results.map((result) => {
+        const configured = installed.some((server) => server.name === result.name)
+        return (
+          <div key={`${result.id}@${result.version}`} className="flex items-center gap-2 rounded-md p-2 hover:bg-accent">
+            <div className="min-w-0 flex-1">
+              <strong className="block truncate text-xs">{result.name}</strong>
+              <span className="block truncate text-xs text-muted-foreground">{result.description}</span>
+              <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                {result.id}@{result.version}
+                {result.requiredInputs.length ? ` · needs ${result.requiredInputs.join(', ')}` : ''}
+              </span>
+            </div>
+            {result.repositoryUrl && (
+              <Button type="button" size="icon-xs" variant="ghost" asChild>
+                <a href={result.repositoryUrl} target="_blank" rel="noreferrer" aria-label={`Open ${result.name} source`}>
+                  <ExternalLink />
+                </a>
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={!result.installable || configured}
+              onClick={() => onConfigure(result)}
+            >
+              {configured ? 'Added' : result.installable ? 'Configure' : 'Unsupported'}
+            </Button>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

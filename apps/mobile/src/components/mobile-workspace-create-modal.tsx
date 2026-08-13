@@ -1,13 +1,17 @@
+import { useState, type ReactNode } from 'react'
+import type { SFSymbol } from 'expo-symbols'
 import { ActivityIndicator, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native'
 import type { MobileBackend } from '@/platform-service'
-import type { MobileWorkItem, MobileWorkspace } from '@/mobile-workspace-service'
+import { browseMobileDirectories, type MobileDirectoryListing, type MobileWorkItem, type MobileWorkspace } from '@/mobile-workspace-service'
 import { colors } from '@/theme'
 import { mobileWorkspaceStyles as styles } from './mobile-workspace-styles'
 import { MobileAgentOptions } from './mobile-agent-options'
+import { MobileAgentResourcePicker } from './mobile-agent-resource-picker'
 import { MobileModalSafeArea } from './mobile-modal-safe-area'
 import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileWorkspaceCreation, type MobileCreateMode } from './use-mobile-workspace-creation'
 import { MobileRepositorySearch } from './mobile-repository-search'
+import { MobileSymbol } from './mobile-symbol'
 
 export type { MobileCreateMode } from './use-mobile-workspace-creation'
 
@@ -30,6 +34,8 @@ const modeCopy: Record<MobileCreateMode, { eyebrow: string; title: string; actio
 export function MobileWorkspaceCreateModal(props: CreateModalProps) {
   const creation = useMobileWorkspaceCreation(props)
   const copy = modeCopy[props.mode]
+  const [contextOpen, setContextOpen] = useState(props.mode !== 'work')
+  const [optionsOpen, setOptionsOpen] = useState(false)
   return (
     <Modal
       allowSwipeDismissal
@@ -42,43 +48,78 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
     >
       <MobileModalSafeArea testID="workspace-create-modal" style={styles.modal}>
         <CreationHeader mode={props.mode} busy={creation.busy} copy={copy} onClose={props.onClose} />
-        <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-          <OptionGroup
-            label="Server"
-            options={props.backends.map((backend) => ({
-              id: `${backend.serviceUrl || ''}::${backend.id}`,
-              label: backend.label,
-              meta: 'Direct server',
-            }))}
-            selectedId={creation.backendId}
-            testIdPrefix="create-server"
-            onSelect={creation.chooseBackend}
-          />
+        <ScrollView contentContainerStyle={styles.modalContent} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+          {props.backends.length > 1 ? <DisclosureSection
+            icon="network"
+            title="Server"
+            summary={creation.selectedBackend?.label || 'Choose where this work lives'}
+          >
+            <OptionGroup
+              options={props.backends.map((backend) => ({
+                id: `${backend.serviceUrl || ''}::${backend.id}`,
+                label: backend.label,
+                meta: 'Owns this work and its agent sessions',
+              }))}
+              selectedId={creation.backendId}
+              testIdPrefix="create-server"
+              onSelect={creation.chooseBackend}
+            />
+          </DisclosureSection> : null}
           <CreationTarget mode={props.mode} creation={creation} />
           <RepositoryTarget mode={props.mode} creation={creation} serviceUrl={props.serviceUrl} />
-          <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
-          {props.mode !== 'work' && creation.selectedBackend ? (
-            <MobileAgentOptions
-              serviceUrl={creation.selectedBackend.serviceUrl || props.serviceUrl}
-              backendId={creation.selectedBackend.id}
-              value={creation.agentOptions}
-              onChange={creation.setAgentOptions}
-            />
-          ) : null}
-          {props.mode === 'thread' ? (
-            <DraftPullRequestSwitch
-              available={creation.supportsPullRequests}
-              value={creation.createPullRequest}
-              onChange={creation.setCreatePullRequest}
-            />
-          ) : null}
+          <DisclosureSection
+            collapsible
+            icon="doc.text"
+            open={contextOpen}
+            title={props.mode === 'work' ? 'Context' : 'Agent prompt'}
+            summary={creation.prompt.trim() ? 'Context added' : props.mode === 'work' ? 'Optional · constraints, references, and success criteria' : 'Required · describe the outcome and constraints'}
+            onToggle={() => setContextOpen((value) => !value)}
+          >
+            <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
+          </DisclosureSection>
+          <DisclosureSection
+            collapsible
+            icon="slider.horizontal.3"
+            open={optionsOpen}
+            title="More options"
+            summary="Model, reasoning, agent resources, and delivery"
+            onToggle={() => setOptionsOpen((value) => !value)}
+          >
+            {props.mode === 'work' ? <StartAgentSwitch value={creation.startAgent} onChange={creation.setStartAgent} /> : null}
+            {creation.selectedBackend && (props.mode !== 'work' || creation.startAgent) ? (
+              <MobileAgentOptions
+                serviceUrl={creation.selectedBackend.serviceUrl || props.serviceUrl}
+                backendId={creation.selectedBackend.id}
+                value={creation.agentOptions}
+                onChange={creation.setAgentOptions}
+              />
+            ) : null}
+            {creation.selectedBackend && (props.mode !== 'work' || creation.startAgent) ? (
+              <MobileAgentResourcePicker
+                serviceUrl={creation.selectedBackend.serviceUrl || props.serviceUrl}
+                backendId={creation.selectedBackend.id}
+                workItemId={props.mode === 'thread' ? creation.selectedWorkItem?.id : undefined}
+                value={creation.resourceSelection}
+                onChange={creation.setResourceSelection}
+              />
+            ) : null}
+            {props.mode === 'thread' ? (
+              <DraftPullRequestSwitch
+                available={creation.supportsPullRequests}
+                value={creation.createPullRequest}
+                onChange={creation.setCreatePullRequest}
+              />
+            ) : null}
+          </DisclosureSection>
           {creation.error ? (
             <Text accessibilityRole="alert" style={styles.error}>
               {creation.error}
             </Text>
           ) : null}
         </ScrollView>
-        <Pressable
+        <View style={styles.modalFooter}>
+          <Text numberOfLines={1} style={styles.modalFooterSummary}>{creationSummary(props.mode, creation)}</Text>
+          <Pressable
           testID="create-submit"
           accessibilityRole="button"
           accessibilityState={{ busy: creation.busy, disabled: creation.busy || !creation.valid }}
@@ -91,7 +132,8 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
           ) : (
             <Text style={styles.createButtonText}>{copy.action}</Text>
           )}
-        </Pressable>
+          </Pressable>
+        </View>
       </MobileModalSafeArea>
     </Modal>
   )
@@ -117,13 +159,14 @@ function CreationHeader({ mode, busy, copy, onClose }: {
 function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: CreationModel }) {
   if (mode !== 'thread') {
     return (
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>{mode === 'pullRequest' ? 'Outcome / PR title' : 'Work title'}</Text>
+      <View style={styles.creationSection}>
+        <Text style={styles.creationStep}>1 · OUTCOME</Text>
+        <Text style={styles.inputLabel}>{mode === 'pullRequest' ? 'What should the pull request deliver?' : 'What should be different when this is done?'}</Text>
         <TextInput
           testID="create-title"
           accessibilityLabel={mode === 'pullRequest' ? 'Outcome and pull request title' : 'Work title'}
           maxLength={200}
-          placeholder="What should change?"
+          placeholder="Describe the outcome in one sentence"
           placeholderTextColor={colors.muted}
           style={styles.search}
           value={creation.title}
@@ -156,12 +199,13 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
     ? creation.repositories.filter((repository) => repository.sourceKind === 'git')
     : creation.repositories
   return (
-    <View style={styles.inputGroup}>
+    <View style={styles.creationSection}>
+      <Text style={styles.creationStep}>{mode === 'thread' ? '1' : '2'} · WORKSPACE</Text>
       <OptionGroup
       label={mode === 'pullRequest' ? 'Git repository' : 'Workspace'}
       hint={mode === 'pullRequest'
-        ? 'Draft PR delivery requires a Git repository.'
-        : 'Choose an isolated general workspace or a configured project source.'}
+        ? 'Choose up to 8 Git repositories. One agent works from their combined Work-item folder.'
+        : 'Choose up to 8 project sources, or use an isolated general workspace.'}
       empty="No compatible Git repositories are available on this server. Add or sync one in VertexADE web first."
       options={[
         ...(mode === 'pullRequest'
@@ -173,32 +217,145 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
           meta: repositoryDescription(repository),
         })),
       ]}
-      selectedId={creation.repositoryId === null && mode !== 'pullRequest' ? 'general' : String(creation.repositoryId || '')}
+      selectedIds={creation.repositoryIds.length ? creation.repositoryIds.map(String) : mode !== 'pullRequest' ? ['general'] : []}
       testIdPrefix="create-repository"
-      onSelect={(id) => creation.setRepositoryId(id === 'general' ? null : Number(id))}
+      onSelect={(id) => id === 'general' ? creation.clearRepositories() : creation.toggleRepository(Number(id))}
       />
       {creation.selectedBackend ? (
-        <MobileRepositorySearch
-          serviceUrl={serviceUrl}
-          backend={creation.selectedBackend}
-          added={creation.repositories.map((repository) => repository.fullName)}
-          onSelect={(repository) => creation.addRepository(repository.id)}
-        />
+        <>
+          <MobileRepositorySearch
+            serviceUrl={serviceUrl}
+            backend={creation.selectedBackend}
+            added={creation.repositories.map((repository) => repository.fullName)}
+            onSelect={(repository) => creation.addRepository(repository.id)}
+          />
+          {mode !== 'pullRequest' ? (
+            <MobileLocalFolderPicker
+              serviceUrl={creation.selectedBackend.serviceUrl || serviceUrl}
+              backendId={creation.selectedBackend.id}
+              onAdd={creation.addLocalFolder}
+            />
+          ) : null}
+        </>
       ) : null}
     </View>
   )
 }
 
+function MobileLocalFolderPicker({ serviceUrl, backendId, onAdd }: {
+  serviceUrl: string
+  backendId: string
+  onAdd(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' | 'move' }): Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [listing, setListing] = useState<MobileDirectoryListing | null>(null)
+  const [path, setPath] = useState('')
+  const [name, setName] = useState('')
+  const [strategy, setStrategy] = useState<'direct' | 'copy' | 'move'>('direct')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function browse(nextPath?: string) {
+    setBusy(true)
+    setError('')
+    try {
+      const next = await browseMobileDirectories(serviceUrl, backendId, nextPath)
+      setListing(next)
+      setPath(next.path)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Folder could not be opened')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return <Pressable accessibilityRole="button" testID="create-local-folder-open" onPress={() => { setOpen(true); void browse() }} style={styles.localFolderButton}>
+      <MobileSymbol name="folder.badge.plus" fallback="+" color={colors.accent} size={18} />
+      <Text style={styles.localFolderButtonText}>Add local folder</Text>
+    </Pressable>
+  }
+
+  return <View style={styles.localFolderPicker}>
+    <View style={styles.localFolderHeader}>
+      <Text style={styles.inputLabel}>Local folder on this server</Text>
+      <Pressable accessibilityRole="button" onPress={() => setOpen(false)}><Text style={styles.linkText}>Close</Text></Pressable>
+    </View>
+    <TextInput
+      testID="create-local-folder-path"
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholder="/absolute/path"
+      placeholderTextColor={colors.muted}
+      style={[styles.search, styles.monospaceInput]}
+      value={path}
+      onChangeText={setPath}
+      onSubmitEditing={() => void browse(path)}
+    />
+    <View style={styles.folderActions}>
+      {listing?.parent ? <Pressable accessibilityRole="button" testID="create-local-folder-up" onPress={() => void browse(listing.parent!)} style={styles.compactButton}>
+        <Text style={styles.compactButtonText}>Up</Text>
+      </Pressable> : null}
+      <Pressable accessibilityRole="button" testID="create-local-folder-browse" onPress={() => void browse(path)} style={styles.compactButton}>
+        <Text style={styles.compactButtonText}>Open path</Text>
+      </Pressable>
+      {busy ? <ActivityIndicator color={colors.accent} /> : null}
+    </View>
+    {listing ? <ScrollView nestedScrollEnabled style={styles.folderList}>
+      {listing.entries.map((entry) => <Pressable
+        accessibilityRole="button"
+        key={entry.path}
+        testID={`create-local-folder-entry-${entry.name}`}
+        onPress={() => void browse(entry.path)}
+        style={styles.folderRow}
+      >
+        <MobileSymbol name="folder.fill" fallback="▸" color={colors.accent} size={17} />
+        <Text numberOfLines={1} style={styles.folderRowText}>{entry.name}</Text>
+        <MobileSymbol name="chevron.right" fallback="›" color={colors.muted} size={14} />
+      </Pressable>)}
+    </ScrollView> : null}
+    <Text style={styles.inputLabel}>Display name</Text>
+    <TextInput testID="create-local-folder-name" placeholder="Optional" placeholderTextColor={colors.muted} style={styles.search} value={name} onChangeText={setName} />
+    <OptionGroup
+      label="Workspace behavior"
+      options={[
+        { id: 'direct', label: 'Direct', meta: 'Live folder linked into Work' },
+        { id: 'copy', label: 'Copy', meta: 'Isolated copy; apply changes back' },
+        { id: 'move', label: 'Move', meta: 'Isolated copy; move changes on apply' },
+      ]}
+      selectedId={strategy}
+      testIdPrefix="create-local-folder-strategy"
+      onSelect={(value) => setStrategy(value as typeof strategy)}
+    />
+    {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy || !path.trim() }}
+      testID="create-local-folder-add"
+      disabled={busy || !path.trim()}
+      onPress={() => void (async () => {
+        setBusy(true)
+        setError('')
+        try {
+          await onAdd({ localPath: path, name, workspaceStrategy: strategy })
+          setOpen(false)
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : 'Local folder could not be added')
+        } finally {
+          setBusy(false)
+        }
+      })()}
+      style={[styles.modalPrimary, (busy || !path.trim()) && styles.disabled]}
+    >
+      <Text style={styles.createButtonText}>Use this folder</Text>
+    </Pressable>
+  </View>
+}
+
 function PromptInput({ mode, value, onChange }: { mode: MobileCreateMode; value: string; onChange(value: string): void }) {
   const workOnly = mode === 'work'
   return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{workOnly ? 'Context (optional)' : 'Agent prompt'}</Text>
-      <Text style={styles.inputHint}>
-        {workOnly
-          ? 'Capture enough context to start a thread later.'
-          : 'Tell the agent what outcome to deliver and any important constraints.'}
-      </Text>
+    <View style={styles.disclosureBody}>
       <TextInput
         testID="create-prompt"
         accessibilityLabel={workOnly ? 'Work context' : 'Agent prompt'}
@@ -238,18 +395,37 @@ function DraftPullRequestSwitch({ available, value, onChange }: { available: boo
   )
 }
 
-function OptionGroup({ label, hint, empty, options, selectedId, testIdPrefix, onSelect }: {
-  label: string
+function StartAgentSwitch({ value, onChange }: { value: boolean; onChange(value: boolean): void }) {
+  return (
+    <View style={styles.switchRow}>
+      <View style={styles.switchCopy}>
+        <Text style={styles.inputLabel}>Start agent now</Text>
+        <Text style={styles.inputHint}>Create the Work item and immediately start its first configured session.</Text>
+      </View>
+      <Switch
+        accessibilityLabel="Start agent now"
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: colors.accentSoft }}
+        thumbColor={value ? colors.accent : colors.muted}
+      />
+    </View>
+  )
+}
+
+function OptionGroup({ label, hint, empty, options, selectedId, selectedIds, testIdPrefix, onSelect }: {
+  label?: string
   hint?: string
   empty?: string
   options: Array<{ id: string; label: string; meta?: string }>
-  selectedId: string
+  selectedId?: string
+  selectedIds?: string[]
   testIdPrefix: string
   onSelect(id: string): void
 }) {
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
       {hint ? <Text style={styles.inputHint}>{hint}</Text> : null}
       {options.length ? (
         <View style={styles.options}>
@@ -257,7 +433,7 @@ function OptionGroup({ label, hint, empty, options, selectedId, testIdPrefix, on
             <CreationOption
               key={option.id}
               option={option}
-              selected={option.id === selectedId}
+              selected={selectedIds ? selectedIds.includes(option.id) : option.id === selectedId}
               testID={`${testIdPrefix}-${option.id}`}
               onSelect={onSelect}
             />
@@ -295,6 +471,41 @@ function CreationOption({ option, selected, testID, onSelect }: {
     >
       <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option.label}</Text>
       {option.meta ? <Text style={styles.optionMeta}>{option.meta}</Text> : null}
+      <View style={styles.optionAccessory}>
+        {selected ? <MobileSymbol name="checkmark.circle.fill" fallback="✓" color={colors.accent} size={20} /> : <MobileSymbol name="circle" fallback="○" color={colors.muted} size={20} />}
+      </View>
     </Pressable>
   )
+}
+
+function DisclosureSection({ icon, title, summary, open = true, collapsible = false, onToggle, children }: {
+  icon: SFSymbol
+  title: string
+  summary: string
+  open?: boolean
+  collapsible?: boolean
+  onToggle?(): void
+  children: ReactNode
+}) {
+  return <View style={styles.disclosure}>
+    <Pressable accessibilityRole={collapsible ? 'button' : undefined} disabled={!collapsible} onPress={onToggle} style={styles.disclosureHeader}>
+      <View style={styles.disclosureIcon}><MobileSymbol name={icon} fallback="•" color={colors.accent} size={17} /></View>
+      <View style={styles.disclosureCopy}>
+        <Text style={styles.disclosureTitle}>{title}</Text>
+        <Text numberOfLines={2} style={styles.disclosureSummary}>{summary}</Text>
+      </View>
+      {collapsible ? <MobileSymbol name={open ? 'chevron.up' : 'chevron.down'} fallback={open ? '⌃' : '⌄'} color={colors.muted} size={15} /> : null}
+    </Pressable>
+    {open ? <View style={styles.disclosureContent}>{children}</View> : null}
+  </View>
+}
+
+function creationSummary(mode: MobileCreateMode, creation: CreationModel) {
+  const workspace = creation.selectedRepositories.length
+    ? creation.selectedRepositories.length === 1
+      ? creation.selectedRepositories[0]!.fullName
+      : `${creation.selectedRepositories.length} projects`
+    : mode === 'pullRequest' ? 'Choose Git repositories' : 'General workspace'
+  if (mode === 'work') return workspace
+  return `${creation.selectedBackend?.label || 'Server'} · ${workspace}`
 }

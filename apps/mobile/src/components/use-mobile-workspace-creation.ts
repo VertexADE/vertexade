@@ -3,11 +3,13 @@ import { defaultMobileAgentOptions, type MobileAgentOptions } from '@/mobile-age
 import type { MobileBackend } from '@/platform-service'
 import {
   createMobileWorkItem,
+  addMobileLocalFolder,
   addMobileRepository,
   startMobileThread,
   type MobileWorkItem,
   type MobileWorkspace,
   type MobileRepository,
+  type MobileAgentResourceSelection,
 } from '@/mobile-workspace-service'
 
 export type MobileCreateMode = 'pullRequest' | 'work' | 'thread'
@@ -17,9 +19,11 @@ type CreationState = {
   title: string
   prompt: string
   workItemId: number | null
-  repositoryId: number | null
+  repositoryIds: number[]
   createPullRequest: boolean
+  startAgent: boolean
   agentOptions: MobileAgentOptions
+  resourceSelection: MobileAgentResourceSelection | null
   busy: boolean
   error: string
 }
@@ -46,8 +50,8 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     [options.workspace.workItems, selectedBackend],
   )
   const selectedWorkItem = workItems.find((item) => item.id === state.workItemId) || null
-  const selectedRepository = repositories.find((repository) => repository.id === state.repositoryId) || null
-  const supportsPullRequests = Boolean(selectedRepository && selectedRepository.sourceKind === 'git')
+  const selectedRepositories = repositories.filter((repository) => state.repositoryIds.includes(repository.id))
+  const supportsPullRequests = selectedRepositories.length > 0 && selectedRepositories.every((repository) => repository.sourceKind === 'git')
   const valid = validCreation(options.mode, state, selectedWorkItem)
 
   function update(patch: Partial<CreationState>) {
@@ -55,14 +59,22 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
   }
 
   function chooseBackend(backendId: string) {
-    update({ backendId, workItemId: null, repositoryId: null, ...(options.mode === 'thread' ? { prompt: '' } : {}) })
+    update({
+      backendId,
+      workItemId: null,
+      repositoryIds: [],
+      agentOptions: defaultMobileAgentOptions(),
+      resourceSelection: null,
+      ...(options.mode === 'thread' ? { prompt: '' } : {}),
+    })
   }
 
   function chooseWorkItem(item: MobileWorkItem) {
     update({
       workItemId: item.id,
-      repositoryId: item.primaryRepositoryId,
+      repositoryIds: item.repositoryIds?.length ? item.repositoryIds : item.primaryRepositoryId ? [item.primaryRepositoryId] : [],
       prompt: state.prompt.trim() || item.description || item.title,
+      resourceSelection: null,
     })
   }
 
@@ -86,10 +98,23 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     try {
       const added = await addMobileRepository(selectedBackend.serviceUrl || options.serviceUrl, selectedBackend, repository)
       setAddedRepositories((current) => [...current.filter((candidate) => candidate.id !== added.id), added])
-      update({ repositoryId: added.id })
+      update({ repositoryIds: [...new Set([...state.repositoryIds, added.id])] })
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Repository could not be added'
       update({ error: message })
+      throw reason
+    }
+  }
+
+  async function addLocalFolder(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' | 'move' }) {
+    if (!selectedBackend) throw new Error('Choose a server')
+    update({ error: '' })
+    try {
+      const added = await addMobileLocalFolder(selectedBackend.serviceUrl || options.serviceUrl, selectedBackend, input)
+      setAddedRepositories((current) => [...current.filter((candidate) => candidate.id !== added.id), added])
+      update({ repositoryIds: [...new Set([...state.repositoryIds, added.id])] })
+    } catch (reason) {
+      update({ error: reason instanceof Error ? reason.message : 'Local folder could not be added' })
       throw reason
     }
   }
@@ -99,21 +124,28 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     repositories,
     workItems,
     selectedWorkItem,
-    selectedRepository,
+    selectedRepositories,
     selectedBackend,
     supportsPullRequests,
     valid,
     setTitle: (title: string) => update({ title }),
     setPrompt: (prompt: string) => update({ prompt }),
-    setRepositoryId: (repositoryId: number | null) => {
-      const repository = repositories.find((candidate) => candidate.id === repositoryId)
-      update({ repositoryId, ...(!repository || repository.sourceKind !== 'git' ? { createPullRequest: false } : {}) })
+    toggleRepository: (repositoryId: number) => {
+      const repositoryIds = state.repositoryIds.includes(repositoryId)
+        ? state.repositoryIds.filter((id) => id !== repositoryId)
+        : [...state.repositoryIds, repositoryId].slice(0, 8)
+      const selected = repositories.filter((repository) => repositoryIds.includes(repository.id))
+      update({ repositoryIds, ...(!selected.length || selected.some((repository) => repository.sourceKind !== 'git') ? { createPullRequest: false } : {}) })
     },
+    clearRepositories: () => update({ repositoryIds: [], createPullRequest: false }),
     setCreatePullRequest: (createPullRequest: boolean) => update({ createPullRequest }),
+    setStartAgent: (startAgent: boolean) => update({ startAgent }),
     setAgentOptions: (agentOptions: MobileAgentOptions) => update({ agentOptions }),
+    setResourceSelection: (resourceSelection: MobileAgentResourceSelection) => update({ resourceSelection }),
     chooseBackend,
     chooseWorkItem,
     addRepository,
+    addLocalFolder,
     submit,
   }
 }
@@ -124,9 +156,13 @@ function initialCreationState(options: CreationOptions): CreationState {
     title: '',
     prompt: initialPrompt(options.initialWorkItem),
     workItemId: options.initialWorkItem?.id || null,
-    repositoryId: options.initialWorkItem?.primaryRepositoryId || null,
+    repositoryIds: options.initialWorkItem?.repositoryIds?.length
+      ? options.initialWorkItem.repositoryIds
+      : options.initialWorkItem?.primaryRepositoryId ? [options.initialWorkItem.primaryRepositoryId] : [],
     createPullRequest: options.mode === 'pullRequest',
+    startAgent: options.mode === 'pullRequest',
     agentOptions: defaultMobileAgentOptions(),
+    resourceSelection: null,
     busy: false,
     error: '',
   }
@@ -149,7 +185,7 @@ function initialPrompt(item: MobileWorkItem | undefined): string {
 function validCreation(mode: MobileCreateMode, state: CreationState, selectedWorkItem: MobileWorkItem | null): boolean {
   if (mode === 'work') return Boolean(state.title.trim() && state.backendId)
   if (mode === 'thread') return Boolean(selectedWorkItem && state.prompt.trim())
-  return Boolean(state.title.trim() && state.repositoryId && state.prompt.trim())
+  return Boolean(state.title.trim() && state.repositoryIds.length && state.prompt.trim())
 }
 
 async function executeCreation(
@@ -164,11 +200,16 @@ async function executeCreation(
     backendId: backend.id,
     title: state.title,
     description: state.prompt,
-    ...(state.repositoryId ? { repositoryId: state.repositoryId } : {}),
+    ...(state.repositoryIds.length ? { repositoryIds: state.repositoryIds } : {}),
+    ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
   })
-  if (mode === 'work') return `${item.key} added to Work.`
-  if (!state.repositoryId) throw new Error(`${item.key} was created, but a repository is required to start its agent`)
-  const launchFailure = await draftPullRequestLaunchFailure(serviceUrl, backend.id, { ...state, repositoryId: state.repositoryId }, item)
+  if (mode === 'work' && !state.startAgent) return `${item.key} added to Work.`
+  if (mode === 'work') {
+    const launchFailure = await workLaunchFailure(serviceUrl, backend.id, state, item)
+    return launchFailure ? `${item.key} was created, but its agent could not start: ${launchFailure}. Retry from Work.` : `${item.key} created and its agent started.`
+  }
+  if (!state.repositoryIds.length) throw new Error(`${item.key} was created, but a repository is required to start its agent`)
+  const launchFailure = await draftPullRequestLaunchFailure(serviceUrl, backend.id, state, item)
   if (launchFailure) return `${item.key} was created, but its draft PR thread could not start: ${launchFailure}. Retry from Work.`
   return `${item.key} created. Its agent will publish the draft PR when the work is ready.`
 }
@@ -183,28 +224,52 @@ async function startExistingWorkThread(
   await startMobileThread(serviceUrl, {
     backendId,
     workItemId: selectedWorkItem.id,
-    ...(state.repositoryId ? { repositoryId: state.repositoryId } : {}),
+    ...(state.repositoryIds.length ? { repositoryIds: state.repositoryIds } : {}),
     prompt: state.prompt,
     createPullRequest: state.createPullRequest,
     agentOptions: state.agentOptions,
+    ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
   })
   return `${selectedWorkItem.key} agent thread started${state.createPullRequest ? ' with draft PR delivery enabled' : ''}.`
+}
+
+async function workLaunchFailure(
+  serviceUrl: string,
+  backendId: string,
+  state: CreationState,
+  item: { id: number },
+) {
+  try {
+    await startMobileThread(serviceUrl, {
+      backendId,
+      workItemId: item.id,
+      ...(state.repositoryIds.length ? { repositoryIds: state.repositoryIds } : {}),
+      prompt: state.prompt.trim() || state.title,
+      createPullRequest: false,
+      agentOptions: state.agentOptions,
+      ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
+    })
+    return ''
+  } catch (reason) {
+    return reason instanceof Error ? reason.message : 'The agent could not start'
+  }
 }
 
 async function draftPullRequestLaunchFailure(
   serviceUrl: string,
   backendId: string,
-  state: CreationState & { repositoryId: number },
+  state: CreationState,
   item: { id: number; key: string },
 ): Promise<string> {
   try {
     await startMobileThread(serviceUrl, {
       backendId,
       workItemId: item.id,
-      repositoryId: state.repositoryId,
+      repositoryIds: state.repositoryIds,
       prompt: state.prompt,
       createPullRequest: true,
       agentOptions: state.agentOptions,
+      ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
     })
     return ''
   } catch (reason) {

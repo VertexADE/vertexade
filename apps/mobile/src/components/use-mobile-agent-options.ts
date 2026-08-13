@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { AgentOptions } from './portable-action-values'
 import { createMobilePlatformClient } from '@/platform-service'
 
-export type SelectableAgent = { id: string; name: string }
-export type SelectableModel = { id: string; name: string; reasoning_efforts: { id: string }[] }
+type AgentPreset = { model: string; reasoningEffort: string }
+export type SelectableAgent = { id: string; name: string; preset?: AgentPreset }
+export type SelectableModel = { id: string; name: string; default_reasoning_effort?: string; reasoning_efforts: { id: string }[] }
 
 type AgentOptionsResponse = {
   agent: { id: string }
@@ -56,7 +57,14 @@ function applyAgentOptions(
   if (!current) return
   setAgents(result.agents.filter((agent) => agent.enabled && agent.selectable !== false))
   setModels(result.models)
-  if (!value.agentId) onChange({ ...value, agentId: result.agent.id })
+  if (!value.agentId) {
+    const selected = result.agents.find((agent) => agent.id === result.agent.id)
+    onChange(
+      selected?.preset
+        ? { ...value, agentId: selected.id, model: selected.preset.model, reasoningEffort: selected.preset.reasoningEffort }
+        : { ...value, agentId: result.agent.id },
+    )
+  }
 }
 
 function applyAgentOptionsFailure(

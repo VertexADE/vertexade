@@ -96,12 +96,12 @@ function AgentSelector({ agents, value, locked, onChange }: Pick<MobileAgentOpti
           active={value.agentId === agent.id}
           disabled={locked}
           key={agent.id}
-          label={agent.name}
+          label={`${agent.name}${agent.preset ? ' · custom' : ''}`}
           onPress={() => onChange({
             ...value,
             agentId: agent.id,
-            model: '',
-            reasoningEffort: '',
+            model: agent.preset?.model || '',
+            reasoningEffort: agent.preset?.reasoningEffort || '',
             serviceTier: agent.id === 'codex' ? value.serviceTier : '',
           })}
         />
@@ -128,7 +128,7 @@ function ModelSelector({ models, value, onChange }: Pick<MobileAgentOptionsProps
           active={value.model === model.id}
           key={model.id}
           label={model.name}
-          onPress={() => onChange({ ...value, model: model.id, reasoningEffort: '' })}
+          onPress={() => onChange({ ...value, model: model.id, reasoningEffort: model.default_reasoning_effort || '' })}
         />
       ))}
     </ScrollView>
