@@ -3,6 +3,7 @@ import { parsePlatformEvent, type PlatformConnectionState, type PlatformEventMes
 import { BehaviorSubject, debounceTime, filter, Subject } from 'rxjs'
 import { activeBackendId, backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
 import { agentLaunchOptions } from './agent-launch-store'
+import { browserPairedServersRequestHeaders } from './browser-paired-servers'
 
 export type { ApiClient } from '@vertexade/platform-client'
 export { isPlatformApiError } from '@vertexade/platform-client'
@@ -20,6 +21,7 @@ export const platformClient = createPlatformClient({
     const agent = agentLaunchOptions()
     const backendId = activeBackendId()
     return {
+      ...browserPairedServersRequestHeaders(),
       ...(backendId ? { 'x-vertexade-backend': backendId } : {}),
       ...(agent.agentId ? { 'x-agent-provider': agent.agentId } : {}),
       ...(agent.model ? { 'x-agent-model': agent.model } : {}),
@@ -117,7 +119,7 @@ function createFederatedEventStream() {
       primaryBackend = backends.find((backend) => backend.isDefault) || backends[0] || primaryBackend
       backendState.next(backends)
       connection.next({ ...connection.value, connected: backends.some((backend) => backend.connected) })
-      for (const backend of backends.filter((candidate) => !candidate.isDefault)) {
+      for (const backend of backends.filter((candidate) => !candidate.isDefault && candidate.realtime !== false)) {
         openSource(`${backend.apiPath}/events`, () => backend)
       }
     })

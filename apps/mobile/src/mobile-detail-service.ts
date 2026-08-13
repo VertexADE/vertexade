@@ -1,15 +1,16 @@
 import { createMobilePlatformClient } from './platform-service'
 import { mobileAgentHeaders, type MobileAgentOptions } from './mobile-agent-options'
 import type { MobilePullRequest, MobileThread, MobileWorkItem } from './mobile-workspace-service'
-import {
-  nonNegativeInteger,
-  optionalPositiveInteger,
-  requiredPositiveInteger,
-  requiredRecord,
-} from './mobile-value-parsers'
+import { nonNegativeInteger, optionalPositiveInteger, requiredPositiveInteger, requiredRecord } from './mobile-value-parsers'
 
 export type MobilePerson = { login: string; name: string }
-export type MobileDiffFile = { path: string; additions: number; deletions: number; status: string; binary: boolean }
+export type MobileDiffFile = {
+  path: string
+  additions: number
+  deletions: number
+  status: string
+  binary: boolean
+}
 export type MobilePullRequestComment = {
   id: string
   author: string
@@ -62,9 +63,26 @@ export type MobileWorkResource = {
   role: string
   primary: boolean
 }
-export type MobileWorkEvent = { id: number; type: string; summary: string; actor: string; createdAt: string }
-export type MobileWorkRelation = { key: string; title: string; state: string; relation: string }
-export type MobileContextTransfer = { id: number; status: string; instruction: string; error: string; createdAt: string }
+export type MobileWorkEvent = {
+  id: number
+  type: string
+  summary: string
+  actor: string
+  createdAt: string
+}
+export type MobileWorkRelation = {
+  key: string
+  title: string
+  state: string
+  relation: string
+}
+export type MobileContextTransfer = {
+  id: number
+  status: string
+  instruction: string
+  error: string
+  createdAt: string
+}
 export type MobileWorkItemDetails = MobileWorkItem & {
   owner: string
   createdAt: string
@@ -159,40 +177,60 @@ export type MobileForkThreadInput = {
 }
 
 export type MobileThreadDelivery = 'steer' | 'queue' | 'follow-up'
+export type MobilePromptImage = { name: string; url: string }
 export type MobileWorkState = MobileWorkItem['state']
 
 const detailResponseLimitBytes = 32 * 1024 * 1024
+const threadLogTimeoutMs = 15_000
+const threadSupplementTimeoutMs = 8_000
 
 export async function loadMobilePullRequestDetails(serviceUrl: string, pullRequest: MobilePullRequest): Promise<MobilePullRequestDetails> {
-  const payload = await createMobilePlatformClient(serviceUrl, pullRequest.backendId).request<unknown>(
-    `/api/pulls/${pullRequest.repoId}/${pullRequest.number}/details`,
-    { maxJsonResponseBytes: detailResponseLimitBytes },
-  )
+  const payload = await createMobilePlatformClient(serviceUrl, pullRequest.backendId).request<unknown>(`/api/pulls/${pullRequest.repoId}/${pullRequest.number}/details`, {
+    maxJsonResponseBytes: detailResponseLimitBytes,
+  })
   return parsePullRequestDetails(payload)
 }
 
 export async function loadMobileWorkItemDetails(serviceUrl: string, item: MobileWorkItem): Promise<MobileWorkItemDetails> {
-  const payload = await createMobilePlatformClient(serviceUrl, item.backendId).request<unknown>(
-    `/api/work-items/${encodeURIComponent(String(item.id))}`,
-    { maxJsonResponseBytes: detailResponseLimitBytes },
-  )
+  const payload = await createMobilePlatformClient(serviceUrl, item.backendId).request<unknown>(`/api/work-items/${encodeURIComponent(String(item.id))}`, {
+    maxJsonResponseBytes: detailResponseLimitBytes,
+  })
   return parseWorkItemDetails(payload, item)
 }
 
 export async function loadMobileThreadDetails(serviceUrl: string, thread: MobileThread): Promise<MobileThreadDetails> {
   const client = createMobilePlatformClient(serviceUrl, thread.backendId)
   const [log, diff] = await Promise.all([
-    client.request<unknown>(`/api/agent-threads/${thread.id}/log`, { maxJsonResponseBytes: detailResponseLimitBytes }),
-    client.request<unknown>(`/api/agent-threads/${thread.id}/diff`, { maxJsonResponseBytes: detailResponseLimitBytes })
+    requestWithTimeout(client, `/api/agent-threads/${thread.id}/log`, threadLogTimeoutMs, 'Thread activity took too long to load'),
+    requestWithTimeout(client, `/api/agent-threads/${thread.id}/diff`, threadSupplementTimeoutMs, 'Diff took too long to load')
       .then((value) => ({ value, error: '' }))
-      .catch((reason: unknown) => ({ value: null, error: errorMessage(reason) })),
+      .catch((reason: unknown) => ({
+        value: null,
+        error: errorMessage(reason),
+      })),
   ])
   const details = parseThreadDetails(log, diff.value, diff.error, thread)
   if (details.kind !== 'review') return details
-  const suggestions = await client.request<unknown>(`/api/agent-threads/${thread.id}/suggestions`)
+  const suggestions = await requestWithTimeout(client, `/api/agent-threads/${thread.id}/suggestions`, threadSupplementTimeoutMs, 'Suggestions took too long to load')
     .then(parseReviewSuggestions)
     .catch(() => [])
   return { ...details, suggestions }
+}
+
+async function requestWithTimeout(client: ReturnType<typeof createMobilePlatformClient>, path: string, timeoutMs: number, timeoutMessage: string): Promise<unknown> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await client.request<unknown>(path, {
+      maxJsonResponseBytes: detailResponseLimitBytes,
+      signal: controller.signal,
+    })
+  } catch (reason) {
+    if (controller.signal.aborted) throw new Error(timeoutMessage)
+    throw reason
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function updateMobileWorkState(serviceUrl: string, item: MobileWorkItem, state: MobileWorkState): Promise<void> {
@@ -203,21 +241,19 @@ export async function updateMobileWorkState(serviceUrl: string, item: MobileWork
 }
 
 export async function ensureMobilePullRequestWork(serviceUrl: string, pullRequest: MobilePullRequest): Promise<{ id: number; key: string }> {
-  const payload = await createMobilePlatformClient(serviceUrl, pullRequest.backendId).request<unknown>(
-    `/api/pulls/${pullRequest.repoId}/${pullRequest.number}/work`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
-  )
+  const payload = await createMobilePlatformClient(serviceUrl, pullRequest.backendId).request<unknown>(`/api/pulls/${pullRequest.repoId}/${pullRequest.number}/work`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
   const record = requiredRecord(payload, 'VertexADE returned an invalid Work item')
-  return { id: requiredPositiveInteger(record.id, 'Work item ID'), key: requiredString(record.key, 'Work item key', 200) }
+  return {
+    id: requiredPositiveInteger(record.id, 'Work item ID'),
+    key: requiredString(record.key, 'Work item key', 200),
+  }
 }
 
-export async function deliverMobileThreadMessage(
-  serviceUrl: string,
-  thread: MobileThread,
-  prompt: string,
-  delivery: MobileThreadDelivery,
-  options?: MobileAgentOptions,
-): Promise<void> {
+export async function deliverMobileThreadMessage(serviceUrl: string, thread: MobileThread, prompt: string, delivery: MobileThreadDelivery, options?: MobileAgentOptions): Promise<void> {
   const value = prompt.trim().slice(0, 20_000)
   if (!value) throw new Error('A message is required')
   await jsonRequest(
@@ -228,6 +264,23 @@ export async function deliverMobileThreadMessage(
     { prompt: value },
     delivery === 'follow-up' && options ? mobileAgentHeaders(options) : undefined,
   )
+}
+
+export async function uploadMobilePromptImages(serviceUrl: string, backendId: string, files: Array<{ filename: string; mediaType: string; url: string }>): Promise<MobilePromptImage[]> {
+  if (!files.length) return []
+  const payload = await jsonRequest(serviceUrl, backendId, '/api/prompt-images', 'POST', { files })
+  const record = requiredRecord(payload, 'VertexADE returned invalid image attachments')
+  return recordArray(record.images).map((image) => ({
+    name: requiredString(image.name, 'Attachment name', 500),
+    url: requiredString(image.url, 'Attachment URL', 4_000),
+  }))
+}
+
+export function appendMobilePromptImages(prompt: string, images: MobilePromptImage[]): string {
+  if (!images.length) return prompt.trim()
+  const markdown = images.map((image) => `![${image.name.replace(/[\[\]\r\n]/g, '-')}](${image.url})`).join('\n')
+  const attachmentBlock = prompt.includes('Attached reference images:') ? markdown : `Attached reference images:\n${markdown}`
+  return [prompt.trim(), attachmentBlock].filter(Boolean).join('\n\n').slice(0, 20_000)
 }
 
 export async function interruptMobileThread(serviceUrl: string, thread: MobileThread): Promise<void> {
@@ -244,6 +297,10 @@ export async function steerMobileQueuedMessage(serviceUrl: string, thread: Mobil
 
 export async function cancelMobileQueuedMessage(serviceUrl: string, thread: MobileThread, queuedId: number): Promise<void> {
   await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/queue/${queuedId}`, 'DELETE')
+}
+
+export async function reorderMobileQueuedMessages(serviceUrl: string, thread: MobileThread, ids: number[]): Promise<void> {
+  await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/queue`, 'PATCH', { ids })
 }
 
 export async function saveMobileThreadTasks(serviceUrl: string, thread: MobileThread): Promise<number> {
@@ -272,11 +329,7 @@ export async function forkMobileThread(serviceUrl: string, thread: MobileThread,
   return mobileThreadFromJob(requiredRecord(payload, 'VertexADE returned an invalid forked thread'), thread)
 }
 
-export async function postMobileReviewSuggestions(
-  serviceUrl: string,
-  thread: MobileThread,
-  suggestions: MobileReviewSuggestion[],
-): Promise<number> {
+export async function postMobileReviewSuggestions(serviceUrl: string, thread: MobileThread, suggestions: MobileReviewSuggestion[]): Promise<number> {
   const payload = await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/suggestions`, 'POST', {
     suggestions: suggestions.slice(0, 100).map(({ id, selected, description, replacement }) => ({
       id,
@@ -289,19 +342,11 @@ export async function postMobileReviewSuggestions(
 }
 
 export async function loadMobileThreadTransferTargets(serviceUrl: string, thread: MobileThread): Promise<MobileThreadTransferTarget[]> {
-  const payload = await createMobilePlatformClient(serviceUrl, thread.backendId).request<unknown>(
-    `/api/work-context-targets?source_job_id=${encodeURIComponent(String(thread.id))}`,
-  )
+  const payload = await createMobilePlatformClient(serviceUrl, thread.backendId).request<unknown>(`/api/work-context-targets?source_job_id=${encodeURIComponent(String(thread.id))}`)
   return recordArray(requiredRecord(payload, 'VertexADE returned invalid transfer targets').targets).map(transferTarget)
 }
 
-export async function transferMobileThreadContext(
-  serviceUrl: string,
-  thread: MobileThread,
-  destinationJobId: number,
-  title: string,
-  instruction: string,
-): Promise<void> {
+export async function transferMobileThreadContext(serviceUrl: string, thread: MobileThread, destinationJobId: number, title: string, instruction: string): Promise<void> {
   if (!thread.workItemId) throw new Error('This thread is not attached to Work')
   const preparedTitle = title.trim().slice(0, 200)
   const preparedInstruction = instruction.trim().slice(0, 20_000)
@@ -314,16 +359,10 @@ export async function transferMobileThreadContext(
   })
 }
 
-export async function submitMobileThreadInput(
-  serviceUrl: string,
-  thread: MobileThread,
-  answers: Record<string, string>,
-): Promise<void> {
+export async function submitMobileThreadInput(serviceUrl: string, thread: MobileThread, answers: Record<string, string>): Promise<void> {
   const entries = Object.entries(answers).slice(0, 100)
   if (!entries.length) throw new Error('Answer every question before continuing')
-  const payload = Object.fromEntries(
-    entries.map(([id, answer]) => [id.trim().slice(0, 200), { answers: [answer.trim().slice(0, 20_000)] }]),
-  )
+  const payload = Object.fromEntries(entries.map(([id, answer]) => [id.trim().slice(0, 200), { answers: [answer.trim().slice(0, 20_000)] }]))
   if (Object.entries(payload).some(([id, answer]) => !id || !answer.answers[0])) throw new Error('Answer every question before continuing')
   await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/input`, 'POST', { answers: payload })
 }
@@ -338,7 +377,10 @@ async function jsonRequest(
 ): Promise<unknown> {
   return createMobilePlatformClient(serviceUrl, backendId).request<unknown>(path, {
     method,
-    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...headers },
+    headers: {
+      ...(body ? { 'content-type': 'application/json' } : {}),
+      ...headers,
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
 }
@@ -368,7 +410,10 @@ function parsePullRequestDetails(value: unknown): MobilePullRequestDetails {
     headRef: stringValue(record.headRefName, 1_000),
     baseRef: stringValue(record.baseRefName, 1_000),
     draft: record.isDraft === true,
-    labels: recordArray(record.labels).map((label) => ({ name: stringValue(label.name, 200), color: stringValue(label.color, 20) })),
+    labels: recordArray(record.labels).map((label) => ({
+      name: stringValue(label.name, 200),
+      color: stringValue(label.color, 20),
+    })),
     unresolvedThreads: recordArray(record.reviewThreads).filter((thread) => thread.isResolved !== true).length,
     files: recordArray(diffSummary.files).map(diffFile),
     diff: stringValue(record.diff, 200_000),
@@ -466,6 +511,7 @@ function mobileThreadFromJob(record: Record<string, unknown>, source: MobileThre
     ...mobileThreadListFields(record, source.agentName),
     backendId: source.backendId,
     backendName: source.backendName,
+    serviceUrl: source.serviceUrl,
   }
 }
 
@@ -483,7 +529,10 @@ function transferTarget(record: Record<string, unknown>): MobileThreadTransferTa
 
 function person(value: unknown): MobilePerson {
   const record = recordValue(value)
-  return { login: stringValue(record.login, 500), name: stringValue(record.name, 500) }
+  return {
+    login: stringValue(record.login, 500),
+    name: stringValue(record.name, 500),
+  }
 }
 
 function commit(record: Record<string, unknown>): MobilePullRequestCommit {
@@ -578,6 +627,7 @@ function nestedThread(record: Record<string, unknown>, item: MobileWorkItem): Mo
     ...mobileThreadListFields(record, 'Agent'),
     backendId: item.backendId,
     backendName: item.backendName,
+    serviceUrl: item.serviceUrl,
   }
 }
 
@@ -670,5 +720,10 @@ function untrimmedStringValue(value: unknown, maximum: number): string {
 }
 
 function stringList(value: unknown, maximumItems: number, maximumLength: number): string[] {
-  return Array.isArray(value) ? value.slice(0, maximumItems).map((item) => stringValue(item, maximumLength)).filter(Boolean) : []
+  return Array.isArray(value)
+    ? value
+        .slice(0, maximumItems)
+        .map((item) => stringValue(item, maximumLength))
+        .filter(Boolean)
+    : []
 }

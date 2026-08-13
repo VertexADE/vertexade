@@ -14,6 +14,7 @@ appId: com.vertexade.mobile
       - hideKeyboard
       - tapOn:
           id: connection-submit
+- tapOn: PRs
 - assertVisible:
     id: pull-request-fixture-1-299
 - tapOn:
@@ -44,8 +45,7 @@ appId: com.vertexade.mobile
 - tapOn:
     id: create-submit
 - assertVisible: W-0002 created. Its agent will publish the draft PR when the work is ready.
-- tapOn:
-    id: workspace-tab-work
+- tapOn: Work
 - assertVisible:
     id: work-item-fixture-1
 - tapOn:
@@ -60,8 +60,7 @@ appId: com.vertexade.mobile
 - assertVisible: apps/mobile/app/index.tsx
 - tapOn:
     id: workspace-detail-close
-- tapOn:
-    id: workspace-tab-threads
+- tapOn: Threads
 - assertVisible:
     id: thread-fixture-1
 - tapOn:
@@ -72,8 +71,7 @@ appId: com.vertexade.mobile
 - assertVisible: Original prompt
 - tapOn:
     id: workspace-detail-close
-- tapOn:
-    id: workspace-tab-more
+- tapOn: More
 - assertVisible:
     id: extension-work
 - takeScreenshot: ${MAESTRO_TESTS_DIR}/01-connected

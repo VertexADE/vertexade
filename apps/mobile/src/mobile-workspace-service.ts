@@ -10,6 +10,7 @@ import { mobileAgentHeaders, type MobileAgentOptions } from './mobile-agent-opti
 type MobileSource = {
   backendId: string
   backendName: string
+  serviceUrl?: string
 }
 
 export type MobileRepository = MobileSource & {
@@ -110,15 +111,23 @@ export async function loadMobileWorkspace(serviceUrl: string, backends: MobileBa
   })
   const defaultBackend = backends.find((backend) => backend.isDefault) || backends[0]
   if (!defaultBackend) throw new Error('VertexADE service has no configured servers')
+  const belongsToPrimaryServer = (value: unknown) => {
+    const record = requiredRecord(value, 'VertexADE returned an invalid workspace entry')
+    const backendId = optionalString(record.backend_id, 48)
+    return !backendId || backendId === defaultBackend.id
+  }
   return {
-    repositories: collectionValues(payload, 'repositories').map((value) => parseRepository(value, backends, defaultBackend)),
+    repositories: collectionValues(payload, 'repositories').filter(belongsToPrimaryServer).map((value) => parseRepository(value, backends, defaultBackend)),
     pullRequests: collectionValues(payload, 'pullRequests')
+      .filter(belongsToPrimaryServer)
       .map((value) => parsePullRequest(value, backends, defaultBackend))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
     workItems: collectionValues(payload, 'workItems')
+      .filter(belongsToPrimaryServer)
       .map((value) => parseWorkItem(value, backends, defaultBackend))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
     threads: collectionValues(payload, 'agentThreads')
+      .filter(belongsToPrimaryServer)
       .map((value) => parseThread(value, backends, defaultBackend))
       .sort((left, right) => right.activityAt.localeCompare(left.activityAt)),
   }
@@ -140,10 +149,11 @@ export async function createMobileWorkItem(serviceUrl: string, input: CreateMobi
   })
   const record = requiredRecord(payload, 'VertexADE returned an invalid Work item')
   return {
-    ...source(record, [{ id: input.backendId, label: input.backendId, isDefault: true }], {
+    ...source(record, [{ id: input.backendId, label: input.backendId, isDefault: true, serviceUrl }], {
       id: input.backendId,
       label: input.backendId,
       isDefault: true,
+      serviceUrl,
     }),
     id: requiredPositiveInteger(record.id, 'Work item ID'),
     key: requiredString(record.key, 'Work item key'),
@@ -254,7 +264,7 @@ function source(record: Record<string, unknown>, backends: MobileBackend[], defa
   const backendId = optionalString(record.backend_id, 48) || defaultBackend.id
   const backend = backends.find((candidate) => candidate.id === backendId)
   if (!backend) throw new Error(`VertexADE returned unknown backend "${backendId}"`)
-  return { backendId, backendName: optionalString(record.backend_name, 200) || backend.label }
+  return { backendId, backendName: optionalString(record.backend_name, 200) || backend.label, serviceUrl: backend.serviceUrl }
 }
 
 function requiredString(value: unknown, label: string, maximum = 20_000): string {

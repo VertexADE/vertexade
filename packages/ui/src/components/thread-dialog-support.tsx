@@ -237,7 +237,7 @@ const runTitles: Record<string, (job: JobLog) => string> = {
   pre_pr: (job) => job.task_title || 'Implementation task',
   work_review: (job) => job.task_title || 'Worktree code review',
   stack_analysis: () => 'Pull request stack analysis',
-  review: (job) => `Code review · PR #${job.pr_number}`,
+  review: (job) => job.task_title || `Code review · PR #${job.pr_number}`,
   task: (job) => job.task_title || `${job.full_name} #${job.pr_number}`,
   review_handoff: (job) => job.task_title || `${job.full_name} #${job.pr_number}`,
   planning: (job) => job.task_title || `Planning · ${job.full_name}`,

@@ -113,4 +113,19 @@ describe('MobileWorkspaceCreateModal', () => {
     await waitFor(() => expect(onCompleted).toHaveBeenCalledWith('W-0004 was created, but its draft PR thread could not start: Agent unavailable. Retry from Work.'))
     expect(screen.queryByRole('alert')).not.toBeOnTheScreen()
   })
+
+  test('routes creation through the chosen direct server when backend IDs overlap', async () => {
+    createWork.mockResolvedValue({ id: 1, key: 'W-0001', title: 'Second server work', backendId: 'local', backendName: 'Two', serviceUrl: 'http://two:4173' })
+    const directBackends = [
+      { id: 'local', label: 'One', isDefault: true, serviceUrl: 'http://one:4173' },
+      { id: 'local', label: 'Two', isDefault: true, serviceUrl: 'http://two:4173' },
+    ]
+    render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://one:4173" backends={directBackends} workspace={{ repositories: [], pullRequests: [], workItems: [], threads: [] }} onClose={jest.fn()} onCompleted={jest.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.press(screen.getByTestId('create-server-http://two:4173::local'))
+    fireEvent.changeText(screen.getByLabelText('Work title'), 'Second server work')
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://two:4173', expect.objectContaining({ backendId: 'local', title: 'Second server work' })))
+  })
 })

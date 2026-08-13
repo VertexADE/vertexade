@@ -1,3 +1,5 @@
+import { browserPairedServersRequestHeaders } from './browser-paired-servers'
+
 export type BackendDescriptor = {
   id: string
   label: string
@@ -7,6 +9,7 @@ export type BackendDescriptor = {
   lastConnectedAt: string | null
   error: string | null
   apiPath: string
+  realtime?: boolean
 }
 
 export type BackendAttributed = {
@@ -70,7 +73,7 @@ export function displayBackendKey(source: BackendAttributed, value: unknown) {
 }
 
 export async function loadBackendRegistry() {
-  const response = await fetch('/api/backends', { headers: { accept: 'application/json' } })
+  const response = await fetch('/api/backends', { headers: { accept: 'application/json', ...browserPairedServersRequestHeaders() } })
   if (!response.ok) throw new Error(`Backend registry failed with HTTP ${response.status}`)
   const result = (await response.json()) as { backends: BackendDescriptor[] }
   const active = resolveActiveBackend(result.backends)

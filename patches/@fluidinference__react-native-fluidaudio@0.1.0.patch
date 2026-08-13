@@ -1,0 +1,66 @@
+diff --git a/ios/FluidAudioModule.swift b/ios/FluidAudioModule.swift
+index 2e231ef317f68eef45b10274881aab77036f7f8c..e52f46509024ee3fb91259c782d8ccccd278d7e7 100644
+--- a/ios/FluidAudioModule.swift
++++ b/ios/FluidAudioModule.swift
+@@ -135,6 +135,19 @@ class FluidAudioModule: RCTEventEmitter {
+ 
+     // MARK: - ASR (Automatic Speech Recognition)
+ 
++    private func loadBundledAsrModels() async throws -> AsrModels {
++        guard let resourceURL = Bundle.main.resourceURL else {
++            throw NSError(domain: "FluidAudioModule", code: 1, userInfo: [NSLocalizedDescriptionKey: "App bundle resources are unavailable"])
++        }
++        let modelDirectory = resourceURL
++            .appendingPathComponent("FluidAudioModels", isDirectory: true)
++            .appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
++        guard AsrModels.modelsExist(at: modelDirectory, version: .v3) else {
++            throw NSError(domain: "FluidAudioModule", code: 2, userInfo: [NSLocalizedDescriptionKey: "Bundled FluidAudio ASR model is incomplete"])
++        }
++        return try await AsrModels.load(from: modelDirectory, version: .v3)
++    }
++
+     @objc(initializeAsr:resolver:rejecter:)
+     func initializeAsr(
+         config: NSDictionary?,
+@@ -145,12 +158,12 @@ class FluidAudioModule: RCTEventEmitter {
+             do {
+                 sendEvent(name: "onModelLoadProgress", body: [
+                     "type": "asr",
+-                    "status": "downloading",
++                    "status": "compiling",
+                     "progress": 0
+                 ])
+ 
+                 let startTime = Date()
+-                let models = try await AsrModels.downloadAndLoad()
++                let models = try await loadBundledAsrModels()
+                 self.asrModels = models
+ 
+                 sendEvent(name: "onModelLoadProgress", body: [
+@@ -283,8 +296,24 @@ class FluidAudioModule: RCTEventEmitter {
+                 let manager = StreamingAsrManager(config: streamConfig)
+                 self.streamingManager = manager
+ 
+-                // Start the streaming engine
+-                try await manager.start(source: .microphone)
++                sendEvent(name: "onModelLoadProgress", body: [
++                    "type": "asr",
++                    "status": "compiling",
++                    "progress": 50
++                ])
++                let models: AsrModels
++                if let cachedModels = self.asrModels {
++                    models = cachedModels
++                } else {
++                    models = try await loadBundledAsrModels()
++                    self.asrModels = models
++                }
++                try await manager.start(models: models, source: .microphone)
++                sendEvent(name: "onModelLoadProgress", body: [
++                    "type": "asr",
++                    "status": "ready",
++                    "progress": 100
++                ])
+ 
+                 // Set up audio engine to capture microphone
+                 let engine = AVAudioEngine()

@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import { ensureMobilePullRequestWork, loadMobilePullRequestDetails, type MobilePullRequestDetails } from '@/mobile-detail-service'
 import { openMobileHttpUrl } from '@/mobile-linking'
 import type { MobilePullRequest } from '@/mobile-workspace-service'
-import { MobileDiff } from './mobile-diff'
+import { MobileFileChanges } from './mobile-file-changes'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { DetailMetric, DetailRow, DetailSection, MobileDetailShell } from './mobile-detail-shell'
 import { MobileMarkdown } from './mobile-markdown'
@@ -297,24 +297,9 @@ function PullRequestCommits({ detail }: { detail: MobilePullRequestDetails }) {
 
 function PullRequestChanges({ detail }: { detail: MobilePullRequestDetails }) {
   return (
-    <>
-      <DetailSection title="Changed files" meta={`${detail.files.length} · +${detail.additions} −${detail.deletions}`}>
-        {detail.files.map((file) => (
-          <View key={file.path} style={styles.fileRow}>
-            <Text numberOfLines={2} style={styles.filePath}>
-              {file.path}
-            </Text>
-            <Text style={styles.additions}>+{file.additions}</Text>
-            <Text style={styles.deletions}>−{file.deletions}</Text>
-          </View>
-        ))}
-      </DetailSection>
-      {detail.diff ? (
-        <DetailSection title="Diff">
-          <MobileDiff patch={detail.diff} />
-        </DetailSection>
-      ) : null}
-    </>
+    <DetailSection title="Changes" meta={`${detail.files.length} files`}>
+      <MobileFileChanges additions={detail.additions} deletions={detail.deletions} files={detail.files} patch={detail.diff} />
+    </DetailSection>
   )
 }
 

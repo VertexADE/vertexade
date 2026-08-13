@@ -58,7 +58,7 @@ function detail(patch: Partial<MobileThreadDetails> = {}): MobileThreadDetails {
 }
 
 describe('mobile thread presentation', () => {
-  test('prioritizes review summary and includes the complete review workbench', () => {
+  test('opens on activity and includes the complete review workbench', () => {
     const value = detail({
       kind: 'review',
       reviewSummary: 'Ready',
@@ -66,12 +66,12 @@ describe('mobile thread presentation', () => {
       suggestions: [{ id: 1, path: 'src/app.ts', line: 4, side: 'RIGHT', description: 'Fix', replacement: '', selected: true, postedAt: '' }],
     })
 
-    expect(initialMobileThreadTab(value)).toBe('summary')
+    expect(initialMobileThreadTab(value)).toBe('activity')
     expect(mobileThreadTabs(value)).toEqual([
+      { id: 'activity', label: 'Activity' },
       { id: 'summary', label: 'Summary' },
       { id: 'findings', label: 'Full review' },
       { id: 'suggestions', label: 'Suggestions (1)' },
-      { id: 'activity', label: 'Activity' },
       { id: 'changes', label: 'Changes' },
       { id: 'context', label: 'Context' },
     ])

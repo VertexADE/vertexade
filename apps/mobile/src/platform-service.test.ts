@@ -27,7 +27,7 @@ describe('mobile platform service', () => {
     expect(createClient).not.toHaveBeenCalled()
   })
 
-  test('loads linked server catalogs in order and isolates a backend failure', async () => {
+  test('loads only the directly paired server and does not inherit its links', async () => {
     createClient.mockImplementation((options) => {
       const backendId = (options?.headers as Record<string, string> | undefined)?.['x-vertexade-backend']
       if (!backendId) {
@@ -45,8 +45,7 @@ describe('mobile platform service', () => {
     })
 
     await expect(loadMobileServerCatalogs('http://fixture:4173')).resolves.toEqual([
-      { id: 'local', label: 'Local', isDefault: true, modules: [{ id: 'work' }], error: '' },
-      { id: 'team', label: 'Team', isDefault: false, modules: [], error: 'Team unavailable' },
+      { id: 'local', label: 'Local', isDefault: true, serviceUrl: 'http://fixture:4173', modules: [{ id: 'work' }], error: '' },
     ])
   })
 

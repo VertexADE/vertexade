@@ -50,6 +50,43 @@ function readModel(id: number, name: string) {
 }
 
 describe('multi-backend API proxy', () => {
+  it('federates only the servers paired by the current browser and uses each session token', async () => {
+    vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/settings/linked-servers') return Response.json({ servers: [] })
+      if (url.pathname === '/api/read-model') {
+        if (url.host === 'studio.internal') expect(new Headers(init?.headers).get('authorization')).toBe('Bearer studio-session')
+        return Response.json(readModel(url.host === 'local.internal' ? 1 : 2, url.hostname))
+      }
+      return Response.json({ error: 'Unexpected test request' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+    const paired = encodeURIComponent(
+      JSON.stringify([
+        {
+          id: 'studio',
+          name: 'Studio',
+          namespace: 1,
+          serviceUrl: 'http://studio.internal',
+          sessionToken: 'studio-session',
+          expiresAt: '2099-01-01T00:00:00Z',
+        },
+      ]),
+    )
+
+    const response = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', { headers: { 'x-vertexade-paired-servers': paired } }),
+    })
+    const payload = await response.json()
+
+    expect(payload.updates.repositories.entries).toHaveLength(2)
+    expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'studio', label: 'Studio', connected: true })]),
+    )
+  })
+
   it('rejects oversized JSON requests before proxying them to a backend', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
@@ -259,7 +296,7 @@ describe('multi-backend API proxy', () => {
     const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/read-model?since=0') })
     const payload = await response.json()
     expect(payload.updates.repositories.entries).toMatchObject([
-      { key: 'server-1:1', value: { backend_name: 'local.internal' } },
+      { key: 'server-1:1', value: { backend_name: 'Local' } },
       { key: 'team:2', value: { backend_name: 'Team' } },
     ])
   })

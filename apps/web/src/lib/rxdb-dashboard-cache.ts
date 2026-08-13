@@ -32,6 +32,7 @@ let syncScheduled = false
 let visibilityListenerInstalled = false
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let retryDelay = 1_000
+let pairedServerPoll: ReturnType<typeof setInterval> | undefined
 
 function storage() {
   storagePromise ??= import('./rxdb-dashboard-storage')
@@ -129,6 +130,11 @@ function startDashboardSync() {
       if (!document.hidden) scheduleSync()
     })
     visibilityListenerInstalled = true
+  }
+  if (!pairedServerPoll && localStorage.getItem('vertexade.web.paired-servers.v1')) {
+    pairedServerPoll = setInterval(() => {
+      if (!document.hidden) scheduleSync()
+    }, 5_000)
   }
   scheduleSync()
 }

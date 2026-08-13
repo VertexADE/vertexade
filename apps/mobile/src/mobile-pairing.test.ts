@@ -26,11 +26,12 @@ it('redeems once and stores only the issued session in secure storage', async ()
     Response.json({ serviceUrl: 'http://100.101.138.108:3773', sessionToken: 'paired-session', expiresAt }, { status: 201 }),
   )
 
-  const session = await redeemMobilePairLink(`http://100.101.138.108:3773/pair#token=${token}`, 'Dominic’s iPhone')
+  const session = await redeemMobilePairLink(`http://100.101.138.108:3773/pair#token=${token}`, 'Dominic’s iPhone', 'Home Mac')
 
   expect(session.sessionToken).toBe('paired-session')
+  expect(session.name).toBe('Home Mac')
   expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
-    'vertexade.mobile.session.v1',
+    'vertexade.mobile.sessions.v2',
     expect.not.stringContaining(token),
     expect.objectContaining({ keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }),
   )

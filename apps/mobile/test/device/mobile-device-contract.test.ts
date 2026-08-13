@@ -26,15 +26,15 @@ describe('mobile device smoke contract', () => {
       'detail-tab-changes',
       'create-pullRequests',
       'create-submit',
-      'workspace-tab-work',
+      'tapOn":"Work',
       'work-item-fixture-1',
       'open-work-item-fixture-1',
       'detail-thread-fixture-1',
-      'workspace-tab-threads',
+      'tapOn":"Threads',
       'thread-fixture-1',
       'open-thread-fixture-1',
       'detail-tab-context',
-      'workspace-tab-more',
+      'tapOn":"More',
       'extension-work',
       'Agent execution',
       'extension-agents',
@@ -50,9 +50,10 @@ describe('mobile device smoke contract', () => {
   })
 
   test('references stable IDs exposed by the native host', async () => {
-    const [home, workspace, chrome, collection, settings, action] = await Promise.all([
+    const [home, workspace, tabs, chrome, collection, settings, action] = await Promise.all([
       source('src/components/mobile-home-components.tsx'),
       source('src/components/mobile-workspace.tsx'),
+      source('app/(tabs)/_layout.tsx'),
       source('src/components/mobile-extension-chrome.tsx'),
       source('src/components/portable-collection-presentation.tsx'),
       source('src/components/portable-settings-content.tsx'),
@@ -60,18 +61,19 @@ describe('mobile device smoke contract', () => {
     ])
     expect(home).toContain('testID="connection-submit"')
     expect(home).toContain('testID={isDefaultServer ? `extension-${module.id}` : `extension-${backendId}-${module.id}`}')
-    expect(workspace).toContain('testID="workspace-tab-prs"')
-    expect(workspace).toContain('testID={`work-item-${item.backendId}-${item.id}`}')
-    expect(workspace).toContain('testID={`thread-${item.backendId}-${item.id}`}')
-    expect(workspace).toContain('testID={`open-pull-request-${item.backendId}-${item.repoId}-${item.number}`}')
-    expect(workspace).toContain('testID={`open-work-item-${item.backendId}-${item.id}`}')
-    expect(workspace).toContain('testID={`open-thread-${item.backendId}-${item.id}`}')
+    expect(tabs).toContain('<NativeTabs')
+    expect(tabs).toContain('<NativeTabs.Trigger name="pull-requests">')
+    expect(workspace).toContain('cardTestID={`work-item-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('cardTestID={`thread-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('openTestID={`open-pull-request-${item.backendId}-${item.repoId}-${item.number}`}')
+    expect(workspace).toContain('openTestID={`open-work-item-${item.backendId}-${item.id}`}')
+    expect(workspace).toContain('openTestID={`open-thread-${item.backendId}-${item.id}`}')
     expect(chrome).toContain('testID="extension-tab-settings"')
     expect(collection).toContain('testID={`record-${item.id}-details`}')
     expect(collection).toContain('testID={`record-${item.id}-action-${action.id}`}')
     expect(settings).toContain('testID="settings-submit"')
     expect(settings).toContain('testID={`settings-action-${action.id}`}')
-    expect(action).toContain('testID="action-cancel"')
+    expect(action).toContain('leadingTestID="action-cancel"')
   })
 
   test('defines manual Android and iOS artifact workflows without an external trigger', async () => {

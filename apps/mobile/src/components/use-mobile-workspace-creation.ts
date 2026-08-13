@@ -33,13 +33,14 @@ type CreationOptions = {
 
 export function useMobileWorkspaceCreation(options: CreationOptions) {
   const [state, setState] = useState<CreationState>(() => initialCreationState(options))
+  const selectedBackend = options.backends.find((backend) => backendKey(backend) === state.backendId) || null
   const repositories = useMemo(
-    () => options.workspace.repositories.filter((repository) => repository.backendId === state.backendId),
-    [options.workspace.repositories, state.backendId],
+    () => options.workspace.repositories.filter((repository) => belongsToBackend(repository, selectedBackend)),
+    [options.workspace.repositories, selectedBackend],
   )
   const workItems = useMemo(
-    () => options.workspace.workItems.filter((item) => item.backendId === state.backendId && !item.archived && item.state !== 'done'),
-    [options.workspace.workItems, state.backendId],
+    () => options.workspace.workItems.filter((item) => belongsToBackend(item, selectedBackend) && !item.archived && item.state !== 'done'),
+    [options.workspace.workItems, selectedBackend],
   )
   const selectedWorkItem = workItems.find((item) => item.id === state.workItemId) || null
   const valid = validCreation(options.mode, state, selectedWorkItem)
@@ -64,7 +65,8 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     if (!valid || state.busy) return
     update({ busy: true, error: '' })
     try {
-      const message = await executeCreation(options.mode, options.serviceUrl, state, selectedWorkItem)
+      if (!selectedBackend) throw new Error('Choose a server')
+      const message = await executeCreation(options.mode, { ...selectedBackend, serviceUrl: selectedBackend.serviceUrl || options.serviceUrl }, state, selectedWorkItem)
       await options.onCompleted(message)
       return
     } catch (reason) {
@@ -78,6 +80,7 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     repositories,
     workItems,
     selectedWorkItem,
+    selectedBackend,
     valid,
     setTitle: (title: string) => update({ title }),
     setPrompt: (prompt: string) => update({ prompt }),
@@ -105,8 +108,12 @@ function initialCreationState(options: CreationOptions): CreationState {
 }
 
 function initialBackendId(options: CreationOptions): string {
-  if (options.initialWorkItem) return options.initialWorkItem.backendId
-  return (options.backends.find((backend) => backend.isDefault) || options.backends[0])?.id || ''
+  if (options.initialWorkItem) {
+    const backend = options.backends.find((candidate) => belongsToBackend(options.initialWorkItem!, candidate))
+    return backend ? backendKey(backend) : ''
+  }
+  const backend = options.backends[0]
+  return backend ? backendKey(backend) : ''
 }
 
 function initialPrompt(item: MobileWorkItem | undefined): string {
@@ -122,32 +129,34 @@ function validCreation(mode: MobileCreateMode, state: CreationState, selectedWor
 
 async function executeCreation(
   mode: MobileCreateMode,
-  serviceUrl: string,
+  backend: MobileBackend,
   state: CreationState,
   selectedWorkItem: MobileWorkItem | null,
 ): Promise<string> {
-  if (mode === 'thread') return startExistingWorkThread(serviceUrl, state, selectedWorkItem)
+  const serviceUrl = backend.serviceUrl || ''
+  if (mode === 'thread') return startExistingWorkThread(serviceUrl, backend.id, state, selectedWorkItem)
   const item = await createMobileWorkItem(serviceUrl, {
-    backendId: state.backendId,
+    backendId: backend.id,
     title: state.title,
     description: state.prompt,
     ...(state.repositoryId ? { repositoryId: state.repositoryId } : {}),
   })
   if (mode === 'work') return `${item.key} added to Work.`
   if (!state.repositoryId) throw new Error(`${item.key} was created, but a repository is required to start its agent`)
-  const launchFailure = await draftPullRequestLaunchFailure(serviceUrl, { ...state, repositoryId: state.repositoryId }, item)
+  const launchFailure = await draftPullRequestLaunchFailure(serviceUrl, backend.id, { ...state, repositoryId: state.repositoryId }, item)
   if (launchFailure) return `${item.key} was created, but its draft PR thread could not start: ${launchFailure}. Retry from Work.`
   return `${item.key} created. Its agent will publish the draft PR when the work is ready.`
 }
 
 async function startExistingWorkThread(
   serviceUrl: string,
+  backendId: string,
   state: CreationState,
   selectedWorkItem: MobileWorkItem | null,
 ): Promise<string> {
   if (!selectedWorkItem || !state.repositoryId) throw new Error('Choose Work and a repository')
   await startMobileThread(serviceUrl, {
-    backendId: state.backendId,
+    backendId,
     workItemId: selectedWorkItem.id,
     repositoryId: state.repositoryId,
     prompt: state.prompt,
@@ -159,12 +168,13 @@ async function startExistingWorkThread(
 
 async function draftPullRequestLaunchFailure(
   serviceUrl: string,
+  backendId: string,
   state: CreationState & { repositoryId: number },
   item: { id: number; key: string },
 ): Promise<string> {
   try {
     await startMobileThread(serviceUrl, {
-      backendId: state.backendId,
+      backendId,
       workItemId: item.id,
       repositoryId: state.repositoryId,
       prompt: state.prompt,
@@ -175,4 +185,12 @@ async function draftPullRequestLaunchFailure(
   } catch (reason) {
     return reason instanceof Error ? reason.message : 'The agent could not start'
   }
+}
+
+function backendKey(backend: MobileBackend): string {
+  return `${backend.serviceUrl || ''}::${backend.id}`
+}
+
+function belongsToBackend(item: { backendId: string; serviceUrl?: string }, backend: MobileBackend | null): boolean {
+  return Boolean(backend && item.backendId === backend.id && (!item.serviceUrl || item.serviceUrl === backend.serviceUrl))
 }

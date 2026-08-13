@@ -4,26 +4,9 @@ import { baseSchema } from './base-schema.ts'
 import { migrateCanonicalPaths } from './canonical-paths-migration.ts'
 import { developmentMigrations } from './development-migrations.ts'
 import { developmentIntelligenceMigration } from './development-intelligence-migration.ts'
+import { orderedFollowUpMigration } from './ordered-follow-up-migration.ts'
+import { addColumn, columns, tableExists } from './migration-utils.ts'
 import type { Migration } from './migration.ts'
-
-function columns(database: DatabaseSync, table: string) {
-  return new Set(
-    database
-      .prepare(`PRAGMA table_info(${table})`)
-      .all()
-      .map((column) => String(column.name)),
-  )
-}
-
-function tableExists(database: DatabaseSync, table: string) {
-  return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))
-}
-
-function addColumn(database: DatabaseSync, table: string, existing: Set<string>, name: string, definition: string) {
-  if (existing.has(name)) return
-  database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`)
-  existing.add(name)
-}
 
 const migrations: Migration[] = [
   {
@@ -45,8 +28,10 @@ const migrations: Migration[] = [
         ['sonarqube', 'sonarqube'],
       ] as const) {
         database
-          .prepare(`INSERT OR IGNORE INTO encrypted_settings (name, payload, created_at, updated_at)
-          SELECT ?, payload, created_at, updated_at FROM encrypted_settings WHERE name=?`)
+          .prepare(
+            `INSERT OR IGNORE INTO encrypted_settings (name, payload, created_at, updated_at)
+          SELECT ?, payload, created_at, updated_at FROM encrypted_settings WHERE name=?`,
+          )
           .run(`extension:${moduleId}:config`, legacyName)
       }
     },
@@ -762,6 +747,7 @@ const migrations: Migration[] = [
     },
   },
   developmentIntelligenceMigration,
+  orderedFollowUpMigration,
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

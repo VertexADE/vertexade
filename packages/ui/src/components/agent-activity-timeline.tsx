@@ -2,6 +2,7 @@ import {
   Bot,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Circle,
   CircleAlert,
   Clipboard,
@@ -23,6 +24,7 @@ import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-
 import type { AgentAccent } from '@vertexade/ui/components/agent-identity'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { buildAgentTimeline, timelineSummary, type TimelineEvent } from '@vertexade/ui/lib/agent-timeline'
+import { buildThreadWorkSessions, type ThreadWorkSession } from '@vertexade/ui/lib/thread-work-sessions'
 import { agentIsWorking, agentThreadLabel, type AgentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import { dateValue } from '@vertexade/ui/lib/dashboard-api'
 import type { LogEvent } from '@vertexade/ui/lib/dashboard-types'
@@ -189,6 +191,78 @@ function MessageEvent({
       </div>
       <ThreadMarkdownContent content={event.text} onOpenFile={onOpenFile} worktreePath={worktreePath} className="text-sm" />
     </article>
+  )
+}
+
+function SessionMessage({
+  event,
+  onOpenFile,
+  worktreePath,
+}: {
+  event?: TimelineEvent
+  onOpenFile: (reference: FileReference) => void
+  worktreePath: string
+}) {
+  if (!event) return null
+  const user = event.kind === 'user_message'
+  const copy = () => void navigator.clipboard.writeText(event.text).then(() => toast.success('Message copied'))
+  return (
+    <article className={cn('group/message flex min-w-0 flex-col gap-1', user ? 'items-end' : 'items-start')}>
+      <div
+        className={cn(
+          'min-w-0 max-w-[min(88%,52rem)]',
+          user ? 'rounded-2xl rounded-br-md bg-blue-600 px-3.5 py-2.5 text-white shadow-sm' : 'w-full px-1 py-1',
+        )}
+      >
+        <ThreadMarkdownContent
+          content={event.text}
+          onOpenFile={onOpenFile}
+          worktreePath={worktreePath}
+          className={cn('text-sm', user && '[&_a]:text-white [&_code]:bg-white/15 [&_code]:text-white')}
+        />
+      </div>
+      <div className={cn('flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground', user && 'flex-row-reverse')}>
+        <EventTime event={event} />
+        <button type="button" onClick={copy} className="rounded p-1 opacity-60 hover:bg-muted hover:opacity-100" aria-label="Copy message">
+          <Clipboard className="size-3" />
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function WorkSession({
+  session,
+  onOpenFile,
+  worktreePath,
+}: {
+  session: ThreadWorkSession
+  onOpenFile: (reference: FileReference) => void
+  worktreePath: string
+}) {
+  return (
+    <section className="space-y-3" data-thread-work-session>
+      <SessionMessage event={session.trigger} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+      {session.activity.length ? (
+        <details className="group/session overflow-hidden rounded-xl border border-border/55 bg-muted/[.08]" open={!session.complete}>
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs hover:bg-muted/25">
+            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open/session:rotate-90" />
+            <strong>{session.complete ? `Worked for ${session.duration}` : 'Agent is working'}</strong>
+            <span className="text-muted-foreground">
+              {session.activity.length} {session.activity.length === 1 ? 'update' : 'updates'}
+              {session.actions ? ` · ${session.actions} ${session.actions === 1 ? 'action' : 'actions'}` : ''}
+            </span>
+            {!session.complete ? <Loader2 className="ml-auto size-3.5 animate-spin text-blue-500" /> : null}
+          </summary>
+          <ol className="relative border-t border-border/45 px-3 py-3 before:absolute before:bottom-6 before:left-[1.98rem] before:top-6 before:w-px before:bg-border">
+            {session.activity.map((event) => (
+              <TimelineEntry key={event.key} event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+            ))}
+          </ol>
+        </details>
+      ) : null}
+      <SessionMessage event={session.finalMessage} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+    </section>
   )
 }
 
@@ -433,6 +507,7 @@ export function AgentActivityTimeline({
   const visible = timeline.filter((event) => event.kind !== 'technical')
   const technical = timeline.filter((event) => event.kind === 'technical')
   const summary = timelineSummary(timeline, state)
+  const sessions = buildThreadWorkSessions(visible, state === 'completed')
   return (
     <section className="space-y-3" data-agent-timeline>
       <header className="sticky top-0 z-20 flex items-center gap-2 border-y border-border/55 bg-background/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/85">
@@ -448,11 +523,11 @@ export function AgentActivityTimeline({
           </span>
         ) : null}
       </header>
-      <ol className="relative before:absolute before:bottom-4 before:left-[.98rem] before:top-4 before:w-px before:bg-border sm:before:left-[1.1rem]">
-        {visible.map((event) => (
-          <TimelineEntry key={event.key} event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+      <div className="space-y-5">
+        {sessions.map((session) => (
+          <WorkSession key={session.key} session={session} onOpenFile={onOpenFile} worktreePath={worktreePath} />
         ))}
-      </ol>
+      </div>
       <TimelineDiagnostics events={technical} content={content} />
     </section>
   )

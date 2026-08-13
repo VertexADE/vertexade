@@ -20,25 +20,30 @@ function moduleEntry(overrides: Record<string, unknown> = {}): ModuleCatalogEntr
 describe('MobileConnectionPanel', () => {
   test('edits the endpoint and connects when it is usable', () => {
     const onServiceUrlChange = jest.fn()
+    const onConnectionNameChange = jest.fn()
     const onConnect = jest.fn()
     render(
       <MobileConnectionPanel
         serviceUrl="http://localhost:4173"
+        connectionName="Home Mac"
         loading={false}
         error=""
         onServiceUrlChange={onServiceUrlChange}
+        onConnectionNameChange={onConnectionNameChange}
         onConnect={onConnect}
       />,
     )
+    fireEvent.changeText(screen.getByLabelText('Connection name'), 'Home Mac')
     fireEvent.changeText(screen.getByLabelText('VertexADE pair link or service URL'), 'http://10.0.2.2:4173')
     fireEvent.press(screen.getByLabelText('Pair and connect'))
+    expect(onConnectionNameChange).toHaveBeenCalledWith('Home Mac')
     expect(onServiceUrlChange).toHaveBeenCalledWith('http://10.0.2.2:4173')
     expect(onConnect).toHaveBeenCalledTimes(1)
   })
 
   test('announces errors and exposes a disabled busy state', () => {
     render(
-      <MobileConnectionPanel serviceUrl="" loading error="Connection refused" onServiceUrlChange={jest.fn()} onConnect={jest.fn()} />,
+      <MobileConnectionPanel serviceUrl="" connectionName="" loading error="Connection refused" onServiceUrlChange={jest.fn()} onConnectionNameChange={jest.fn()} onConnect={jest.fn()} />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Connection refused')
     expect(screen.getByTestId('connection-submit')).toBeDisabled()
@@ -79,7 +84,7 @@ describe('MobileExtensionList', () => {
       pathname: '/extensions/[moduleId]',
       params: { moduleId: 'disabled', serviceUrl: 'http://localhost:4173', backendId: 'team' },
     })
-    expect(screen.getByText('2/2 live · 2 portable extensions')).toBeOnTheScreen()
+    expect(screen.getByText('2/2 direct servers live · 2 portable extensions')).toBeOnTheScreen()
     expect(screen.getByText('Settings · Disabled')).toBeOnTheScreen()
   })
 
@@ -88,7 +93,7 @@ describe('MobileExtensionList', () => {
       { id: 'local', label: 'Local', isDefault: true, modules: [moduleEntry()], error: '' },
       { id: 'team', label: 'Team', isDefault: false, modules: [], error: 'Team is offline' },
     ]} />)
-    expect(screen.getByText('1/2 live · 1 portable extension')).toBeOnTheScreen()
+    expect(screen.getByText('1/2 direct servers live · 1 portable extension')).toBeOnTheScreen()
     expect(screen.getByRole('alert')).toHaveTextContent('Team is offline')
     expect(screen.getByTestId('extension-work')).toBeOnTheScreen()
   })

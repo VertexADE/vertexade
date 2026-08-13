@@ -20,7 +20,7 @@ function entry(value: Record<string, unknown>) {
 describe('mobile workspace service', () => {
   beforeEach(() => createClient.mockReset())
 
-  test('parses and sorts the federated workspace with source attribution', async () => {
+  test('parses only the directly paired server workspace', async () => {
     createClient.mockReturnValue({ request: jest.fn().mockResolvedValue({
       instanceId: 'federated-fixture',
       version: 4,
@@ -35,12 +35,12 @@ describe('mobile workspace service', () => {
     await expect(loadMobileWorkspace('http://fixture:4173', backends)).resolves.toEqual({
       repositories: [expect.objectContaining({ backendId: 'local', fullName: 'dovo/local' })],
       pullRequests: [expect.objectContaining({ number: 17, workItemId: 8, draft: true, checksPending: 2 })],
-      workItems: [expect.objectContaining({ backendId: 'team', key: 'team~W-0003', threadCount: 1 })],
-      threads: [expect.objectContaining({ backendId: 'team', status: 'running', agentName: 'Codex' })],
+      workItems: [],
+      threads: [],
     })
   })
 
-  test('fails closed when a collection entry claims an unknown server', async () => {
+  test('ignores collection entries from servers that were not directly paired', async () => {
     createClient.mockReturnValue({ request: jest.fn().mockResolvedValue({
       updates: {
         repositories: { entries: [entry({ id: 1, full_name: 'unknown/repo', backend_id: 'unknown' })] },
@@ -50,7 +50,9 @@ describe('mobile workspace service', () => {
       },
     }) } as unknown as ReturnType<typeof createPlatformClient>)
 
-    await expect(loadMobileWorkspace('http://fixture:4173', backends)).rejects.toThrow('unknown backend "unknown"')
+    await expect(loadMobileWorkspace('http://fixture:4173', backends)).resolves.toEqual({
+      repositories: [], pullRequests: [], workItems: [], threads: [],
+    })
   })
 
   test('creates Work on one server with bounded typed input', async () => {

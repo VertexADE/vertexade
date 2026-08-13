@@ -1,6 +1,7 @@
 import { createPlatformClient } from '@vertexade/platform-client'
 import {
   cancelMobileQueuedMessage,
+  appendMobilePromptImages,
   deliverMobileThreadMessage,
   ensureMobilePullRequestWork,
   forkMobileThread,
@@ -10,15 +11,27 @@ import {
   loadMobileWorkItemDetails,
   postMobileReviewSuggestions,
   reReviewMobileThread,
+  reorderMobileQueuedMessages,
   saveMobileThreadTasks,
   steerMobileQueuedMessage,
   submitMobileThreadInput,
   transferMobileThreadContext,
+  uploadMobilePromptImages,
   updateMobileWorkState,
 } from './mobile-detail-service'
 import type { MobilePullRequest, MobileThread, MobileWorkItem } from './mobile-workspace-service'
 
 jest.mock('@vertexade/platform-client', () => ({ createPlatformClient: jest.fn() }))
+
+test('uploads mobile prompt images through the selected backend and embeds them', async () => {
+  const request = jest.fn().mockResolvedValue({ images: [{ name: 'screen[1].png', url: '/api/prompt-images/screen.png' }] })
+  createClient.mockReturnValue({ request } as unknown as ReturnType<typeof createPlatformClient>)
+
+  const images = await uploadMobilePromptImages('http://fixture:4173', 'team', [{ filename: 'screen.png', mediaType: 'image/png', url: 'data:image/png;base64,abc' }])
+
+  expect(request).toHaveBeenCalledWith('/api/prompt-images', expect.objectContaining({ method: 'POST' }))
+  expect(appendMobilePromptImages('Check this', images)).toBe('Check this\n\nAttached reference images:\n![screen-1-.png](/api/prompt-images/screen.png)')
+})
 
 const createClient = jest.mocked(createPlatformClient)
 const pullRequest: MobilePullRequest = {
@@ -102,12 +115,19 @@ describe('mobile detail service', () => {
     await expect(loadMobilePullRequestDetails('http://fixture:4173', pullRequest)).resolves.toMatchObject({
       title: 'Improve release quality',
       author: { login: 'dom', name: 'Dominic' },
-      conversation: [{ author: 'reviewer', body: 'Looks close' }, { author: 'reviewer', state: 'APPROVED' }],
+      conversation: [
+        { author: 'reviewer', body: 'Looks close' },
+        { author: 'reviewer', state: 'APPROVED' },
+      ],
       checks: [{ name: 'mobile', status: 'SUCCESS' }],
       unresolvedThreads: 1,
       files: [{ path: 'apps/mobile/app/index.tsx' }],
     })
-    expect(createClient).toHaveBeenCalledWith({ baseUrl: 'http://fixture:4173', getAccessToken: expect.any(Function), headers: { 'x-vertexade-backend': 'team' } })
+    expect(createClient).toHaveBeenCalledWith({
+      baseUrl: 'http://fixture:4173',
+      getAccessToken: expect.any(Function),
+      headers: { 'x-vertexade-backend': 'team' },
+    })
     expect(request).toHaveBeenCalledWith('/api/pulls/1/299/details', { maxJsonResponseBytes: 32 * 1024 * 1024 })
   })
 
@@ -143,7 +163,8 @@ describe('mobile detail service', () => {
   })
 
   test('keeps thread activity usable when the optional diff fails', async () => {
-    const request = jest.fn()
+    const request = jest
+      .fn()
       .mockResolvedValueOnce({
         status: 'running',
         thread_id: 'provider-thread-7',
@@ -177,33 +198,36 @@ describe('mobile detail service', () => {
     await submitMobileThreadInput('http://fixture:4173', thread, { scope: ' Full ' })
     await expect(submitMobileThreadInput('http://fixture:4173', thread, {})).rejects.toThrow('Answer every question')
 
-    expect(request.mock.calls).toEqual(expect.arrayContaining([
-      ['/api/pulls/1/299/work', expect.objectContaining({ method: 'POST', body: '{}' })],
-      ['/api/work-items/1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ state: 'review', reason: 'Moved from VertexADE mobile Work details' }) })],
-      ['/api/agent-threads/7/queue', expect.objectContaining({ body: JSON.stringify({ prompt: 'Continue' }) })],
-      ['/api/agent-threads/7/input', expect.objectContaining({ body: JSON.stringify({ answers: { scope: { answers: ['Full'] } } }) })],
-    ]))
+    expect(request.mock.calls).toEqual(
+      expect.arrayContaining([
+        ['/api/pulls/1/299/work', expect.objectContaining({ method: 'POST', body: '{}' })],
+        ['/api/work-items/1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ state: 'review', reason: 'Moved from VertexADE mobile Work details' }) })],
+        ['/api/agent-threads/7/queue', expect.objectContaining({ body: JSON.stringify({ prompt: 'Continue' }) })],
+        ['/api/agent-threads/7/input', expect.objectContaining({ body: JSON.stringify({ answers: { scope: { answers: ['Full'] } } }) })],
+      ]),
+    )
   })
 
   test('loads private review suggestions with the complete desktop thread metadata', async () => {
     const request = jest.fn().mockImplementation((path: string) => {
-      if (path.endsWith('/log')) return Promise.resolve({
-        status: 'completed',
-        thread_id: 'provider-thread-7',
-        thread_url: 'https://example.test/thread/7',
-        agent_id: 'codex',
-        kind: 'review',
-        kind_label: 'Code review',
-        agent_model: 'gpt-5.6',
-        agent_reasoning_effort: 'high',
-        worktree_path: '/tmp/worktree',
-        created_at: '2026-08-11T09:00:00Z',
-        finished_at: '2026-08-11T10:00:00Z',
-        source_job_id: 3,
-        review_phase: 'complete',
-        review_summary: 'Ready to merge',
-        events: [{ data: { event: 'turn_completed' }, title: 'Completed' }],
-      })
+      if (path.endsWith('/log'))
+        return Promise.resolve({
+          status: 'completed',
+          thread_id: 'provider-thread-7',
+          thread_url: 'https://example.test/thread/7',
+          agent_id: 'codex',
+          kind: 'review',
+          kind_label: 'Code review',
+          agent_model: 'gpt-5.6',
+          agent_reasoning_effort: 'high',
+          worktree_path: '/tmp/worktree',
+          created_at: '2026-08-11T09:00:00Z',
+          finished_at: '2026-08-11T10:00:00Z',
+          source_job_id: 3,
+          review_phase: 'complete',
+          review_summary: 'Ready to merge',
+          events: [{ data: { event: 'turn_completed' }, title: 'Completed' }],
+        })
       if (path.endsWith('/diff')) return Promise.resolve({ diff: '', diff_summary: { files: [] } })
       return Promise.resolve({
         suggestions: [{ id: 4, path: 'src/app.ts', line: 12, side: 'RIGHT', description: 'Guard this value', replacement: '  return value\n', selected: 1 }],
@@ -226,22 +250,35 @@ describe('mobile detail service', () => {
 
   test('executes the complete server-scoped thread workflow', async () => {
     const request = jest.fn().mockImplementation((path: string) => {
-      if (path.endsWith('/fork')) return Promise.resolve({
-        id: 11,
-        status: 'starting',
-        full_name: 'vertexade/fixture',
-        agent_id: 'codex',
-        task_title: 'Forked mobile flow',
-        branch_name: 'fix/forked-mobile-flow',
-      })
-      if (path.endsWith('/re-review')) return Promise.resolve({
-        threads: [{ id: 12, status: 'starting', full_name: 'vertexade/fixture', agent_id: 'codex', task_title: 'Fresh review' }],
-      })
+      if (path.endsWith('/fork'))
+        return Promise.resolve({
+          id: 11,
+          status: 'starting',
+          full_name: 'vertexade/fixture',
+          agent_id: 'codex',
+          task_title: 'Forked mobile flow',
+          branch_name: 'fix/forked-mobile-flow',
+        })
+      if (path.endsWith('/re-review'))
+        return Promise.resolve({
+          threads: [{ id: 12, status: 'starting', full_name: 'vertexade/fixture', agent_id: 'codex', task_title: 'Fresh review' }],
+        })
       if (path.endsWith('/save-stack-tasks')) return Promise.resolve({ saved: 3 })
       if (path.endsWith('/suggestions')) return Promise.resolve({ posted: 2 })
-      if (path.startsWith('/api/work-context-targets')) return Promise.resolve({
-        targets: [{ id: 21, status: 'completed', full_name: 'vertexade/other', work_item_key: 'W-0002', work_item_title: 'Other work', task_title: 'Idle target', branch_name: 'feature/other' }],
-      })
+      if (path.startsWith('/api/work-context-targets'))
+        return Promise.resolve({
+          targets: [
+            {
+              id: 21,
+              status: 'completed',
+              full_name: 'vertexade/other',
+              work_item_key: 'W-0002',
+              work_item_title: 'Other work',
+              task_title: 'Idle target',
+              branch_name: 'feature/other',
+            },
+          ],
+        })
       return Promise.resolve({ accepted: true })
     })
     createClient.mockReturnValue({ request } as unknown as ReturnType<typeof createPlatformClient>)
@@ -255,42 +292,62 @@ describe('mobile detail service', () => {
     })
     await steerMobileQueuedMessage('http://fixture:4173', thread, 8)
     await cancelMobileQueuedMessage('http://fixture:4173', thread, 8)
+    await reorderMobileQueuedMessages('http://fixture:4173', thread, [9, 8])
     await expect(saveMobileThreadTasks('http://fixture:4173', thread)).resolves.toBe(3)
-    await expect(forkMobileThread('http://fixture:4173', thread, {
-      title: 'Forked mobile flow',
-      prompt: 'Finish the complete flow',
-      base: 'current',
-      branchType: 'fix',
-      options: { agentId: 'codex', model: 'gpt-5.6', reasoningEffort: 'high', serviceTier: '', allowSubagents: false },
-    })).resolves.toMatchObject({ id: 11, backendId: 'team', branchName: 'fix/forked-mobile-flow' })
+    await expect(
+      forkMobileThread('http://fixture:4173', thread, {
+        title: 'Forked mobile flow',
+        prompt: 'Finish the complete flow',
+        base: 'current',
+        branchType: 'fix',
+        options: { agentId: 'codex', model: 'gpt-5.6', reasoningEffort: 'high', serviceTier: '', allowSubagents: false },
+      }),
+    ).resolves.toMatchObject({ id: 11, backendId: 'team', branchName: 'fix/forked-mobile-flow' })
     await expect(reReviewMobileThread('http://fixture:4173', thread)).resolves.toMatchObject([{ id: 12, backendId: 'team' }])
-    await expect(postMobileReviewSuggestions('http://fixture:4173', thread, [{
-      id: 2,
-      path: 'src/app.ts',
-      line: 3,
-      side: 'RIGHT',
-      description: 'Guard this value',
-      replacement: 'return value',
-      selected: true,
-      postedAt: '',
-    }])).resolves.toBe(2)
+    await expect(
+      postMobileReviewSuggestions('http://fixture:4173', thread, [
+        {
+          id: 2,
+          path: 'src/app.ts',
+          line: 3,
+          side: 'RIGHT',
+          description: 'Guard this value',
+          replacement: 'return value',
+          selected: true,
+          postedAt: '',
+        },
+      ]),
+    ).resolves.toBe(2)
     await expect(loadMobileThreadTransferTargets('http://fixture:4173', thread)).resolves.toMatchObject([{ id: 21, workItemKey: 'W-0002' }])
     await transferMobileThreadContext('http://fixture:4173', thread, 21, 'Use the result', 'Apply the validated findings')
 
-    expect(request).toHaveBeenCalledWith('/api/agent-threads/7/follow-up', expect.objectContaining({
-      body: JSON.stringify({ prompt: 'Continue' }),
-      headers: expect.objectContaining({
-        'x-agent-provider': 'codex',
-        'x-agent-model': 'gpt-5.6',
-        'x-agent-reasoning-effort': 'high',
-        'x-agent-service-tier': 'priority',
-        'x-agent-subagents': 'true',
+    expect(request).toHaveBeenCalledWith(
+      '/api/agent-threads/7/follow-up',
+      expect.objectContaining({
+        body: JSON.stringify({ prompt: 'Continue' }),
+        headers: expect.objectContaining({
+          'x-agent-provider': 'codex',
+          'x-agent-model': 'gpt-5.6',
+          'x-agent-reasoning-effort': 'high',
+          'x-agent-service-tier': 'priority',
+          'x-agent-subagents': 'true',
+        }),
       }),
-    }))
+    )
     expect(request).toHaveBeenCalledWith('/api/agent-threads/7/queue/8/steer', expect.objectContaining({ method: 'POST' }))
     expect(request).toHaveBeenCalledWith('/api/agent-threads/7/queue/8', expect.objectContaining({ method: 'DELETE' }))
-    expect(request).toHaveBeenCalledWith('/api/work-items/1/sub-items', expect.objectContaining({
-      body: JSON.stringify({ source_job_id: 7, destination_job_id: 21, title: 'Use the result', instruction: 'Apply the validated findings' }),
-    }))
+    expect(request).toHaveBeenCalledWith(
+      '/api/agent-threads/7/queue',
+      expect.objectContaining({
+        body: JSON.stringify({ ids: [9, 8] }),
+        method: 'PATCH',
+      }),
+    )
+    expect(request).toHaveBeenCalledWith(
+      '/api/work-items/1/sub-items',
+      expect.objectContaining({
+        body: JSON.stringify({ source_job_id: 7, destination_job_id: 21, title: 'Use the result', instruction: 'Apply the validated findings' }),
+      }),
+    )
   })
 })

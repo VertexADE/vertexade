@@ -79,17 +79,20 @@ describe('MobileWorkspaceScreen', () => {
       error: '',
       notice: '',
       setNotice: jest.fn(),
+      completedThread: null,
+      dismissCompletedThread: jest.fn(),
       refresh: jest.fn().mockResolvedValue(undefined),
     })
-    render(<MobileWorkspaceScreen serviceUrl="http://fixture:4173" servers={[{ id: 'local', label: 'Local', isDefault: true, modules: [], error: '' }]} onChangeService={jest.fn()} />)
+    const props = { connections: [{ serviceUrl: 'http://fixture:4173', servers: [{ id: 'local', label: 'Local', isDefault: true, serviceUrl: 'http://fixture:4173', modules: [], error: '' }] }], pairedServers: [], onAddServer: jest.fn(), onRenameServer: jest.fn() }
+    const { rerender } = render(<MobileWorkspaceScreen {...props} />)
 
-    expect(screen.getByText('Make mobile primary')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('workspace-tab-work'))
     expect(screen.getByText('Native workspace')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('workspace-tab-threads'))
+    rerender(<MobileWorkspaceScreen {...props} view="work" />)
+    expect(screen.getByText('Native workspace')).toBeOnTheScreen()
+    rerender(<MobileWorkspaceScreen {...props} view="threads" />)
     expect(screen.getByText('Building mobile cards')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('workspace-tab-more'))
-    expect(screen.getByText('Connected service')).toBeOnTheScreen()
+    rerender(<MobileWorkspaceScreen {...props} view="more" />)
+    expect(screen.getByText('Servers')).toBeOnTheScreen()
     expect(screen.getByText('No portable extensions')).toBeOnTheScreen()
   })
 
@@ -100,14 +103,36 @@ describe('MobileWorkspaceScreen', () => {
       error: '',
       notice: '',
       setNotice: jest.fn(),
+      completedThread: null,
+      dismissCompletedThread: jest.fn(),
       refresh: jest.fn().mockResolvedValue(undefined),
     })
-    render(<MobileWorkspaceScreen serviceUrl="http://fixture:4173" servers={[{ id: 'local', label: 'Local', isDefault: true, modules: [], error: '' }]} onChangeService={jest.fn()} />)
+    render(<MobileWorkspaceScreen view="work" connections={[{ serviceUrl: 'http://fixture:4173', servers: [{ id: 'local', label: 'Local', isDefault: true, serviceUrl: 'http://fixture:4173', modules: [], error: '' }] }]} pairedServers={[]} onAddServer={jest.fn()} onRenameServer={jest.fn()} />)
 
-    fireEvent.press(screen.getByTestId('workspace-tab-work'))
     fireEvent.press(screen.getByText('Start thread'))
     expect(screen.getByTestId('workspace-create-modal')).toBeOnTheScreen()
     expect(screen.getByTestId('create-work-item-2')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.queryByTestId('workspace-detail-modal')).not.toBeOnTheScreen()
+  })
+
+  test('clears the native workspace search without changing the active view', () => {
+    jest.mocked(useMobileWorkspace).mockReturnValue({
+      workspace,
+      loading: false,
+      error: '',
+      notice: '',
+      setNotice: jest.fn(),
+      completedThread: null,
+      dismissCompletedThread: jest.fn(),
+      refresh: jest.fn().mockResolvedValue(undefined),
+    })
+    render(<MobileWorkspaceScreen connections={[]} pairedServers={[]} onAddServer={jest.fn()} onRenameServer={jest.fn()} />)
+
+    fireEvent.changeText(screen.getByLabelText('Search Focus'), 'missing')
+    expect(screen.getByText('No matches')).toBeOnTheScreen()
+    fireEvent.press(screen.getByLabelText('Clear search'))
+    expect(screen.getByText('Native workspace')).toBeOnTheScreen()
+    expect(screen.getByLabelText('Search Focus')).toHaveProp('value', '')
   })
 
   test('opens native full details from each primary workspace card', () => {
@@ -117,21 +142,73 @@ describe('MobileWorkspaceScreen', () => {
       error: '',
       notice: '',
       setNotice: jest.fn(),
+      completedThread: null,
+      dismissCompletedThread: jest.fn(),
       refresh: jest.fn().mockResolvedValue(undefined),
     })
-    render(<MobileWorkspaceScreen serviceUrl="http://fixture:4173" servers={[{ id: 'local', label: 'Local', isDefault: true, modules: [], error: '' }]} onChangeService={jest.fn()} />)
+    const props = { connections: [{ serviceUrl: 'http://fixture:4173', servers: [{ id: 'local', label: 'Local', isDefault: true, serviceUrl: 'http://fixture:4173', modules: [], error: '' }] }], pairedServers: [], onAddServer: jest.fn(), onRenameServer: jest.fn() }
+    const { rerender } = render(<MobileWorkspaceScreen {...props} view="pullRequests" />)
 
     fireEvent.press(screen.getByTestId('open-pull-request-local-1-42'))
     expect(screen.getByTestId('workspace-detail-modal')).toBeOnTheScreen()
     fireEvent.press(screen.getByTestId('workspace-detail-close'))
-    fireEvent.press(screen.getByTestId('workspace-tab-work'))
+    rerender(<MobileWorkspaceScreen {...props} view="work" />)
     fireEvent.press(screen.getByTestId('open-work-item-local-2'))
     expect(screen.getByTestId('workspace-detail-modal')).toBeOnTheScreen()
     fireEvent.press(screen.getByTestId('workspace-detail-close'))
-    fireEvent.press(screen.getByTestId('workspace-tab-threads'))
+    rerender(<MobileWorkspaceScreen {...props} view="threads" />)
     fireEvent.press(screen.getByTestId('open-thread-local-3'))
     expect(screen.getByTestId('workspace-detail-modal')).toBeOnTheScreen()
-    expect(screen.getByText('LOCAL · AGENT RUN')).toBeOnTheScreen()
+    expect(screen.getByTestId('detail-tab-activity').props.accessibilityState).toEqual({ selected: true })
+  })
+
+  test('renames an existing paired connection from More', () => {
+    const onRenameServer = jest.fn().mockResolvedValue(undefined)
+    jest.mocked(useMobileWorkspace).mockReturnValue({
+      workspace,
+      loading: false,
+      error: '',
+      notice: '',
+      setNotice: jest.fn(),
+      completedThread: null,
+      dismissCompletedThread: jest.fn(),
+      refresh: jest.fn().mockResolvedValue(undefined),
+    })
+    render(<MobileWorkspaceScreen
+      connections={[{ serviceUrl: 'http://fixture:4173', servers: [{ id: 'local', label: 'Local', isDefault: true, serviceUrl: 'http://fixture:4173', modules: [], error: '' }] }]}
+      pairedServers={[{ serviceUrl: 'http://fixture:4173', sessionToken: 'token', expiresAt: '2099-01-01T00:00:00.000Z', name: 'Office' }]}
+      view="more"
+      onAddServer={jest.fn()}
+      onRenameServer={onRenameServer}
+    />)
+
+    expect(screen.getByDisplayValue('Office')).toBeOnTheScreen()
+    expect(screen.getByText('Agent resources')).toBeOnTheScreen()
+    expect(screen.queryByText('http://fixture:4173')).not.toBeOnTheScreen()
+    fireEvent.changeText(screen.getByLabelText('Connection name for Office'), 'Home Mac')
+    fireEvent.press(screen.getByText('Save name'))
+    expect(onRenameServer).toHaveBeenCalledWith('http://fixture:4173', 'Home Mac')
+  })
+
+  test('opens another completed thread from the completion HUD', () => {
+    const dismissCompletedThread = jest.fn()
+    const completedThread = { ...workspace.threads[0], status: 'completed', id: 9, taskTitle: 'Review native tabs' }
+    jest.mocked(useMobileWorkspace).mockReturnValue({
+      workspace: { ...workspace, threads: [...workspace.threads, completedThread] },
+      loading: false,
+      error: '',
+      notice: '',
+      setNotice: jest.fn(),
+      completedThread,
+      dismissCompletedThread,
+      refresh: jest.fn().mockResolvedValue(undefined),
+    })
+    render(<MobileWorkspaceScreen connections={[]} pairedServers={[]} onAddServer={jest.fn()} onRenameServer={jest.fn()} />)
+
+    expect(screen.getByTestId('completed-thread-hud')).toBeOnTheScreen()
+    fireEvent.press(screen.getByLabelText('Open completed thread Review native tabs'))
+    expect(dismissCompletedThread).toHaveBeenCalled()
+    expect(screen.getByTestId('workspace-detail-modal')).toBeOnTheScreen()
   })
 
 })

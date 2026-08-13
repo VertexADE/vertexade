@@ -22,6 +22,7 @@ describe('wave five public behavior inventory', () => {
       "method: 'POST', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/follow-up$/",
       "method: 'POST', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/steer$/",
       "method: 'POST', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/queue$/",
+      "method: 'PATCH', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/queue$/",
       "method: 'DELETE', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/queue\\/(\\d+)$/",
       "method: 'POST', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/queue\\/(\\d+)\\/steer$/",
       "method: 'POST', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/retry$/",
@@ -43,7 +44,8 @@ describe('wave five public behavior inventory', () => {
       "method: 'GET', pattern: /^\\/api\\/agent-threads\\/(\\d+)\\/diff$/",
     ]
 
-    for (const entry of routeEntries) expect(source.split(entry)).toHaveLength(2)
+    const normalized = source.replace(/\s+/g, ' ')
+    for (const entry of routeEntries) expect(normalized.split(entry)).toHaveLength(2)
   })
 
   it('preserves the thread activity composer and responsive action contracts', async () => {

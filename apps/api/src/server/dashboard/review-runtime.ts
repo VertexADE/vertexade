@@ -510,6 +510,7 @@ export async function launchJob(
         agentReasoningEffort: reasoningEffort,
         reviewPhase: kind === 'review' ? 'details' : null,
         reviewPhaseStartedAt: sql`CURRENT_TIMESTAMP`,
+        taskTitle: kind === 'review' ? `Review PR #${pr.number}: ${pr.title}`.slice(0, 200) : null,
         workItemId: workItem.id,
         ephemeral: ephemeral ? 1 : 0,
       })

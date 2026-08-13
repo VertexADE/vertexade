@@ -6,6 +6,7 @@ export type MobileBackend = {
   id: string
   label: string
   isDefault: boolean
+  serviceUrl?: string
 }
 
 export type MobileServerCatalog = MobileBackend & {
@@ -29,7 +30,9 @@ export async function loadMobileServerCatalogs(serviceUrl: string): Promise<Mobi
   const service = createMobilePlatformClient(serviceUrl)
   const payload = await service.request<unknown>('/api/backends')
   const backends = parseBackends(payload)
-  return Promise.all(backends.map((backend) => loadBackendCatalog(serviceUrl, backend)))
+  const primary = backends.find((backend) => backend.isDefault)
+  if (!primary) throw new Error('VertexADE service did not identify its primary server')
+  return [{ ...(await loadBackendCatalog(serviceUrl, primary)), serviceUrl }]
 }
 
 async function loadBackendCatalog(serviceUrl: string, backend: MobileBackend): Promise<MobileServerCatalog> {

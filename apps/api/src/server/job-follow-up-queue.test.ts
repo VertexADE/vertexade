@@ -16,8 +16,10 @@ beforeEach(() => {
     )
     .run()
   database.$client
-    .prepare(`INSERT INTO jobs (id, repo_id, pr_number, prompt, worktree_path, log_path, status, work_item_id)
-    VALUES (1, 1, 0, 'task', '/worktree', '/log', 'running', 1)`)
+    .prepare(
+      `INSERT INTO jobs (id, repo_id, pr_number, prompt, worktree_path, log_path, status, work_item_id)
+    VALUES (1, 1, 0, 'task', '/worktree', '/log', 'running', 1)`,
+    )
     .run()
   queue = new JobFollowUpQueue(database)
 })
@@ -76,5 +78,16 @@ describe('job follow-up queue', () => {
     expect(queue.removeQueued(1, first.id)).toBe(true)
     expect(queue.removeQueued(1, first.id)).toBe(false)
     expect(queue.list(1)).toEqual([expect.objectContaining({ id: second.id, prompt: 'second' })])
+  })
+
+  it('persists an explicit queued-message order', () => {
+    const first = queue.enqueue(1, 'first')
+    const second = queue.enqueue(1, 'second')
+    const third = queue.enqueue(1, 'third')
+
+    expect(queue.reorder(1, [third.id, first.id, second.id])).toBe(true)
+    expect(queue.list(1).map((item) => item.prompt)).toEqual(['third', 'first', 'second'])
+    expect(queue.claim(1)).toMatchObject({ id: third.id, prompt: 'third' })
+    expect(queue.reorder(1, [first.id])).toBe(false)
   })
 })

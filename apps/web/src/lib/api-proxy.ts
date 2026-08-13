@@ -1,8 +1,10 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { Buffer } from 'node:buffer'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { HttpError, readRequestBody, readResponseBody } from '@vertexade/platform-server/http'
 import { OutboundRequestPolicy } from '@vertexade/platform-server/outbound-policy'
 import { apiBackends as configuredBackends, resolveApiBackendInputs, type ApiBackend, type BackendInput } from './api-backend'
+import { browserPairingHeader, parseBrowserPairLink, readBrowserPairedServers, type BrowserPairedServer } from './browser-pairing'
 import {
   denormalizePayload,
   federatedIdSpan,
@@ -32,7 +34,9 @@ const MAX_LINKED_SERVERS_RESPONSE_BYTES = 256 * 1024
 const MAX_BACKEND_READ_MODEL_RESPONSE_BYTES = 32 * 1024 * 1024
 const MAX_NORMALIZED_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
 
-let activeBackends = configuredBackends
+type RequestBackendContext = { backends: ApiBackend[]; paired: Map<string, BrowserPairedServer>; outbound: OutboundRequestPolicy | null }
+const backendContext = new AsyncLocalStorage<RequestBackendContext>()
+const activeBackends = () => backendContext.getStore()?.backends || configuredBackends
 let linkedOutboundPolicy = new OutboundRequestPolicy()
 let linkedAllowedOriginsKey = ''
 let linkedBackendIds = new Set<string>()
@@ -42,7 +46,7 @@ const pairedSessionCache = new Map<string, number>()
 type ClientIdentity = 'unrestricted' | 'local' | 'mobile' | 'public'
 
 const runtimeById = new Map<string, BackendRuntime>(
-  activeBackends.map((backend) => [
+  configuredBackends.map((backend) => [
     backend.id,
     {
       id: backend.id,
@@ -61,7 +65,8 @@ let federationDigest = ''
 let federationVersion = 0
 
 function syncRuntime(backends: ApiBackend[]) {
-  activeBackends = backends
+  const context = backendContext.getStore()
+  if (context) context.backends = backends
   for (const backend of backends) {
     if (runtimeById.has(backend.id)) continue
     runtimeById.set(backend.id, {
@@ -75,7 +80,6 @@ function syncRuntime(backends: ApiBackend[]) {
       snapshot: null,
     })
   }
-  for (const id of runtimeById.keys()) if (!backends.some((backend) => backend.id === id)) runtimeById.delete(id)
 }
 
 async function refreshLinkedServers(request: Request, source: URL, identity: ClientIdentity, force = false) {
@@ -94,17 +98,17 @@ async function refreshLinkedServers(request: Request, source: URL, identity: Cli
     const linked = (payload.servers || []).filter((server) => server.enabled !== false)
     const uniqueLinked = linked.filter(
       (server) =>
-        !configuredBackends.some(
+        !activeBackends().some(
           (backend) => backend.id === String(server.id || '').toLowerCase() || backend.url === String(server.url || '').replace(/\/$/, ''),
         ),
     )
     const inputs: BackendInput[] = [
-      ...configuredBackends.map(({ id, label, url, namespace }) => ({ id, label, url, namespace })),
+      ...activeBackends().map(({ id, label, url, namespace }) => ({ id, label, url, namespace })),
       ...uniqueLinked,
     ]
     const resolved = resolveApiBackendInputs(inputs)
-    linkedBackendIds = new Set(resolved.slice(configuredBackends.length).map((backend) => backend.id))
-    const allowedOrigins = resolved.slice(configuredBackends.length).map((backend) => backend.url)
+    linkedBackendIds = new Set(resolved.slice(activeBackends().length).map((backend) => backend.id))
+    const allowedOrigins = resolved.slice(activeBackends().length).map((backend) => backend.url)
     const allowedOriginsKey = [...allowedOrigins].sort().join('\n')
     if (allowedOriginsKey !== linkedAllowedOriginsKey) {
       const previousPolicy = linkedOutboundPolicy
@@ -140,6 +144,7 @@ function proxyHeaders(source: URL, requestHeaders: Headers, credentialPolicy: Cr
   headers.delete('content-length')
   headers.delete('x-vertexade-backend')
   headers.delete('x-vertexade-local-session')
+  headers.delete(browserPairingHeader)
   if (credentialPolicy !== 'all') {
     for (const name of crossBackendCredentialHeaders) {
       if (name !== 'authorization' || credentialPolicy !== 'authorization') headers.delete(name)
@@ -221,6 +226,7 @@ function crossBackendCredentialPolicy(pathname: string, method: string): CrossBa
 }
 
 function publicBackend(runtime: BackendRuntime) {
+  const paired = backendContext.getStore()?.paired.has(runtime.id) || false
   return {
     id: runtime.id,
     label: runtime.label,
@@ -230,29 +236,30 @@ function publicBackend(runtime: BackendRuntime) {
     lastConnectedAt: runtime.lastConnectedAt,
     error: runtime.error,
     apiPath: `/api/backends/${encodeURIComponent(runtime.id)}`,
+    realtime: !paired,
   }
 }
 
 function publicBackends() {
-  return activeBackends.map((backend) => publicBackend(runtimeById.get(backend.id)!))
+  return activeBackends().map((backend) => publicBackend(runtimeById.get(backend.id)!))
 }
 
 function backendByNamespace(namespace: number | null) {
-  return namespace === null ? undefined : activeBackends.find((backend) => backend.namespace === namespace)
+  return namespace === null ? undefined : activeBackends().find((backend) => backend.namespace === namespace)
 }
 
 function explicitBackend(pathname: string) {
   const match = pathname.match(/^\/api\/backends\/([^/]+)(\/.*)?$/)
   if (!match) return null
   const id = decodeURIComponent(match[1])
-  const backend = activeBackends.find((candidate) => candidate.id === id)
+  const backend = activeBackends().find((candidate) => candidate.id === id)
   return backend ? { backend, pathname: `/api${match[2] || ''}` } : { backend: null, pathname }
 }
 
 function backendFromWorkKey(pathname: string) {
   const match = pathname.match(/^\/api\/work-items\/([^/]+)/)
   if (!match || /^\d+$/.test(match[1])) return null
-  return activeBackends.find((backend) => backend.namespace > 0 && decodeURIComponent(match[1]).startsWith(`${backend.id}~`)) || null
+  return activeBackends().find((backend) => backend.namespace > 0 && decodeURIComponent(match[1]).startsWith(`${backend.id}~`)) || null
 }
 
 const namespacedRoutePatterns = [
@@ -272,7 +279,7 @@ function backendFromPath(pathname: string) {
   for (const pattern of namespacedRoutePatterns) {
     const match = pathname.match(pattern)
     if (!match) continue
-    return backendByNamespace(namespaceFromId(match[1])) || activeBackends[0]
+    return backendByNamespace(namespaceFromId(match[1])) || activeBackends()[0]
   }
   return null
 }
@@ -313,10 +320,10 @@ function selectedBackend(source: URL, request: Request) {
   const explicit = explicitBackend(source.pathname)
   if (explicit) return explicit
   const requested = request.headers.get('x-vertexade-backend')
-  const headerBackend = requested ? activeBackends.find((backend) => backend.id === requested) : undefined
+  const headerBackend = requested ? activeBackends().find((backend) => backend.id === requested) : undefined
   // Entity ownership is authoritative. A global UI selection is only a
   // default for routes that do not identify their owning backend.
-  const backend = backendFromPath(source.pathname) || headerBackend || activeBackends[0]
+  const backend = backendFromPath(source.pathname) || headerBackend || activeBackends()[0]
   return { backend, pathname: source.pathname }
 }
 
@@ -346,16 +353,23 @@ async function fetchBackend(request: Request, source: URL, backend: ApiBackend, 
   const target = new URL(rewritePath(pathname, backend), backend.url)
   target.search = rewriteSearch(new URLSearchParams(source.search)).toString()
   const body = await proxyBody(request, backend, target.pathname)
+  const headers = proxyHeaders(source, request.headers, backendCredentialPolicy(identity, backend, pathname, request.method))
+  const paired = backendContext.getStore()?.paired.get(backend.id)
+  if (paired) headers.set('authorization', `Bearer ${paired.sessionToken}`)
   const init: RequestInit & { duplex?: 'half' } = {
     method: request.method,
-    headers: proxyHeaders(source, request.headers, backendCredentialPolicy(identity, backend, pathname, request.method)),
+    headers,
     body,
     signal: request.signal,
   }
   if (body) init.duplex = 'half'
   const runtime = runtimeById.get(backend.id)!
   try {
-    const backendFetch = linkedBackendIds.has(backend.id) ? linkedOutboundPolicy.fetch : fetch
+    const backendFetch = paired
+      ? backendContext.getStore()?.outbound?.fetch || fetch
+      : linkedBackendIds.has(backend.id)
+        ? linkedOutboundPolicy.fetch
+        : fetch
     const response = await backendFetch(target, init)
     runtime.connected = true
     runtime.lastConnectedAt = new Date().toISOString()
@@ -392,9 +406,16 @@ async function readBackendModel(request: Request, source: URL, backend: ApiBacke
   const runtime = runtimeById.get(backend.id)!
   try {
     const target = new URL('/api/read-model?since=0', backend.url)
-    const backendFetch = linkedBackendIds.has(backend.id) ? linkedOutboundPolicy.fetch : fetch
+    const paired = backendContext.getStore()?.paired.get(backend.id)
+    const headers = proxyHeaders(source, request.headers, readModelCredentialPolicy(identity, backend))
+    if (paired) headers.set('authorization', `Bearer ${paired.sessionToken}`)
+    const backendFetch = paired
+      ? backendContext.getStore()?.outbound?.fetch || fetch
+      : linkedBackendIds.has(backend.id)
+        ? linkedOutboundPolicy.fetch
+        : fetch
     const response = await backendFetch(target, {
-      headers: proxyHeaders(source, request.headers, readModelCredentialPolicy(identity, backend)),
+      headers,
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -476,7 +497,7 @@ function modelsWithinAggregateBudget(models: FederatedModel[], backends: ApiBack
 }
 
 async function federatedReadModel(request: Request, source: URL, identity: ClientIdentity) {
-  const backends = [...activeBackends]
+  const backends = [...activeBackends()]
   const perBackendLimit = Math.min(MAX_BACKEND_READ_MODEL_RESPONSE_BYTES, Math.floor(maxFederatedReadModelResponseBytes / backends.length))
   const models = (
     await Promise.all(backends.map((backend) => readBackendModel(request, source, backend, perBackendLimit, identity)))
@@ -513,7 +534,7 @@ async function boundedJsonResponse(response: Response, service: string, maxBytes
 }
 
 async function normalizeResponse(response: Response, backend: ApiBackend, signal: AbortSignal) {
-  if (activeBackends.length === 1 || !response.headers.get('content-type')?.includes('application/json')) return response
+  if (activeBackends().length === 1 || !response.headers.get('content-type')?.includes('application/json')) return response
   const runtime = runtimeById.get(backend.id)!
   const body = normalizeEntity(await boundedJsonResponse(response, 'Backend API', MAX_NORMALIZED_JSON_RESPONSE_BYTES, signal), runtime)
   const headers = new Headers(response.headers)
@@ -521,13 +542,14 @@ async function normalizeResponse(response: Response, backend: ApiBackend, signal
   return Response.json(body, { status: response.status, statusText: response.statusText, headers })
 }
 
-export async function proxyApiRequest({ request }: { request: Request }) {
+async function proxyApiRequestInContext({ request }: { request: Request }) {
   const source = new URL(request.url)
   const identity = await authorizeClient(request, source)
   if (!identity) return Response.json({ error: 'Pair this device in VertexADE Desktop Settings' }, { status: 401 })
+  if (source.pathname === '/api/browser-pairing/redeem' && request.method === 'POST') return redeemBrowserPairing(request)
   if (identity !== 'public') await refreshLinkedServers(request, source, identity, source.pathname === '/api/backends')
   if (source.pathname === '/api/backends' && request.method === 'GET') return Response.json({ backends: publicBackends() })
-  if (source.pathname === '/api/read-model' && request.method === 'GET' && activeBackends.length > 1) {
+  if (source.pathname === '/api/read-model' && request.method === 'GET' && activeBackends().length > 1) {
     return federatedReadModel(request, source, identity)
   }
   const selected = selectedBackend(source, request)
@@ -544,4 +566,98 @@ export async function proxyApiRequest({ request }: { request: Request }) {
   }
   if (source.pathname.startsWith('/api/settings/linked-servers') && request.method !== 'GET') linkedServersCheckedAt = 0
   return normalizeResponse(response, selected.backend, request.signal)
+}
+
+async function redeemBrowserPairing(request: Request) {
+  let input: Record<string, unknown>
+  try {
+    input = JSON.parse((await readRequestBody(request.clone(), 16 * 1024)).toString('utf8')) as Record<string, unknown>
+  } catch {
+    return Response.json({ error: 'Pairing request is invalid' }, { status: 400 })
+  }
+  let pairing: ReturnType<typeof parseBrowserPairLink>
+  try {
+    pairing = parseBrowserPairLink(String(input.pairUrl || ''))
+  } catch (error) {
+    return Response.json({ error: errorMessage(error) }, { status: 400 })
+  }
+  const policy = new OutboundRequestPolicy({ allowedOrigins: [pairing.serviceUrl] })
+  try {
+    const response = await policy.fetch(new URL('/api/mobile-pairing/redeem', pairing.serviceUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: pairing.token, deviceName: String(input.deviceName || 'VertexADE Web') }),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
+    })
+    const payload = await boundedJsonResponse(response, 'Pairing redemption', 64 * 1024, request.signal).catch(() => null)
+    if (!response.ok)
+      return Response.json(recordError(payload) || { error: `Pairing failed with HTTP ${response.status}` }, { status: response.status })
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      return Response.json({ error: 'Invalid pairing response' }, { status: 502 })
+    const redemption = payload as Record<string, unknown>
+    if (
+      String(redemption.serviceUrl || '').replace(/\/$/, '') !== pairing.serviceUrl ||
+      !String(redemption.sessionToken || '').trim() ||
+      Date.parse(String(redemption.expiresAt || '')) <= Date.now()
+    )
+      return Response.json({ error: 'Invalid pairing response' }, { status: 502 })
+    return Response.json(redemption, { status: 201 })
+  } catch (error) {
+    return Response.json({ error: errorMessage(error) }, { status: 502 })
+  } finally {
+    await policy.dispose()
+  }
+}
+
+function recordError(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const error = String((value as Record<string, unknown>).error || '').trim()
+  return error ? { error } : null
+}
+
+function requestPairedServers(request: Request) {
+  const raw = request.headers.get(browserPairingHeader)
+  if (!raw || raw.length > 24_000) return []
+  try {
+    const serialized = decodeURIComponent(raw)
+    return readBrowserPairedServers({ getItem: () => serialized })
+  } catch {
+    return []
+  }
+}
+
+function pairedRequestContext(request: Request): RequestBackendContext {
+  const usedIds = new Set(configuredBackends.map(({ id }) => id))
+  const usedNamespaces = new Set(configuredBackends.map(({ namespace }) => namespace))
+  const pairedServers = requestPairedServers(request).filter((server) => {
+    if (usedIds.has(server.id) || usedNamespaces.has(server.namespace) || configuredBackends.some(({ url }) => url === server.serviceUrl))
+      return false
+    usedIds.add(server.id)
+    usedNamespaces.add(server.namespace)
+    return true
+  })
+  const paired = new Map(pairedServers.map((server) => [server.id, server]))
+  const backends = resolveApiBackendInputs([
+    ...configuredBackends.map(({ id, label, url, namespace }) => ({ id, label, url, namespace })),
+    ...pairedServers.map((server) => ({ id: server.id, label: server.name, url: server.serviceUrl, namespace: server.namespace })),
+  ])
+  syncRuntime(backends)
+  return {
+    backends,
+    paired,
+    outbound: pairedServers.length
+      ? new OutboundRequestPolicy({ allowedOrigins: pairedServers.map(({ serviceUrl }) => serviceUrl) })
+      : null,
+  }
+}
+
+export async function proxyApiRequest({ request }: { request: Request }) {
+  const context = pairedRequestContext(request)
+  return backendContext.run(context, async () => {
+    try {
+      return await proxyApiRequestInContext({ request })
+    } finally {
+      await context.outbound?.dispose()
+    }
+  })
 }

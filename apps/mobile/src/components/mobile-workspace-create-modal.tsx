@@ -4,6 +4,8 @@ import type { MobileWorkItem, MobileWorkspace } from '@/mobile-workspace-service
 import { colors } from '@/theme'
 import { mobileWorkspaceStyles as styles } from './mobile-workspace-styles'
 import { MobileAgentOptions } from './mobile-agent-options'
+import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileWorkspaceCreation, type MobileCreateMode } from './use-mobile-workspace-creation'
 
 export type { MobileCreateMode } from './use-mobile-workspace-creation'
@@ -29,6 +31,7 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
   const copy = modeCopy[props.mode]
   return (
     <Modal
+      allowSwipeDismissal
       animationType="slide"
       presentationStyle="pageSheet"
       visible
@@ -36,15 +39,15 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
         if (!creation.busy) props.onClose()
       }}
     >
-      <View testID="workspace-create-modal" style={styles.modal}>
+      <MobileModalSafeArea testID="workspace-create-modal" style={styles.modal}>
         <CreationHeader mode={props.mode} busy={creation.busy} copy={copy} onClose={props.onClose} />
         <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
           <OptionGroup
             label="Server"
             options={props.backends.map((backend) => ({
-              id: backend.id,
+              id: `${backend.serviceUrl || ''}::${backend.id}`,
               label: backend.label,
-              meta: backend.isDefault ? 'Default server' : 'Linked server',
+              meta: 'Direct server',
             }))}
             selectedId={creation.backendId}
             testIdPrefix="create-server"
@@ -53,10 +56,10 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
           <CreationTarget mode={props.mode} creation={creation} />
           <RepositoryTarget mode={props.mode} creation={creation} />
           <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
-          {props.mode !== 'work' && creation.backendId ? (
+          {props.mode !== 'work' && creation.selectedBackend ? (
             <MobileAgentOptions
-              serviceUrl={props.serviceUrl}
-              backendId={creation.backendId}
+              serviceUrl={creation.selectedBackend.serviceUrl || props.serviceUrl}
+              backendId={creation.selectedBackend.id}
               value={creation.agentOptions}
               onChange={creation.setAgentOptions}
             />
@@ -84,7 +87,7 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
             <Text style={styles.createButtonText}>{copy.action}</Text>
           )}
         </Pressable>
-      </View>
+      </MobileModalSafeArea>
     </Modal>
   )
 }
@@ -97,20 +100,13 @@ function CreationHeader({ mode, busy, copy, onClose }: {
   copy: (typeof modeCopy)[MobileCreateMode]
   onClose(): void
 }) {
-  return (
-    <View style={styles.modalHeader}>
-      <View style={styles.modalHeading}>
-        <Text style={styles.modalEyebrow}>{copy.eyebrow}</Text>
-        <Text style={styles.modalTitle}>{copy.title}</Text>
-        {mode === 'pullRequest' ? (
-          <Text style={styles.subtitle}>Creates Work, starts its agent, and asks that agent to publish a draft PR.</Text>
-        ) : null}
-      </View>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={onClose}>
-        <Text style={styles.close}>Cancel</Text>
-      </Pressable>
-    </View>
-  )
+  return <MobileSheetHeader
+    title={copy.title}
+    subtitle={mode === 'pullRequest' ? 'Creates Work, starts its agent, and asks that agent to publish a draft PR.' : copy.eyebrow}
+    leadingLabel="Cancel"
+    busy={busy}
+    onLeading={onClose}
+  />
 }
 
 function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: CreationModel }) {

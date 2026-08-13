@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import type { MobileReviewSuggestion, MobileThreadDetails } from '@/mobile-detail-service'
-import { mobileThreadKind, type MobileThreadOutcome, type MobileThreadTab } from '@/mobile-thread-presentation'
+import { mobileThreadKind, mobileThreadOutcome, type MobileThreadOutcome, type MobileThreadTab } from '@/mobile-thread-presentation'
 import { colors } from '@/theme'
-import { MobileDiff } from './mobile-diff'
+import { MobileFileChanges } from './mobile-file-changes'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { DetailMetric, DetailSection } from './mobile-detail-shell'
 import { MobileMarkdown } from './mobile-markdown'
 
-export function MobileThreadHeaderContext({ detail }: { detail: MobileThreadDetails }) {
+function MobileThreadHeaderContext({ detail }: { detail: MobileThreadDetails }) {
   return (
     <>
       <View style={styles.headerBadges}>
@@ -47,7 +47,7 @@ function ThreadStatusBadge({ status }: { status: string }) {
   return <Text style={[styles.badge, danger && styles.badgeDanger, warning && !danger && { color: colors.warning }]}>{status}</Text>
 }
 
-export function MobileThreadOutcomeBanner({ outcome }: { outcome: MobileThreadOutcome }) {
+function MobileThreadOutcomeBanner({ outcome }: { outcome: MobileThreadOutcome }) {
   const toneStyle = {
     active: styles.outcomeActive,
     success: styles.outcomeSuccess,
@@ -99,12 +99,16 @@ export function MobileThreadTabContent({
 
 function ThreadSummary({ detail }: { detail: MobileThreadDetails }) {
   return (
-    <DetailSection title={detail.reviewSummary ? 'Review summary' : 'Result'} meta={detail.ephemeral ? 'Private · Ephemeral' : 'Private'}>
-      <MobileMarkdown
-        content={detail.reviewSummary || detail.resultText}
-        emptyText={`${detail.agentName} is still preparing the final result.`}
-      />
-    </DetailSection>
+    <>
+      <MobileThreadOutcomeBanner outcome={mobileThreadOutcome(detail)} />
+      <DetailSection title={detail.reviewSummary ? 'Review summary' : 'Result'} meta={detail.ephemeral ? 'Private · Ephemeral' : 'Private'}>
+        <MobileThreadHeaderContext detail={detail} />
+        <MobileMarkdown
+          content={detail.reviewSummary || detail.resultText}
+          emptyText={`${detail.agentName} is still preparing the final result.`}
+        />
+      </DetailSection>
+    </>
   )
 }
 
@@ -234,33 +238,10 @@ function SuggestionEditor({
 
 function ThreadChanges({ detail }: { detail: MobileThreadDetails }) {
   return (
-    <>
-      <DetailSection title="Change summary" meta={`${detail.files.length} files`}>
-        <View style={styles.metrics}>
-          <DetailMetric label="FILES" value={detail.files.length} />
-          <DetailMetric label="ADDITIONS" value={`+${detail.additions}`} />
-          <DetailMetric label="DELETIONS" value={`-${detail.deletions}`} />
-        </View>
-        {detail.files.map((file) => <ThreadChangedFile key={file.path} file={file} />)}
-        {!detail.files.length ? <Text style={styles.muted}>No changed files have been recorded yet.</Text> : null}
+    <DetailSection title="Changes" meta={`${detail.files.length} files`}>
+        <MobileFileChanges additions={detail.additions} deletions={detail.deletions} files={detail.files} patch={detail.diff} />
         {detail.diffError ? <Text style={styles.error}>{detail.diffError}</Text> : null}
-      </DetailSection>
-      {detail.diff ? (
-        <DetailSection title="Diff">
-          <MobileDiff patch={detail.diff} />
-        </DetailSection>
-      ) : null}
-    </>
-  )
-}
-
-function ThreadChangedFile({ file }: { file: MobileThreadDetails['files'][number] }) {
-  return (
-    <View style={styles.fileRow}>
-      <Text numberOfLines={2} style={styles.filePath}>{file.path}</Text>
-      <Text style={styles.additions}>+{file.additions}</Text>
-      <Text style={styles.deletions}>−{file.deletions}</Text>
-    </View>
+    </DetailSection>
   )
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, exists, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import { and, asc, eq, exists, inArray, isNotNull, max, or, sql } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from './database/dashboard-database.ts'
 import { jobFollowUpQueue, jobs } from './database/schema/tables.ts'
 
@@ -14,7 +14,10 @@ type QueuedFollowUp = {
   automation_phase: number | null
 }
 
-type QueueMetadata = { automationRunId?: number | null; automationPhase?: number | null }
+type QueueMetadata = {
+  automationRunId?: number | null
+  automationPhase?: number | null
+}
 
 export class JobFollowUpQueue {
   constructor(private readonly database: DrizzleDashboardDatabase) {}
@@ -30,7 +33,7 @@ export class JobFollowUpQueue {
       })
       .from(jobFollowUpQueue)
       .where(and(eq(jobFollowUpQueue.jobId, jobId), eq(jobFollowUpQueue.status, 'queued')))
-      .orderBy(asc(jobFollowUpQueue.queuedAt), asc(jobFollowUpQueue.id))
+      .orderBy(asc(jobFollowUpQueue.position), asc(jobFollowUpQueue.id))
       .all() as Array<Pick<QueuedFollowUp, 'id' | 'prompt' | 'model' | 'reasoning_effort' | 'queued_at'>>
   }
 
@@ -44,6 +47,14 @@ export class JobFollowUpQueue {
   }
 
   enqueue(jobId: number, prompt: string, model?: string | null, reasoningEffort?: string | null, metadata: QueueMetadata = {}) {
+    const position =
+      Number(
+        this.database
+          .select({ value: max(jobFollowUpQueue.position) })
+          .from(jobFollowUpQueue)
+          .where(eq(jobFollowUpQueue.jobId, jobId))
+          .get()?.value || 0,
+      ) + 1
     const result = this.database
       .insert(jobFollowUpQueue)
       .values({
@@ -51,19 +62,14 @@ export class JobFollowUpQueue {
         prompt,
         model: model || null,
         reasoningEffort: reasoningEffort || null,
+        position,
         automationRunId: metadata.automationRunId || null,
         automationPhase: metadata.automationPhase || null,
       })
       .run()
     return {
       id: Number(result.lastInsertRowid),
-      position: Number(
-        this.database
-          .select({ count: count() })
-          .from(jobFollowUpQueue)
-          .where(and(eq(jobFollowUpQueue.jobId, jobId), eq(jobFollowUpQueue.status, 'queued')))
-          .get()?.count || 0,
-      ),
+      position,
       model: model || null,
       reasoning_effort: reasoningEffort || null,
     }
@@ -74,13 +80,17 @@ export class JobFollowUpQueue {
       .select()
       .from(jobFollowUpQueue)
       .where(and(eq(jobFollowUpQueue.jobId, jobId), eq(jobFollowUpQueue.status, 'queued')))
-      .orderBy(asc(jobFollowUpQueue.queuedAt), asc(jobFollowUpQueue.id))
+      .orderBy(asc(jobFollowUpQueue.position), asc(jobFollowUpQueue.id))
       .limit(1)
       .get()
     if (!row) return null
     const claimed = this.database
       .update(jobFollowUpQueue)
-      .set({ status: 'running', startedAt: sql`CURRENT_TIMESTAMP`, lastError: null })
+      .set({
+        status: 'running',
+        startedAt: sql`CURRENT_TIMESTAMP`,
+        lastError: null,
+      })
       .where(and(eq(jobFollowUpQueue.id, row.id), eq(jobFollowUpQueue.status, 'queued')))
       .run()
     return claimed.changes ? { ...this.queuedFollowUp(row), status: 'running' as const } : null
@@ -150,6 +160,21 @@ export class JobFollowUpQueue {
     )
   }
 
+  reorder(jobId: number, orderedIds: number[]) {
+    const currentIds = this.list(jobId).map((item) => item.id)
+    if (currentIds.length !== orderedIds.length || orderedIds.some((id) => !currentIds.includes(id))) return false
+    this.database.transaction((transaction) => {
+      orderedIds.forEach((id, index) =>
+        transaction
+          .update(jobFollowUpQueue)
+          .set({ position: index + 1 })
+          .where(and(eq(jobFollowUpQueue.id, id), eq(jobFollowUpQueue.jobId, jobId), eq(jobFollowUpQueue.status, 'queued')))
+          .run(),
+      )
+    })
+    return true
+  }
+
   hasPending(jobId: number) {
     return Boolean(
       this.database
@@ -164,7 +189,10 @@ export class JobFollowUpQueue {
   recoverFinishedJobs() {
     return this.database
       .update(jobFollowUpQueue)
-      .set({ status: 'completed', finishedAt: sql`COALESCE(${jobFollowUpQueue.finishedAt}, CURRENT_TIMESTAMP)` })
+      .set({
+        status: 'completed',
+        finishedAt: sql`COALESCE(${jobFollowUpQueue.finishedAt}, CURRENT_TIMESTAMP)`,
+      })
       .where(
         and(
           eq(jobFollowUpQueue.status, 'running'),

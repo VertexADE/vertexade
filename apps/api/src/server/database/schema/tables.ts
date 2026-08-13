@@ -195,7 +195,9 @@ export const prTasks = sqliteTable('pr_tasks', {
     .notNull()
     .references(() => repositories.id, { onDelete: 'cascade' }),
   prNumber: integer('pr_number').notNull(),
-  analysisJobId: integer('analysis_job_id').references(() => jobs.id, { onDelete: 'set null' }),
+  analysisJobId: integer('analysis_job_id').references(() => jobs.id, {
+    onDelete: 'set null',
+  }),
   title: text().notNull(),
   rationale: text().notNull(),
   recommendedBase: text('recommended_base'),
@@ -243,7 +245,12 @@ export const repositoryAgentBootstraps = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.repositoryId, table.agentId], name: 'repository_agent_bootstraps_pk' })],
+  (table) => [
+    primaryKey({
+      columns: [table.repositoryId, table.agentId],
+      name: 'repository_agent_bootstraps_pk',
+    }),
+  ],
 )
 
 export const appSettings = sqliteTable('app_settings', {
@@ -344,7 +351,9 @@ export const workResources = sqliteTable(
     provider: text().notNull(),
     kind: text().notNull(),
     externalId: text('external_id').notNull(),
-    repositoryId: integer('repository_id').references(() => repositories.id, { onDelete: 'set null' }),
+    repositoryId: integer('repository_id').references(() => repositories.id, {
+      onDelete: 'set null',
+    }),
     label: text().notNull(),
     url: text(),
     state: text(),
@@ -376,7 +385,10 @@ export const workItemResources = sqliteTable(
   },
   (table) => [
     index('work_item_resources_item').on(table.workItemId),
-    primaryKey({ columns: [table.workItemId, table.resourceId, table.role], name: 'work_item_resources_pk' }),
+    primaryKey({
+      columns: [table.workItemId, table.resourceId, table.role],
+      name: 'work_item_resources_pk',
+    }),
   ],
 )
 
@@ -394,7 +406,12 @@ export const workItemRelations = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.fromWorkItemId, table.toWorkItemId, table.relation], name: 'work_item_relations_pk' })],
+  (table) => [
+    primaryKey({
+      columns: [table.fromWorkItemId, table.toWorkItemId, table.relation],
+      name: 'work_item_relations_pk',
+    }),
+  ],
 )
 
 export const workEvents = sqliteTable(
@@ -424,8 +441,12 @@ export const workContextTransfers = sqliteTable(
       .references(() => workItems.id, { onDelete: 'cascade' }),
     sourceWorkItemId: integer('source_work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
     destinationWorkItemId: integer('destination_work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
-    sourceJobId: integer('source_job_id').references(() => jobs.id, { onDelete: 'set null' }),
-    destinationJobId: integer('destination_job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    sourceJobId: integer('source_job_id').references(() => jobs.id, {
+      onDelete: 'set null',
+    }),
+    destinationJobId: integer('destination_job_id').references(() => jobs.id, {
+      onDelete: 'set null',
+    }),
     status: text().default('pending').notNull(),
     instruction: text().notNull(),
     contextSnapshot: text('context_snapshot').notNull(),
@@ -528,7 +549,12 @@ export const extensionMigrations = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.moduleId, table.version], name: 'extension_migrations_pk' })],
+  (table) => [
+    primaryKey({
+      columns: [table.moduleId, table.version],
+      name: 'extension_migrations_pk',
+    }),
+  ],
 )
 
 export const jobFollowUpQueue = sqliteTable(
@@ -541,6 +567,7 @@ export const jobFollowUpQueue = sqliteTable(
     prompt: text().notNull(),
     model: text(),
     reasoningEffort: text('reasoning_effort'),
+    position: integer().notNull(),
     status: text().default('queued').notNull(),
     lastError: text('last_error'),
     queuedAt: text('queued_at')
@@ -551,7 +578,7 @@ export const jobFollowUpQueue = sqliteTable(
     automationRunId: integer('automation_run_id').references(() => automationFlowRuns.id, { onDelete: 'cascade' }),
     automationPhase: integer('automation_phase'),
   },
-  (table) => [index('job_follow_up_queue_position').on(table.jobId, table.status, table.queuedAt, table.id)],
+  (table) => [index('job_follow_up_queue_position').on(table.jobId, table.status, table.position, table.id)],
 )
 
 export const workAgentResourceOverrides = sqliteTable(
@@ -569,7 +596,10 @@ export const workAgentResourceOverrides = sqliteTable(
   },
   (table) => [
     index('work_agent_resource_overrides_item').on(table.workItemId, table.resourceKind),
-    primaryKey({ columns: [table.workItemId, table.resourceKind, table.resourceId], name: 'work_agent_resource_overrides_pk' }),
+    primaryKey({
+      columns: [table.workItemId, table.resourceKind, table.resourceId],
+      name: 'work_agent_resource_overrides_pk',
+    }),
   ],
 )
 
@@ -582,7 +612,9 @@ export const automationFlowRuns = sqliteTable(
       .references(() => automationRecipes.id, { onDelete: 'cascade' }),
     status: text().notNull(),
     triggerEvent: text('trigger_event'),
-    threadJobId: integer('thread_job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    threadJobId: integer('thread_job_id').references(() => jobs.id, {
+      onDelete: 'set null',
+    }),
     currentPhase: integer('current_phase').default(0).notNull(),
     phaseCount: integer('phase_count').default(0).notNull(),
     lastError: text('last_error'),
@@ -744,7 +776,9 @@ export const repositoryEnvironmentProfilePaths = sqliteTable('repository_environ
   id: integer().primaryKey(),
   profileId: integer('profile_id')
     .notNull()
-    .references(() => repositoryEnvironmentProfiles.id, { onDelete: 'cascade' }),
+    .references(() => repositoryEnvironmentProfiles.id, {
+      onDelete: 'cascade',
+    }),
   relativePath: text('relative_path').notNull(),
   entryKind: text('entry_kind').notNull(),
   createdAt: text('created_at')

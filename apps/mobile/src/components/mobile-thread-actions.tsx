@@ -12,6 +12,9 @@ import { openMobileHttpUrl } from '@/mobile-linking'
 import { colors } from '@/theme'
 import { MobileAgentOptions } from './mobile-agent-options'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
+import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileSheetHeader } from './mobile-sheet-header'
+import { MobileSymbol } from './mobile-symbol'
 
 type ActionView = 'menu' | 'fork' | 'transfer'
 
@@ -47,20 +50,17 @@ export function MobileThreadRunActions({
   const [open, setOpen] = useState(false)
   return (
     <>
-      <ThreadActionButtons
-        detail={detail}
-        busy={busy}
-        onInterrupt={onInterrupt}
-        onRetry={onRetry}
-        onReReview={onReReview}
-        onMore={() => setOpen(true)}
-      />
+      <Pressable testID="thread-more-actions" accessibilityRole="button" accessibilityLabel="Thread actions" disabled={busy} hitSlop={8} onPress={() => setOpen(true)} style={({ pressed }) => [styles.headerIconButton, busy && styles.disabled, pressed && styles.pressed]}>
+        <MobileSymbol name="ellipsis.circle" fallback="•••" color={colors.accent} size={22} />
+      </Pressable>
       <ThreadActionsModal
         open={open}
         serviceUrl={serviceUrl}
         detail={detail}
         busy={busy}
         onClose={() => setOpen(false)}
+        onInterrupt={onInterrupt}
+        onRetry={onRetry}
         onReReview={onReReview}
         onSaveTasks={onSaveTasks}
         onFork={onFork}
@@ -74,58 +74,9 @@ export function MobileThreadRunActions({
   )
 }
 
-function ThreadActionButtons({
-  detail,
-  busy,
-  onInterrupt,
-  onRetry,
-  onReReview,
-  onMore,
-}: {
-  detail: MobileThreadDetails
-  busy: boolean
-  onInterrupt(): void
-  onRetry(): void
-  onReReview(): void
-  onMore(): void
-}) {
-  return (
-    <View style={styles.footerActions}>
-      <PrimaryThreadAction detail={detail} busy={busy} onInterrupt={onInterrupt} onRetry={onRetry} onReReview={onReReview} />
-      <Pressable accessibilityRole="button" disabled={busy} onPress={onMore} style={[styles.secondaryButton, styles.footerButton]}>
-        <Text style={styles.secondaryButtonText}>More actions</Text>
-      </Pressable>
-    </View>
-  )
-}
-
-function PrimaryThreadAction({
-  detail,
-  busy,
-  onInterrupt,
-  onRetry,
-  onReReview,
-}: Omit<Parameters<typeof ThreadActionButtons>[0], 'onMore'>) {
-  const action = primaryAction(detail)
-  if (!action) return null
-  const interrupt = action === 'interrupt'
-  const buttonStyle = interrupt ? [styles.secondaryButton, styles.dangerButton] : styles.primaryButton
-  const textStyle = interrupt ? [styles.secondaryButtonText, styles.dangerButtonText] : styles.primaryButtonText
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={busy}
-      onPress={() => runPrimaryAction(action, { onInterrupt, onRetry, onReReview })}
-      style={[buttonStyle, styles.footerButton, busy && styles.disabled]}
-    >
-      <Text style={textStyle}>{primaryLabel(action, detail.status, busy)}</Text>
-    </Pressable>
-  )
-}
-
 function runPrimaryAction(
   action: NonNullable<ReturnType<typeof primaryAction>>,
-  callbacks: Pick<Parameters<typeof ThreadActionButtons>[0], 'onInterrupt' | 'onRetry' | 'onReReview'>,
+  callbacks: Pick<ThreadActionViewProps, 'onInterrupt' | 'onRetry' | 'onReReview'>,
 ) {
   if (action === 'interrupt') callbacks.onInterrupt()
   else if (action === 'retry') callbacks.onRetry()
@@ -138,6 +89,8 @@ function ThreadActionsModal({
   detail,
   busy,
   onClose,
+  onInterrupt,
+  onRetry,
   onReReview,
   onSaveTasks,
   onFork,
@@ -152,6 +105,8 @@ function ThreadActionsModal({
   detail: MobileThreadDetails
   busy: boolean
   onClose(): void
+  onInterrupt(): void
+  onRetry(): void
   onReReview(): void
   onSaveTasks(): void
   onFork(input: MobileForkThreadInput): void
@@ -171,8 +126,8 @@ function ThreadActionsModal({
     else setView('menu')
   }
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={navigateBack}>
-      <View style={styles.actionModal}>
+    <Modal allowSwipeDismissal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={navigateBack}>
+      <MobileModalSafeArea style={styles.actionModal}>
         <ThreadActionsHeader view={view} detail={detail} busy={busy} onBack={navigateBack} />
         <ThreadActionView
           view={view}
@@ -181,6 +136,8 @@ function ThreadActionsModal({
           busy={busy}
           onView={setView}
           onClose={onClose}
+          onInterrupt={onInterrupt}
+          onRetry={onRetry}
           onReReview={onReReview}
           onSaveTasks={onSaveTasks}
           onFork={onFork}
@@ -190,7 +147,7 @@ function ThreadActionsModal({
           onOpenPullRequest={onOpenPullRequest}
           onError={onError}
         />
-      </View>
+      </MobileModalSafeArea>
     </Modal>
   )
 }
@@ -208,18 +165,15 @@ function ThreadActionsHeader({
 }) {
   const menu = view === 'menu'
   const title = view === 'fork' ? 'Fork into a worktree' : view === 'transfer' ? 'Send to a worktree' : 'Thread actions'
-  return (
-    <View style={styles.actionModalHeader}>
-      <View style={styles.actionOptionCopy}>
-        <Text style={styles.eyebrow}>{menu ? 'RUN WORKBENCH' : 'THREAD WORKFLOW'}</Text>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>Run #{detail.id} · {detail.fullName}</Text>
-      </View>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={onBack}>
-        <Text style={styles.close}>{menu ? 'Done' : 'Back'}</Text>
-      </Pressable>
-    </View>
-  )
+  return <MobileSheetHeader
+    title={title}
+    subtitle={`Run #${detail.id} · ${detail.fullName}`}
+    leadingLabel={menu ? undefined : 'Back'}
+    trailingLabel={menu ? 'Done' : undefined}
+    busy={busy}
+    onLeading={menu ? undefined : onBack}
+    onTrailing={menu ? onBack : undefined}
+  />
 }
 
 type ThreadActionViewProps = {
@@ -229,6 +183,8 @@ type ThreadActionViewProps = {
   busy: boolean
   onView(view: ActionView): void
   onClose(): void
+  onInterrupt(): void
+  onRetry(): void
   onReReview(): void
   onSaveTasks(): void
   onFork(input: MobileForkThreadInput): void
@@ -252,6 +208,8 @@ function ThreadActionView(props: ThreadActionViewProps) {
       busy={props.busy}
       onView={props.onView}
       onClose={props.onClose}
+      onInterrupt={props.onInterrupt}
+      onRetry={props.onRetry}
       onReReview={props.onReReview}
       onSaveTasks={props.onSaveTasks}
       onOpenWork={props.onOpenWork}
@@ -267,26 +225,19 @@ function ThreadActionMenu({
   busy,
   onView,
   onClose,
+  onInterrupt,
+  onRetry,
   onReReview,
   onSaveTasks,
   onOpenWork,
   onOpenParent,
   onOpenPullRequest,
   onError,
-}: {
-  detail: MobileThreadDetails
-  busy: boolean
-  onView(view: ActionView): void
-  onClose(): void
-  onReReview(): void
-  onSaveTasks(): void
-  onOpenWork?(): void
-  onOpenParent?(): void
-  onOpenPullRequest?(): void
-  onError(message: string): void
-}) {
+}: Pick<ThreadActionViewProps, 'detail' | 'busy' | 'onView' | 'onClose' | 'onInterrupt' | 'onRetry' | 'onReReview' | 'onSaveTasks' | 'onOpenWork' | 'onOpenParent' | 'onOpenPullRequest' | 'onError'>) {
+  const primary = primaryAction(detail)
   return (
     <ScrollView contentContainerStyle={styles.actionModalContent}>
+      {primary ? <ActionOption disabled={busy} title={primaryLabel(primary, detail.status, busy)} text="Run the primary action for this thread." onPress={() => runAndClose(onClose, () => runPrimaryAction(primary, { onInterrupt, onRetry, onReReview }))} /> : null}
       <RelatedThreadActions detail={detail} onClose={onClose} onOpenWork={onOpenWork} onOpenParent={onOpenParent} onOpenPullRequest={onOpenPullRequest} onError={onError} />
       <ThreadWorkflowActions detail={detail} busy={busy} onView={onView} onClose={onClose} onReReview={onReReview} onSaveTasks={onSaveTasks} />
     </ScrollView>

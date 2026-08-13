@@ -40,7 +40,7 @@ function backendUrl(value: unknown) {
 }
 
 function backendLabel(value: unknown, url: string, index: number) {
-  return text(value) || new URL(url).host || `Server ${index + 1}`
+  return text(value) || (index === 0 ? 'Local' : new URL(url).host || `Server ${index + 1}`)
 }
 
 function parsedBackendInputs(value: string): BackendInput[] {

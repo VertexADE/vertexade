@@ -60,6 +60,7 @@ import { EvidencePolicySettings } from '../components/settings/evidence-policy-s
 import { DesktopOnboardingSettings } from '../components/onboarding/desktop-onboarding-settings'
 import { LinkedServersSettings } from '../components/settings/linked-servers-settings'
 import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
+import { BrowserPairingSettings } from '../components/settings/browser-pairing-settings'
 
 type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'capabilities' | 'appearance'
 const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'capabilities', 'appearance'])
@@ -497,6 +498,15 @@ function SettingsPage() {
                   </SettingsGroup>
                   <SettingsSectionDivider />
                   <SettingsGroup
+                    id="connectivity-browser-servers"
+                    title="Paired servers"
+                    description="Use one-time pairing links to add independent servers to this browser's unified workspace."
+                    icon={Network}
+                  >
+                    <BrowserPairingSettings />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
                     id="workspace-repositories"
                     title="Source repositories"
                     description="Add GitHub repositories, synchronize pull requests, and configure repository-specific environments."
@@ -552,7 +562,7 @@ function SettingsPage() {
                   <SettingsGroup
                     id="connectivity-federation"
                     title="Server federation"
-                    description="Link independent VertexADE backends into one workspace. This is separate from pairing the mobile app."
+                    description="Operator-managed server-to-server federation for shared deployments. Browser pairing above is the normal personal flow."
                     icon={Network}
                     badge="Advanced"
                   >

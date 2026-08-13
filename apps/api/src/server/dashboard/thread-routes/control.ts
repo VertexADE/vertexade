@@ -19,15 +19,56 @@ import {
 import { matchThreadRoute, rejectThreadRoute, storedJob, type MatchedThreadRoute, type ThreadRoute } from './support.ts'
 
 const controlRoutes = [
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/steer$/, handle: steer },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/queue\/(\d+)\/steer$/, handle: steerQueuedFollowUp },
-  { method: 'DELETE', pattern: /^\/api\/agent-threads\/(\d+)\/queue\/(\d+)$/, handle: removeQueuedFollowUp },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/queue$/, handle: queueFollowUp },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/follow-up$/, handle: followUp },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/retry$/, handle: retry },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/cancel$/, handle: cancel },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/interrupt$/, handle: cancel },
-  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/input$/, handle: submitInput },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/steer$/,
+    handle: steer,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/queue\/(\d+)\/steer$/,
+    handle: steerQueuedFollowUp,
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/agent-threads\/(\d+)\/queue\/(\d+)$/,
+    handle: removeQueuedFollowUp,
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/agent-threads\/(\d+)\/queue$/,
+    handle: reorderQueuedFollowUps,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/queue$/,
+    handle: queueFollowUp,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/follow-up$/,
+    handle: followUp,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/retry$/,
+    handle: retry,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/cancel$/,
+    handle: cancel,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/interrupt$/,
+    handle: cancel,
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/agent-threads\/(\d+)\/input$/,
+    handle: submitInput,
+  },
 ] satisfies MatchedThreadRoute[]
 
 export const handleThreadControlRoutes: ThreadRoute = (request, url) => matchThreadRoute(request, url, controlRoutes)
@@ -70,6 +111,18 @@ async function queueFollowUp(request: Request, _url: URL, match: RegExpMatchArra
   notifyClients('job_follow_up_queued', job.id)
   if (!['starting', 'running'].includes(job.status)) void drainJobFollowUpQueue(job.id)
   return json(202, { queued: true, ...queued })
+}
+
+async function reorderQueuedFollowUps(request: Request, _url: URL, match: RegExpMatchArray) {
+  const jobId = Number(match[1])
+  if (!storedJob(jobId)) rejectThreadRoute(404, 'Agent run not found')
+  const input = await body(request)
+  const ids = Array.isArray(input.ids) ? input.ids.map(Number) : []
+  if (!ids.length || ids.some((id) => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length)
+    rejectThreadRoute(400, 'A unique ordered list of queued message IDs is required')
+  if (!jobFollowUps.reorder(jobId, ids)) rejectThreadRoute(409, 'The queued messages changed; refresh and try again')
+  notifyClients('job_follow_up_reordered', jobId)
+  return json(200, { reordered: true })
 }
 
 async function followUp(request: Request, _url: URL, match: RegExpMatchArray) {
@@ -145,7 +198,10 @@ function requiredActiveJob(jobId: number) {
 function markCancelling(jobId: number) {
   cancellingJobs.add(jobId)
   db.update(jobs)
-    .set({ latestActivity: 'Interrupting by user request…', activityAt: sql`CURRENT_TIMESTAMP` })
+    .set({
+      latestActivity: 'Interrupting by user request…',
+      activityAt: sql`CURRENT_TIMESTAMP`,
+    })
     .where(eq(jobs.id, jobId))
     .run()
 }

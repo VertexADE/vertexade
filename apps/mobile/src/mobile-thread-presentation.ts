@@ -20,20 +20,16 @@ const kindNames: Record<string, string> = {
 }
 
 export function mobileThreadTabs(detail: MobileThreadDetails): Array<{ id: MobileThreadTab; label: string }> {
-  const tabs: Array<{ id: MobileThreadTab; label: string }> = []
-  if (detail.reviewSummary || (detail.resultText && !showsFindings(detail)))
-    tabs.push({ id: 'summary', label: detail.reviewSummary ? 'Summary' : 'Result' })
+  const tabs: Array<{ id: MobileThreadTab; label: string }> = [{ id: 'activity', label: 'Activity' }]
+  tabs.push({ id: 'summary', label: detail.reviewSummary ? 'Summary' : 'Result' })
   if (showsFindings(detail)) tabs.push({ id: 'findings', label: detail.kind === 'stack_analysis' ? 'Stack report' : 'Full review' })
   if (detail.kind === 'review') tabs.push({ id: 'suggestions', label: suggestionLabel(detail.suggestions.length) })
-  tabs.push({ id: 'activity', label: 'Activity' })
   tabs.push({ id: 'changes', label: detail.files.length ? `Changes (${detail.files.length})` : 'Changes' })
   tabs.push({ id: 'context', label: 'Context' })
   return tabs
 }
 
-export function initialMobileThreadTab(detail: MobileThreadDetails): MobileThreadTab {
-  if (detail.reviewSummary || (detail.resultText && !showsFindings(detail))) return 'summary'
-  if (showsFindings(detail)) return 'findings'
+export function initialMobileThreadTab(_detail: MobileThreadDetails): MobileThreadTab {
   return 'activity'
 }
 

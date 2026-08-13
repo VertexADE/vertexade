@@ -60,6 +60,7 @@ describe('dashboard database migrations', () => {
       { version: 40, name: 'development-bounded-repair-loops' },
       { version: 41, name: 'single-active-work-item-worktree' },
       { version: 42, name: 'development-repository-knowledge' },
+      { version: 43, name: 'ordered-job-follow-up-queue' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',
@@ -173,11 +174,13 @@ describe('dashboard database migrations', () => {
     ).toEqual(expect.arrayContaining(['paused', 'reason', 'created_at']))
     expect(() =>
       nativeDatabase(database)
-        .prepare(`INSERT INTO capability_executions
+        .prepare(
+          `INSERT INTO capability_executions
       (capability_kind,capability_id,module_id,status,input)
       VALUES ('query','inventory.lookup','inventory','succeeded','null'),
              ('transform','inventory.normalize','inventory','succeeded','null'),
-             ('rank','inventory.rank','inventory','succeeded','null')`)
+             ('rank','inventory.rank','inventory','succeeded','null')`,
+        )
         .run(),
     ).not.toThrow()
     expect(

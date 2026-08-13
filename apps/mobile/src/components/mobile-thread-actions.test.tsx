@@ -86,7 +86,7 @@ describe('MobileThreadRunActions', () => {
     const value = props()
     render(<MobileThreadRunActions {...value} />)
 
-    fireEvent.press(screen.getByText('More actions'))
+    fireEvent.press(screen.getByLabelText('Thread actions'))
     fireEvent.press(screen.getByText('Fork into a new worktree'))
     fireEvent.press(screen.getByText('fix'))
     fireEvent.changeText(screen.getByLabelText('Fork title'), 'Fix mobile thread')
@@ -115,7 +115,7 @@ describe('MobileThreadRunActions', () => {
     const value = props()
     render(<MobileThreadRunActions {...value} />)
 
-    fireEvent.press(screen.getByText('More actions'))
+    fireEvent.press(screen.getByLabelText('Thread actions'))
     fireEvent.press(screen.getByText('Send output to another worktree'))
     await screen.findByText('W-0002 · vertexade/other')
     fireEvent.press(screen.getByText('W-0002 · vertexade/other'))
@@ -130,9 +130,20 @@ describe('MobileThreadRunActions', () => {
     const value = props()
     render(<MobileThreadRunActions {...value} />)
 
-    fireEvent.press(screen.getByText('More actions'))
+    fireEvent.press(screen.getByLabelText('Thread actions'))
     fireEvent.press(screen.getByText('Open pull request #42'))
 
     expect(value.onOpenPullRequest).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps the primary run action in the top actions menu', () => {
+    const value = props(detail({ status: 'running' }))
+    render(<MobileThreadRunActions {...value} />)
+
+    expect(screen.queryByText('More actions')).not.toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('thread-more-actions'))
+    fireEvent.press(screen.getByText('Interrupt thread'))
+
+    expect(value.onInterrupt).toHaveBeenCalledTimes(1)
   })
 })

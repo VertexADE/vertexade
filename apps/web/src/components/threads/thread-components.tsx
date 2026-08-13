@@ -54,7 +54,7 @@ function threadTitle(job: Job) {
   if (job.kind === 'pre_pr') return job.task_title || `Task #${id}`
   if (job.kind === 'work_review') return job.task_title || 'Worktree code review'
   if (job.kind === 'stack_analysis') return 'PR stack analysis'
-  if (job.kind === 'review') return `Review PR #${job.pr_number}`
+  if (job.kind === 'review') return job.task_title || `Review PR #${job.pr_number}`
   return job.task_title || (job.pr_number ? `PR #${job.pr_number}` : `Run #${id}`)
 }
 

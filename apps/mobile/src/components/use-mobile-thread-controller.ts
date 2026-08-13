@@ -9,6 +9,7 @@ import {
   postMobileReviewSuggestions,
   reReviewMobileThread,
   retryMobileThread,
+  reorderMobileQueuedMessages,
   saveMobileThreadTasks,
   steerMobileQueuedMessage,
   submitMobileThreadInput,
@@ -77,7 +78,19 @@ function useThreadModel(serviceUrl: string, thread: MobileThread) {
     }
   }, [detail.value?.status, detail.refresh])
 
-  return { detail, tab, setTab, message, setMessage, answers, setAnswers, suggestions, setSuggestions, agentOptions, setAgentOptions }
+  return {
+    detail,
+    tab,
+    setTab,
+    message,
+    setMessage,
+    answers,
+    setAnswers,
+    suggestions,
+    setSuggestions,
+    agentOptions,
+    setAgentOptions,
+  }
 }
 
 type ThreadMutationRunner = <Result>(action: () => Promise<Result>, success: string, onResult?: (result: Result) => void) => Promise<void>
@@ -102,48 +115,45 @@ function useThreadMutationState(refresh: () => Promise<void>, onChanged: (messag
       setBusy(false)
     }
   }
-  return { busy, queueBusyId, setQueueBusyId, notice, setNotice, error, setError, run }
+  return {
+    busy,
+    queueBusyId,
+    setQueueBusyId,
+    notice,
+    setNotice,
+    error,
+    setError,
+    run,
+  }
 }
 
-type ActionDependencies = ControllerOptions &
-  ReturnType<typeof useThreadModel> &
-  ReturnType<typeof useThreadMutationState>
+type ActionDependencies = ControllerOptions & ReturnType<typeof useThreadModel> & ReturnType<typeof useThreadMutationState>
 
 function createThreadActions(dependencies: ActionDependencies) {
   return {
     send: (delivery: MobileThreadDelivery) => sendThreadMessage(dependencies, delivery),
     queued: (id: number, action: 'steer' | 'cancel') => void updateQueuedMessage(dependencies, id, action),
+    reorderQueued: (ids: number[]) => void dependencies.run(() => reorderMobileQueuedMessages(dependencies.serviceUrl, dependencies.thread, ids), 'Queued messages reordered.'),
     interrupt: () => void confirmThreadInterrupt(dependencies),
-    retry: () => void dependencies.run(
-      () => retryMobileThread(dependencies.serviceUrl, dependencies.thread),
-      'Thread retry started.',
-    ),
-    submitAnswers: () => void dependencies.run(
-      () => submitMobileThreadInput(dependencies.serviceUrl, dependencies.thread, dependencies.answers),
-      'Answers submitted to the agent.',
-    ),
-    postSuggestions: () => void dependencies.run(
-      () => postMobileReviewSuggestions(dependencies.serviceUrl, dependencies.thread, dependencies.suggestions),
-      'Selected suggestions posted as one GitHub review.',
-    ),
-    fork: (input: MobileForkThreadInput) => void dependencies.run(
-      () => forkMobileThread(dependencies.serviceUrl, dependencies.thread, input),
-      'New branch, worktree, and forked run started.',
-      (forked) => dependencies.onOpenThread?.(forked),
-    ),
-    reReview: () => void dependencies.run(
-      () => reReviewMobileThread(dependencies.serviceUrl, dependencies.thread),
-      'Fresh review started.',
-      (threads) => threads[0] && dependencies.onOpenThread?.(threads[0]),
-    ),
-    saveTasks: () => void dependencies.run(
-      () => saveMobileThreadTasks(dependencies.serviceUrl, dependencies.thread),
-      'Stack findings saved to the PR action list.',
-    ),
-    transfer: (destination: number, title: string, instruction: string) => void dependencies.run(
-      () => transferMobileThreadContext(dependencies.serviceUrl, dependencies.thread, destination, title, instruction),
-      'Output sent to the destination worktree.',
-    ),
+    retry: () => void dependencies.run(() => retryMobileThread(dependencies.serviceUrl, dependencies.thread), 'Thread retry started.'),
+    submitAnswers: () => void dependencies.run(() => submitMobileThreadInput(dependencies.serviceUrl, dependencies.thread, dependencies.answers), 'Answers submitted to the agent.'),
+    postSuggestions: () =>
+      void dependencies.run(() => postMobileReviewSuggestions(dependencies.serviceUrl, dependencies.thread, dependencies.suggestions), 'Selected suggestions posted as one GitHub review.'),
+    fork: (input: MobileForkThreadInput) =>
+      void dependencies.run(
+        () => forkMobileThread(dependencies.serviceUrl, dependencies.thread, input),
+        'New branch, worktree, and forked run started.',
+        (forked) => dependencies.onOpenThread?.(forked),
+      ),
+    reReview: () =>
+      void dependencies.run(
+        () => reReviewMobileThread(dependencies.serviceUrl, dependencies.thread),
+        'Fresh review started.',
+        (threads) => threads[0] && dependencies.onOpenThread?.(threads[0]),
+      ),
+    saveTasks: () => void dependencies.run(() => saveMobileThreadTasks(dependencies.serviceUrl, dependencies.thread), 'Stack findings saved to the PR action list.'),
+    transfer: (destination: number, title: string, instruction: string) =>
+      void dependencies.run(() => transferMobileThreadContext(dependencies.serviceUrl, dependencies.thread, destination, title, instruction), 'Output sent to the destination worktree.'),
   }
 }
 
@@ -154,13 +164,7 @@ function sendThreadMessage(dependencies: ActionDependencies, delivery: MobileThr
     'follow-up': 'Follow-up sent.',
   }[delivery]
   void dependencies.run(
-    () => deliverMobileThreadMessage(
-      dependencies.serviceUrl,
-      dependencies.thread,
-      dependencies.message,
-      delivery,
-      dependencies.agentOptions,
-    ),
+    () => deliverMobileThreadMessage(dependencies.serviceUrl, dependencies.thread, dependencies.message, delivery, dependencies.agentOptions),
     success,
     () => dependencies.setMessage(''),
   )
@@ -169,22 +173,13 @@ function sendThreadMessage(dependencies: ActionDependencies, delivery: MobileThr
 async function updateQueuedMessage(dependencies: ActionDependencies, id: number, action: 'steer' | 'cancel') {
   dependencies.setQueueBusyId(id)
   const success = action === 'steer' ? 'Queued message used to steer the active turn.' : 'Queued message removed.'
-  const mutation = action === 'steer'
-    ? () => steerMobileQueuedMessage(dependencies.serviceUrl, dependencies.thread, id)
-    : () => cancelMobileQueuedMessage(dependencies.serviceUrl, dependencies.thread, id)
+  const mutation =
+    action === 'steer' ? () => steerMobileQueuedMessage(dependencies.serviceUrl, dependencies.thread, id) : () => cancelMobileQueuedMessage(dependencies.serviceUrl, dependencies.thread, id)
   await dependencies.run(mutation, success)
   dependencies.setQueueBusyId(null)
 }
 
 async function confirmThreadInterrupt(dependencies: ActionDependencies) {
-  const confirmed = await confirmDestructive(
-    `Interrupt thread #${dependencies.thread.id}?`,
-    'The active turn will stop gracefully. Its thread and worktree remain available.',
-    'Interrupt thread',
-  )
-  if (confirmed)
-    await dependencies.run(
-      () => interruptMobileThread(dependencies.serviceUrl, dependencies.thread),
-      'Interrupt requested.',
-    )
+  const confirmed = await confirmDestructive(`Interrupt thread #${dependencies.thread.id}?`, 'The active turn will stop gracefully. Its thread and worktree remain available.', 'Interrupt thread')
+  if (confirmed) await dependencies.run(() => interruptMobileThread(dependencies.serviceUrl, dependencies.thread), 'Interrupt requested.')
 }

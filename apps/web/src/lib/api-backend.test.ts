@@ -21,6 +21,7 @@ describe('resolveApiBackend', () => {
 
   it('defaults to the side-by-side API service', () => {
     expect(resolveApiBackend({})).toBe('http://127.0.0.1:4174')
+    expect(resolveApiBackends({})[0].label).toBe('Local')
   })
 
   it('parses an ordered multi-backend registry', () => {
@@ -39,7 +40,7 @@ describe('resolveApiBackend', () => {
 
   it('supports a comma-separated URL shorthand', () => {
     expect(resolveApiBackends({ VERTEXADE_API_URLS: 'http://one.internal:4174,https://two.internal' })).toEqual([
-      { id: 'server-1', label: 'one.internal:4174', url: 'http://one.internal:4174', namespace: 0, isDefault: true },
+      { id: 'server-1', label: 'Local', url: 'http://one.internal:4174', namespace: 0, isDefault: true },
       { id: 'server-2', label: 'two.internal', url: 'https://two.internal', namespace: 1, isDefault: false },
     ])
   })

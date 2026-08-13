@@ -3,11 +3,12 @@
 import type { DOMProps } from 'expo/dom'
 import { Markdown, type MarkdownComponents } from '@tanstack/markdown/react'
 import { calloutsExtension } from '@tanstack/markdown/extensions/callouts'
-import type { InlineNode, MarkdownExtension } from '@tanstack/markdown'
+import { normalizeMobileMarkdown } from './mobile-markdown-normalize'
 
 export type MobileMarkdownViewProps = {
   content: string
   onOpenLink(url: string): void
+  tone?: 'default' | 'onAccent'
   dom?: DOMProps
 }
 
@@ -29,6 +30,7 @@ const styles = `
   h2 { font-size: 1.35em; }
   h3 { font-size: 1.18em; }
   p, blockquote, pre, table, ul, ol { margin: 0.7em 0; }
+  p { white-space: pre-wrap; }
   ul, ol { padding-left: 1.6em; }
   li + li { margin-top: 0.25em; }
   a { color: #67e8c5; text-decoration: underline; text-underline-offset: 2px; }
@@ -46,25 +48,28 @@ const styles = `
   hr { border: 0; border-top: 1px solid #28313c; margin: 1.2em 0; }
   img { border-radius: 6px; height: auto; max-width: 100%; }
   input[type="checkbox"] { accent-color: #45d6b2; margin-right: 0.45em; }
+  details { background: #111820; border: 1px solid #28313c; border-radius: 10px; margin: 0.8em 0; overflow: hidden; padding: 0 12px 10px; }
+  summary { color: #f7fafc; cursor: pointer; font-weight: 650; margin: 0 -12px; min-height: 44px; padding: 11px 12px; }
+  details[open] summary { border-bottom: 1px solid #28313c; margin-bottom: 10px; }
+  details > :last-child { margin-bottom: 0; }
+  .markdown-body.on-accent { color: #ffffff; }
+  .markdown-body.on-accent h1,
+  .markdown-body.on-accent h2,
+  .markdown-body.on-accent h3,
+  .markdown-body.on-accent h4,
+  .markdown-body.on-accent h5,
+  .markdown-body.on-accent h6,
+  .markdown-body.on-accent a,
+  .markdown-body.on-accent blockquote,
+  .markdown-body.on-accent summary { color: #ffffff; }
+  .markdown-body.on-accent a { text-decoration-color: rgba(255, 255, 255, 0.75); }
+  .markdown-body.on-accent code { background: rgba(0, 0, 0, 0.18); color: #ffffff; }
+  .markdown-body.on-accent blockquote { border-left-color: rgba(255, 255, 255, 0.7); }
 `
 
-function mobileHardBreaks(value: string): InlineNode[] {
-  const lines = value.split('\n')
-  if (lines.length === 1) return [{ type: 'text', value }]
-  const nodes: InlineNode[] = [{ type: 'text', value: lines[0] }]
-  for (const line of lines.slice(1)) nodes.push({ type: 'break' }, { type: 'text', value: line })
-  return nodes
-}
+const mobileMarkdownExtensions = [calloutsExtension()]
 
-const mobileBreaksExtension: MarkdownExtension = {
-  name: 'vertexade-mobile-hard-breaks',
-  transformInline(nodes) {
-    return nodes.flatMap((node) => (node.type === 'text' ? mobileHardBreaks(node.value) : node))
-  },
-}
-const mobileMarkdownExtensions = [calloutsExtension(), mobileBreaksExtension]
-
-export default function MobileMarkdownView({ content, onOpenLink }: MobileMarkdownViewProps) {
+export default function MobileMarkdownView({ content, onOpenLink, tone = 'default' }: MobileMarkdownViewProps) {
   const components = {
     a: ({ href, children, ...props }) => (
       <a
@@ -82,9 +87,9 @@ export default function MobileMarkdownView({ content, onOpenLink }: MobileMarkdo
   return (
     <>
       <style>{styles}</style>
-      <main className="markdown-body">
-        <Markdown components={components} extensions={mobileMarkdownExtensions} allowHtml={false} frontmatter={false}>
-          {content}
+      <main className={`markdown-body${tone === 'onAccent' ? ' on-accent' : ''}`}>
+        <Markdown components={components} extensions={mobileMarkdownExtensions} allowHtml frontmatter={false}>
+          {normalizeMobileMarkdown(content)}
         </Markdown>
       </main>
     </>

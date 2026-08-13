@@ -1,8 +1,9 @@
-import { FlatList, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native'
+import { FlatList, RefreshControl, ScrollView, Text, View } from 'react-native'
 import type { ModuleCatalogEntry, PortableCollectionSurface } from '@vertexade/platform-contracts'
 import { readPortablePath } from '@vertexade/platform-contracts/portable'
 import { colors } from '@/theme'
 import { PortableCollectionActionModal as ActionModal } from './portable-collection-action-modal'
+import { MobileSearchField } from './mobile-search-field'
 import { CollectionChip as Chip, CollectionDetailsModal as DetailsModal, CollectionRecordCard as RecordCard, CollectionScreenState as ScreenState } from './portable-collection-presentation'
 import { portableCollectionStyles as styles } from './portable-collection-styles'
 import { portableRecords as records } from './portable-collection-projection'
@@ -29,7 +30,7 @@ export function PortableCollectionScreen({ module, serviceUrl, backendId, surfac
       <Text style={styles.eyebrow}>PORTABLE COLLECTION</Text>
       <Text style={styles.title}>{surface.title}</Text>
       {surface.description ? <Text style={styles.subtitle}>{surface.description}</Text> : null}
-      <TextInput accessibilityLabel="Search records" placeholder="Search records…" placeholderTextColor={colors.muted} style={styles.search} value={query} onChangeText={setQuery} />
+      <MobileSearchField label="Search records" placeholder="Search records…" value={query} onChange={setQuery} />
       {collectionActions.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{collectionActions.map((action) => <Chip active={false} key={action.id} label={action.label} onPress={() => setActionTarget({ item: null, action })} />)}</ScrollView> : null}
       {(surface.sourceControls || []).map((control) => <View key={control.id} style={styles.inputGroup}><Text style={styles.inputLabel}>{control.label}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{records(readPortablePath(data, control.optionsPath)).map((option) => {
         const value = String(readPortablePath(option, control.optionValuePath) || '')

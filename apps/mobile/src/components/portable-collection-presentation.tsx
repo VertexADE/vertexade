@@ -12,6 +12,8 @@ import type { PortableItemAction } from '@vertexade/platform-contracts'
 import type { PortableCollectionItem, PortableField } from '@vertexade/platform-contracts/portable'
 import { colors, spacing } from '@/theme'
 import { portableCollectionStyles as styles } from './portable-collection-styles'
+import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileSheetHeader } from './mobile-sheet-header'
 
 export function CollectionChip({ active, disabled = false, label, onPress, testID }: { active: boolean; disabled?: boolean; label: string; onPress: () => void; testID?: string }) {
   return <Pressable disabled={disabled} testID={testID} accessibilityRole="button" accessibilityState={{ selected: active, disabled }} onPress={onPress} style={({ pressed }) => [styles.chip, active && styles.chipActive, disabled && styles.disabled, pressed && styles.pressed]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>
@@ -49,11 +51,11 @@ function CollectionAvatar({ imageUrl, name }: { imageUrl?: string; name: string 
 }
 
 export function CollectionDetailsModal({ item, actions, data, loading, onClose, onAction }: { item: PortableCollectionItem | null; actions: PortableItemAction[]; data: unknown; loading: boolean; onClose: () => void; onAction: (action: PortableItemAction) => void }) {
-  return <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(item)} onRequestClose={onClose}>
-    <View testID="record-details" style={styles.modal}><View style={styles.modalHeader}><View style={styles.modalHeading}><Text style={styles.modalEyebrow}>RECORD DETAILS</Text><Text style={styles.modalTitle}>{item?.title}</Text></View><Pressable testID="record-details-close" onPress={onClose}><Text style={styles.close}>Close</Text></Pressable></View>
+  return <Modal allowSwipeDismissal animationType="slide" presentationStyle="pageSheet" visible={Boolean(item)} onRequestClose={onClose}>
+    <MobileModalSafeArea testID="record-details" style={styles.modal}><MobileSheetHeader title={item?.title || 'Record details'} subtitle="Record details" trailingLabel="Done" trailingTestID="record-details-close" onTrailing={onClose} />
       <ScrollView contentContainerStyle={styles.modalContent}>{item?.fields.map((field) => <CollectionFieldValue field={field} key={field.name} />)}{loading ? <ActivityIndicator color={colors.accent} /> : null}{data !== null ? <CollectionDetailValue value={data} /> : null}</ScrollView>
       {item && actions.length ? <View style={styles.modalActions}>{actions.map((action) => <Pressable key={action.id} onPress={() => onAction(action)} style={styles.modalPrimary}><Text style={styles.primaryButtonText}>{action.label}</Text></Pressable>)}</View> : null}
-    </View>
+    </MobileModalSafeArea>
   </Modal>
 }
 

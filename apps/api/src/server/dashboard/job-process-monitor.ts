@@ -230,6 +230,15 @@ export function createJobProcessMonitor({
             .where(eq(jobs.id, jobId))
             .run()
         if (event.event === 'steer_accepted') updateActivity(jobId, `Steering received; ${runtimeAgent.name} is adjusting the active turn…`)
+        if (event.event === 'turn_completed') {
+          const completed = event.status === 'completed'
+          createNotification(
+            'turn_complete',
+            completed ? 'Turn complete' : 'Turn stopped',
+            `${runtimeAgent.name} ${completed ? 'completed' : 'stopped'} run #${jobId}.`,
+            { jobId },
+          )
+        }
         if (
           [
             'thread_started',
@@ -242,6 +251,7 @@ export function createJobProcessMonitor({
             'input_required',
             'input_answered',
             'steer_accepted',
+            'turn_completed',
           ].includes(event.event)
         )
           notifyClients(event.event, jobId)

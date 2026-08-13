@@ -62,7 +62,7 @@ function errorMessage(value: unknown): string | null {
   return typeof error === 'string' && error.trim() ? error : null
 }
 
-export async function redeemMobilePairLink(value: string, deviceName = 'VertexADE Mobile'): Promise<MobileSession> {
+export async function redeemMobilePairLink(value: string, deviceName = 'VertexADE Mobile', connectionName = ''): Promise<MobileSession> {
   const pairing = parseMobilePairLink(value)
   const response = await fetch(`${pairing.serviceUrl}/api/mobile-pairing/redeem`, {
     method: 'POST',
@@ -73,7 +73,9 @@ export async function redeemMobilePairLink(value: string, deviceName = 'VertexAD
   if (!response.ok) {
     throw new Error(errorMessage(payload) || `HTTP ${response.status}`)
   }
-  const session = parseRedemption(payload, pairing.serviceUrl)
+  const redeemed = parseRedemption(payload, pairing.serviceUrl)
+  const name = connectionName.trim()
+  const session = { ...redeemed, ...(name ? { name } : {}) }
   await saveMobileSession(session)
   return session
 }

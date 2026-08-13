@@ -1,9 +1,22 @@
-import type { ReactNode } from 'react'
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native'
+import { createContext, useContext, useEffect, useRef, type MutableRefObject, type ReactNode } from 'react'
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
+import { MobileGlass } from './mobile-glass'
+import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileSheetHeader } from './mobile-sheet-header'
 
-export type MobileDetailTab<Tab extends string> = { id: Tab; label: string }
+type MobileDetailTab<Tab extends string> = { id: Tab; label: string }
+const DetailLoadEarlierContext = createContext<MutableRefObject<(() => void) | null> | null>(null)
+
+export function useDetailLoadEarlier(handler: () => void, enabled: boolean) {
+  const loadEarlier = useContext(DetailLoadEarlierContext)
+  useEffect(() => {
+    if (!loadEarlier || !enabled) return
+    loadEarlier.current = handler
+    return () => { if (loadEarlier.current === handler) loadEarlier.current = null }
+  }, [enabled, handler, loadEarlier])
+}
 
 type MobileDetailShellProps<Tab extends string> = {
   eyebrow: string
@@ -14,7 +27,10 @@ type MobileDetailShellProps<Tab extends string> = {
   loading: boolean
   error: string
   visible?: boolean
+  compactHeader?: boolean
   headerContent?: ReactNode
+  headerAction?: ReactNode
+  initialScrollToEnd?: boolean
   banner?: ReactNode
   footer?: ReactNode
   children: ReactNode
@@ -27,12 +43,20 @@ type MobileDetailShellProps<Tab extends string> = {
 
 export function MobileDetailShell<Tab extends string>(props: MobileDetailShellProps<Tab>) {
   return (
-    <Modal testID="workspace-detail-native-modal" animationType="slide" presentationStyle="pageSheet" visible={props.visible ?? true} onDismiss={props.onDismiss} onRequestClose={props.onClose}>
-      <View testID="workspace-detail-modal" style={styles.modal}>
+    <Modal
+      allowSwipeDismissal
+      testID="workspace-detail-native-modal"
+      animationType="slide"
+      presentationStyle="pageSheet"
+      visible={props.visible ?? true}
+      onDismiss={props.onDismiss}
+      onRequestClose={props.onClose}
+    >
+      <MobileModalSafeArea testID="workspace-detail-modal" style={styles.modal}>
         <MobileDetailHeader {...props} />
         {props.banner}
         <MobileDetailBody {...props} />
-      </View>
+      </MobileModalSafeArea>
     </Modal>
   )
 }
@@ -44,37 +68,20 @@ function MobileDetailHeader<Tab extends string>({
   tabs,
   activeTab,
   headerContent,
+  headerAction,
   onTab,
   onBack,
   onClose,
+  compactHeader,
 }: MobileDetailShellProps<Tab>) {
   return (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
-        <DetailBackButton onBack={onBack} />
-        <View style={styles.heading}>
-          <Text style={styles.eyebrow}>{eyebrow}</Text>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-          {headerContent}
-        </View>
-        <Pressable testID="workspace-detail-close" accessibilityRole="button" onPress={onClose}>
-          <Text style={styles.close}>Close</Text>
-        </Pressable>
-      </View>
+    <MobileGlass style={[styles.header, compactHeader && styles.headerCompact]}>
+      <MobileSheetHeader title={title} subtitle={compactHeader ? undefined : subtitle || eyebrow} leadingLabel={onBack ? 'Back' : undefined} trailingLabel="Done" trailingAccessory={headerAction} leadingTestID="workspace-detail-back" trailingTestID="workspace-detail-close" onLeading={onBack} onTrailing={onClose} />
+      {headerContent}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
         {tabs.map((tab) => <DetailTab key={tab.id} tab={tab} active={activeTab === tab.id} onTab={onTab} />)}
       </ScrollView>
-    </View>
-  )
-}
-
-function DetailBackButton({ onBack }: { onBack?: () => void }) {
-  if (!onBack) return null
-  return (
-    <Pressable testID="workspace-detail-back" accessibilityRole="button" onPress={onBack}>
-      <Text style={styles.close}>Back</Text>
-    </Pressable>
+    </MobileGlass>
   )
 }
 
@@ -100,13 +107,13 @@ function DetailTab<Tab extends string>({
   )
 }
 
-function MobileDetailBody<Tab extends string>({ loading, error, footer, children, onRetry }: MobileDetailShellProps<Tab>) {
+function MobileDetailBody<Tab extends string>({ loading, error, footer, children, initialScrollToEnd, onRetry }: MobileDetailShellProps<Tab>) {
   const ready = !loading && !error
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.detailBody}>
-      <MobileDetailContent loading={loading} error={error} onRetry={onRetry}>{children}</MobileDetailContent>
+    <View style={styles.detailBody}>
+      <MobileDetailContent loading={loading} error={error} initialScrollToEnd={initialScrollToEnd} onRetry={onRetry}>{children}</MobileDetailContent>
       {ready ? footer : null}
-    </KeyboardAvoidingView>
+    </View>
   )
 }
 
@@ -114,26 +121,52 @@ function MobileDetailContent({
   loading,
   error,
   children,
+  initialScrollToEnd,
   onRetry,
-}: Pick<MobileDetailShellProps<string>, 'loading' | 'error' | 'children' | 'onRetry'>) {
+}: Pick<MobileDetailShellProps<string>, 'loading' | 'error' | 'children' | 'initialScrollToEnd' | 'onRetry'>) {
+  const scroll = useRef<ScrollView>(null)
+  const openingAtEnd = useRef(Boolean(initialScrollToEnd))
+  const loadEarlier = useRef<(() => void) | null>(null)
+  const lastOffset = useRef(0)
+  const topLoadTriggered = useRef(false)
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offset = Math.max(0, event.nativeEvent.contentOffset.y)
+    const scrollingUp = offset < lastOffset.current
+    if (scrollingUp && offset <= 120 && !topLoadTriggered.current) {
+      topLoadTriggered.current = true
+      loadEarlier.current?.()
+    } else if (offset > 240) topLoadTriggered.current = false
+    lastOffset.current = offset
+  }
   if (loading) return <DetailState loading title="Loading details…" text="Reading the owning VertexADE server." />
   if (error) return <DetailState title="Details unavailable" text={error} action="Retry" onAction={onRetry} />
   return (
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {children}
-    </ScrollView>
+    <DetailLoadEarlierContext.Provider value={loadEarlier}>
+      <ScrollView
+        ref={scroll}
+        testID="detail-scroll-view"
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={32}
+        onContentSizeChange={() => { if (openingAtEnd.current) scroll.current?.scrollToEnd({ animated: false }) }}
+        onScroll={onScroll}
+        onScrollBeginDrag={() => { openingAtEnd.current = false }}
+      >
+        {children}
+      </ScrollView>
+    </DetailLoadEarlierContext.Provider>
   )
 }
 
 export function DetailSection({ title, meta, children }: { title: string; meta?: string; children: ReactNode }) {
   return (
-    <View style={styles.section}>
+    <MobileGlass style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {meta ? <Text style={styles.sectionMeta}>{meta}</Text> : null}
       </View>
       {children}
-    </View>
+    </MobileGlass>
   )
 }
 

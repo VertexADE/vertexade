@@ -233,12 +233,15 @@ export function threadSummaries(archive = 'all') {
   return db
     .all(sql`SELECT j.id,j.repo_id,j.pr_number,j.status,j.thread_id,j.worktree_path,j.session_cwd,
     j.workspace_mode,j.head_sha,j.latest_activity,j.activity_at,j.created_at,j.finished_at,j.diff_additions,
-    j.diff_deletions,j.input_questions,j.kind,j.source_job_id,j.task_title,j.branch_name,j.linked_pr_number,
+    j.diff_deletions,j.input_questions,j.kind,j.source_job_id,
+    COALESCE(j.task_title, CASE WHEN j.kind='review' AND p.title IS NOT NULL THEN 'Review PR #' || j.pr_number || ': ' || p.title END) AS task_title,
+    j.branch_name,j.linked_pr_number,
     j.linked_pr_url,j.archived_at,j.pr_merged_at,j.pr_closed_at,j.review_phase,j.review_phase_started_at,
     j.agent_model,j.agent_reasoning_effort,j.ephemeral,j.work_item_id,j.agent_id,j.subagent_integrated_at,r.full_name,
     CASE WHEN json_valid(j.diff_files) THEN json_array_length(j.diff_files) ELSE 0 END AS diff_file_count,
     (SELECT COUNT(*) FROM job_follow_up_queue queue WHERE queue.job_id=j.id AND queue.status='queued') AS queued_follow_up_count
     FROM jobs j JOIN repositories r ON r.id=j.repo_id
+    LEFT JOIN pull_requests p ON p.repo_id=j.repo_id AND p.number=j.pr_number
     WHERE j.thread_id IS NOT NULL ${archiveCondition}
     ORDER BY r.full_name COLLATE NOCASE,j.activity_at DESC,j.id DESC`)
     .map((job) => withAgentMetadata(job))
