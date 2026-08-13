@@ -168,9 +168,9 @@ export function createOpenCodeAgent({
     supportsLiveSteering: true,
     supportsReadOnlyMode: true,
     subagentOrchestration: 'native',
-    async prepareWorkspace(worktree) {
+    async prepareWorkspace(workspace) {
       await ensureToolingAccess()
-      await trustWorkspaceMiseConfigs(run, worktree)
+      await trustWorkspaceMiseConfigs(run, workspace.path)
     },
     parseLaunchOptions: parseAgentLaunchOptions,
     async launchOptions() {

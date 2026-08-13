@@ -47,7 +47,7 @@ describe('OpenCode agent', () => {
     await writeFile(join(worktree, 'mise.toml'), '[tools]\nnode = "22"\n')
     const run = vi.fn().mockResolvedValue('')
     const agent = createOpenCodeAgent({ run, env: {} })
-    await agent.prepareWorkspace?.(worktree)
+    await agent.prepareWorkspace?.({ path: worktree, sourceKind: 'git', strategy: 'worktree' })
     expect(run).toHaveBeenCalledWith('gh', ['--version'], { env: {} })
     expect(run).toHaveBeenCalledWith('gh', ['auth', 'status', '--active'], { env: {} })
     expect(run).toHaveBeenCalledWith('fallow', ['--version'], { env: {} })
@@ -59,7 +59,7 @@ describe('OpenCode agent', () => {
     const worktree = await mkdtemp(join(tmpdir(), 'opencode-agent-token-'))
     const run = vi.fn().mockResolvedValue('')
     const agent = createOpenCodeAgent({ run, env: { GH_TOKEN: 'test-token' } })
-    await agent.prepareWorkspace?.(worktree)
+    await agent.prepareWorkspace?.({ path: worktree, sourceKind: 'git', strategy: 'worktree' })
     expect(run).not.toHaveBeenCalledWith('gh', ['auth', 'status', '--active'], {
       env: { GH_TOKEN: 'test-token' },
     })

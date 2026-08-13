@@ -510,33 +510,48 @@ export function MobileThreadInputRequest({
   busy,
   onAnswer,
   onSubmit,
+  onCancel,
 }: {
   questions: MobileInputQuestion[]
-  answers: Record<string, string>
+  answers: Record<string, string[]>
   busy: boolean
-  onAnswer(id: string, answer: string): void
+  onAnswer(id: string, answer: string[]): void
   onSubmit(): void
+  onCancel?(): void
 }) {
   if (!questions.length) return null
-  const complete = questions.every((question) => Boolean(answers[question.id]?.trim()))
+  const complete = questions.every((question) => question.required === false || Boolean(answers[question.id]?.length))
   return (
-    <DetailSection title="Agent needs input" meta={`${questions.length} question${questions.length === 1 ? '' : 's'}`}>
-      <Text style={styles.inputHint}>Your response is sent directly to the waiting agent turn.</Text>
+    <DetailSection
+      title={questions[0]?.formTitle || 'Agent needs input'}
+      meta={`${questions.length} question${questions.length === 1 ? '' : 's'}`}
+    >
+      <Text style={styles.inputHint}>{questions[0]?.formDescription || 'Your response is sent directly to the waiting agent turn.'}</Text>
       {questions.map((question) => (
         <View key={question.id} style={styles.row}>
-          <Text style={styles.rowTitle}>{question.header || question.question}</Text>
-          {question.header ? <Text style={styles.rowText}>{question.question}</Text> : null}
+          <Text style={styles.rowTitle}>{question.formTitle ? question.question : question.header || question.question}</Text>
+          {!question.formTitle && question.header ? <Text style={styles.rowText}>{question.question}</Text> : null}
+          {question.description ? <Text style={styles.rowText}>{question.description}</Text> : null}
           {question.options.length ? (
             <>
               <View style={styles.actionList}>
                 {question.options.map((option) => {
-                  const selected = answers[question.id] === option.label
+                  const selected = answers[question.id]?.includes(option.value) || false
                   return (
                     <Pressable
-                      accessibilityRole="radio"
+                      accessibilityRole={question.type === 'checkbox' ? 'checkbox' : 'radio'}
                       accessibilityState={{ selected }}
                       key={option.label}
-                      onPress={() => onAnswer(question.id, option.label)}
+                      onPress={() =>
+                        onAnswer(
+                          question.id,
+                          question.type === 'checkbox'
+                            ? selected
+                              ? (answers[question.id] || []).filter((value) => value !== option.value)
+                              : [...(answers[question.id] || []), option.value]
+                            : [option.value],
+                        )
+                      }
                       style={[styles.actionOption, selected && styles.optionSelected]}
                     >
                       <View style={styles.actionOptionCopy}>
@@ -548,15 +563,17 @@ export function MobileThreadInputRequest({
                   )
                 })}
               </View>
-              <TextInput
-                accessibilityLabel={`Custom answer for ${question.question}`}
-                secureTextEntry={question.secret}
-                placeholder="Other — enter a custom answer"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-                value={question.options.some((option) => option.label === answers[question.id]) ? '' : answers[question.id] || ''}
-                onChangeText={(answer) => onAnswer(question.id, answer)}
-              />
+              {question.type === 'select' && !question.formTitle ? (
+                <TextInput
+                  accessibilityLabel={`Custom answer for ${question.question}`}
+                  secureTextEntry={question.secret}
+                  placeholder="Other — enter a custom answer"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  value={question.options.some((option) => option.value === answers[question.id]?.[0]) ? '' : answers[question.id]?.[0] || ''}
+                  onChangeText={(answer) => onAnswer(question.id, [answer])}
+                />
+              ) : null}
             </>
           ) : (
             <TextInput
@@ -565,8 +582,8 @@ export function MobileThreadInputRequest({
               placeholder="Answer…"
               placeholderTextColor={colors.muted}
               style={styles.input}
-              value={answers[question.id] || ''}
-              onChangeText={(answer) => onAnswer(question.id, answer)}
+              value={answers[question.id]?.[0] || ''}
+              onChangeText={(answer) => onAnswer(question.id, [answer])}
             />
           )}
         </View>
@@ -579,6 +596,11 @@ export function MobileThreadInputRequest({
       >
         <Text style={styles.primaryButtonText}>{busy ? 'Submitting…' : 'Submit answers'}</Text>
       </Pressable>
+      {onCancel ? (
+        <Pressable accessibilityRole="button" disabled={busy} onPress={onCancel} style={[styles.secondaryButton, busy && styles.disabled]}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+      ) : null}
     </DetailSection>
   )
 }

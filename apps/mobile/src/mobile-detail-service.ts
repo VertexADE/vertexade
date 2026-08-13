@@ -117,7 +117,13 @@ export type MobileInputQuestion = {
   header: string
   question: string
   secret: boolean
-  options: Array<{ label: string; description: string }>
+  type: 'text' | 'select' | 'checkbox'
+  required: boolean
+  multiline: boolean
+  description: string
+  formTitle: string
+  formDescription: string
+  options: Array<{ label: string; value: string; description: string }>
 }
 export type MobileThreadDetails = MobileThread & {
   threadId: string
@@ -362,12 +368,23 @@ export async function transferMobileThreadContext(serviceUrl: string, thread: Mo
   })
 }
 
-export async function submitMobileThreadInput(serviceUrl: string, thread: MobileThread, answers: Record<string, string>): Promise<void> {
+export async function submitMobileThreadInput(serviceUrl: string, thread: MobileThread, answers: Record<string, string | string[]>): Promise<void> {
   const entries = Object.entries(answers).slice(0, 100)
   if (!entries.length) throw new Error('Answer every question before continuing')
-  const payload = Object.fromEntries(entries.map(([id, answer]) => [id.trim().slice(0, 200), { answers: [answer.trim().slice(0, 20_000)] }]))
-  if (Object.entries(payload).some(([id, answer]) => !id || !answer.answers[0])) throw new Error('Answer every question before continuing')
+  const payload = Object.fromEntries(
+    entries.map(([id, answer]) => {
+      const values = (Array.isArray(answer) ? answer : [answer]).map((value) => value.trim().slice(0, 20_000)).filter(Boolean)
+      return [id.trim().slice(0, 200), { answers: values }]
+    }),
+  )
+  if (entries.some(([id, answer]) => !id.trim() || (!Array.isArray(answer) && !answer.trim()))) {
+    throw new Error('Answer every question before continuing')
+  }
   await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/input`, 'POST', { answers: payload })
+}
+
+export async function cancelMobileThreadInput(serviceUrl: string, thread: MobileThread): Promise<void> {
+  await jsonRequest(serviceUrl, thread.backendId, `/api/agent-threads/${thread.id}/input`, 'DELETE')
 }
 
 async function jsonRequest(
@@ -682,8 +699,15 @@ function inputQuestions(value: unknown): MobileInputQuestion[] {
       header: stringValue(record.header, 500),
       question: requiredString(record.question, 'Input question', 4_000),
       secret: record.isSecret === true,
+      type: ['select', 'checkbox'].includes(String(record.type)) ? (String(record.type) as 'select' | 'checkbox') : 'text',
+      required: record.required !== false,
+      multiline: record.multiline !== false,
+      description: stringValue(record.description, 1_000),
+      formTitle: stringValue(record.formTitle, 200),
+      formDescription: stringValue(record.formDescription, 2_000),
       options: recordArray(record.options).map((option) => ({
         label: requiredString(option.label, 'Input option label', 500),
+        value: stringValue(option.value, 500) || requiredString(option.label, 'Input option label', 500),
         description: stringValue(option.description, 2_000),
       })),
     }))

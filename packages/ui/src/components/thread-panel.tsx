@@ -232,7 +232,10 @@ function ThreadInputSection({ workspace }: { workspace: ThreadPanelWorkspace }) 
       custom={actions.custom}
       setAnswers={actions.setAnswers}
       setCustom={actions.setCustom}
+      selections={actions.selections}
+      setSelections={actions.setSelections}
       onSubmit={actions.submitAnswers}
+      onCancel={questions.some((question) => question.formTitle) ? actions.cancelForm : undefined}
     />
   )
 }

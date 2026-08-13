@@ -47,8 +47,9 @@ export function createCodexAgent({
     environment,
     workspaceRoot: vertexWorktreeDirectory('codex', join(homedir(), '.codex', 'worktrees')),
     bootstrapPrompt: 'hi',
-    async prepareWorkspace(worktree) {
-      await run('git', ['-C', worktree, 'config', '--worktree', 'codex.localEnvironmentConfigPath', '__none__'])
+    async prepareWorkspace(workspace) {
+      if (workspace.sourceKind !== 'git') return
+      await run('git', ['-C', workspace.path, 'config', '--worktree', 'codex.localEnvironmentConfigPath', '__none__'])
     },
     normalizeEvent(event) {
       return event

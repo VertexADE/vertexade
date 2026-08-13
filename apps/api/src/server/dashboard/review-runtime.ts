@@ -409,10 +409,10 @@ export async function launchWorktreeReview(sourceJobId: number, options: any = {
   }
 }
 
-async function prepareRepositoryWorktree(repo, worktree: string, runtimeAgent) {
-  await trustWorkspaceMiseConfigs(run, worktree)
-  await runtimeAgent.prepareWorkspace?.(worktree)
-  await repositoryEnvironments.prepareWorktree(repo, worktree)
+async function prepareRepositoryWorktree(repo, workspace, runtimeAgent) {
+  await trustWorkspaceMiseConfigs(run, workspace.path)
+  await runtimeAgent.prepareWorkspace?.(workspace)
+  await repositoryEnvironments.prepareWorktree(repo, workspace.path)
 }
 
 export async function launchJob(

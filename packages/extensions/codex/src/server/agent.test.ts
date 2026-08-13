@@ -8,6 +8,24 @@ describe('Codex agent', () => {
     expect(createCodexAgent({ run: vi.fn() }).supportsLiveSteering).toBe(true)
   })
 
+  it('only applies worktree-local Git configuration to Git workspaces', async () => {
+    const run = vi.fn()
+    const agent = createCodexAgent({ run })
+
+    await agent.prepareWorkspace?.({ path: '/work/directory', sourceKind: 'directory', strategy: 'direct' })
+    expect(run).not.toHaveBeenCalled()
+
+    await agent.prepareWorkspace?.({ path: '/work/repository', sourceKind: 'git', strategy: 'worktree' })
+    expect(run).toHaveBeenCalledWith('git', [
+      '-C',
+      '/work/repository',
+      'config',
+      '--worktree',
+      'codex.localEnvironmentConfigPath',
+      '__none__',
+    ])
+  })
+
   it('reads the configured default model for stable follow-up turns', () => {
     expect(codexConfigDefaults(`personality = "pragmatic"\nmodel = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"`)).toEqual({
       model: 'gpt-5.6-sol',

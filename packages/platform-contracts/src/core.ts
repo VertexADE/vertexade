@@ -46,6 +46,9 @@ export type AgentMcpServer = {
 )
 export type AgentLaunchResources = { skills: AgentResolvedSkill[]; mcpServers: AgentMcpServer[] }
 export type AgentSubagentOrchestration = 'native' | 'harness'
+export type AgentWorkspaceContext =
+  | { path: string; sourceKind: 'git'; strategy: 'worktree' | 'direct' }
+  | { path: string; sourceKind: 'directory' | 'workspace'; strategy: 'direct' | 'copy' | 'move' }
 export type SetupCheck = {
   id: string
   name: string
@@ -104,7 +107,7 @@ export type Agent = {
    */
   subagentOrchestration?: AgentSubagentOrchestration
   environment?(): Record<string, string>
-  prepareWorkspace?(worktree: string): Promise<void>
+  prepareWorkspace?(workspace: AgentWorkspaceContext): Promise<void>
   normalizeEvent?(event: Record<string, unknown>): Record<string, unknown>
   completedThreadSnapshot?(threadId: string): Promise<{ message: string; completedAt: number | null } | null>
   resumableThreadExists?(threadId: string): Promise<boolean>

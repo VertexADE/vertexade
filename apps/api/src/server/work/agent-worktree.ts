@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { cp, lstat, mkdir, realpath, rm, rmdir, stat, symlink } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
+import type { AgentWorkspaceContext } from '@vertexade/platform-contracts'
 import { parseWorkItemWorkspaceMode, workItemWorkspaceLayout } from './workspace-layout.ts'
 
 type Repository = {
@@ -17,7 +18,7 @@ type Dependencies = {
   run: Run
   workItemWorkspaceRoot?: string
   assertReusable?(repository: Repository, worktree: string): Promise<void> | void
-  prepare(repository: Repository, worktree: string, agent: RuntimeAgent): Promise<void>
+  prepare(repository: Repository, workspace: AgentWorkspaceContext, agent: RuntimeAgent): Promise<void>
   cleanup(repositoryPath: string, worktreePath: string | null, branchName?: string | null): Promise<void>
 }
 
@@ -97,7 +98,7 @@ async function createWorktree(input: AllocationInput, dependencies: Dependencies
       'add',
       ...(input.branchName ? ['-b', input.branchName, input.worktree, input.revision] : ['--detach', input.worktree, input.revision]),
     ])
-    await dependencies.prepare(input.repository, input.worktree, input.agent)
+    await dependencies.prepare(input.repository, { path: input.worktree, sourceKind: 'git', strategy: 'worktree' }, input.agent)
     const worktreeGitDir = await commonGitDirectory(dependencies.run, input.worktree)
     if (worktreeGitDir !== input.baseGitDir) throw new Error('Created worktree does not share Git metadata with the original repository')
     return {
@@ -146,24 +147,34 @@ export async function allocateAgentWorktree(
       if (error?.code !== 'ENOENT') throw error
       await symlink(repository.local_path, layout.worktree, 'dir')
     }
-    await dependencies.prepare(repository, layout.worktree, agent)
+    const sourceKind = repository.source_kind || 'git'
+    const workspace: AgentWorkspaceContext =
+      sourceKind === 'git'
+        ? { path: layout.worktree, sourceKind: 'git', strategy: 'direct' }
+        : { path: layout.worktree, sourceKind, strategy: 'direct' }
+    await dependencies.prepare(repository, workspace, agent)
     return {
       worktree: layout.worktree,
-      baseGitDir: repository.source_kind === 'directory' ? null : await commonGitDirectory(dependencies.run, repository.local_path),
+      baseGitDir: sourceKind === 'git' ? await commonGitDirectory(dependencies.run, repository.local_path) : null,
       sessionCwd: layout.root,
       workspaceMode: mode,
       branchName: null,
-      headSha: repository.source_kind === 'directory' ? null : revision,
+      headSha: sourceKind === 'git' ? revision : null,
       created: false,
       workspaceStrategy: strategy,
     }
   }
   if (repository.source_kind === 'directory' || repository.source_kind === 'workspace') {
     if (!['copy', 'move'].includes(strategy)) throw new Error('Plain directories require direct, copy, or move workspace mode')
+    const directoryStrategy = strategy === 'copy' ? 'copy' : 'move'
     await mkdir(layout.root, { recursive: true })
     await cp(repository.local_path, layout.worktree, { recursive: true, errorOnExist: true, force: false })
     await cp(repository.local_path, `${layout.worktree}.baseline`, { recursive: true, errorOnExist: true, force: false })
-    await dependencies.prepare(repository, layout.worktree, agent)
+    await dependencies.prepare(
+      repository,
+      { path: layout.worktree, sourceKind: repository.source_kind, strategy: directoryStrategy },
+      agent,
+    )
     return {
       worktree: layout.worktree,
       baseGitDir: null,
@@ -190,7 +201,7 @@ export async function allocateAgentWorktree(
     const reused = await reuseCombinedWorktree(input, dependencies.run)
     if (reused) {
       await dependencies.assertReusable?.(repository, input.worktree)
-      await dependencies.prepare(repository, input.worktree, agent)
+      await dependencies.prepare(repository, { path: input.worktree, sourceKind: 'git', strategy: 'worktree' }, agent)
       return reused
     }
   }

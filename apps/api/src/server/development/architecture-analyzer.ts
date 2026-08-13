@@ -409,6 +409,31 @@ function decisionConflicts(decisions: ArchitectureDecision[], warnings: ImpactWa
   }
 }
 
+function mermaidLabel(value: string) {
+  return value.replaceAll('"', "'").replace(/\s+/g, ' ').trim()
+}
+
+function architectureMermaidDiagram(nodes: ArchitectureNode[], relations: ArchitectureRelation[], decisions: ArchitectureDecision[]) {
+  const identifiers = new Map(nodes.map((node, index) => [node.key, `node${index}`]))
+  const lines = ['flowchart LR']
+  for (const node of nodes) lines.push(`  ${identifiers.get(node.key)}["${mermaidLabel(node.label)} (${node.kind})"]`)
+  for (const relation of relations) {
+    const from = identifiers.get(relation.from)
+    const to = identifiers.get(relation.to)
+    if (from && to) lines.push(`  ${from} -->|"${mermaidLabel(relation.relation.replaceAll('_', ' '))}"| ${to}`)
+  }
+  decisions.forEach((decision, index) => {
+    const decisionId = `decision${index}`
+    lines.push(`  ${decisionId}{"${mermaidLabel(decision.title)} (${decision.status})"}`)
+    const targets = decision.rule?.nodeKeys.length ? decision.rule.nodeKeys : [nodes.find((node) => node.kind === 'repository')?.key]
+    for (const target of targets) {
+      const targetId = target ? identifiers.get(target) : null
+      if (targetId) lines.push(`  ${decisionId} -.->|"governs"| ${targetId}`)
+    }
+  })
+  return lines.join('\n')
+}
+
 export async function analyzeRepositoryArchitecture({
   repository,
   revision,
@@ -512,6 +537,10 @@ export async function analyzeRepositoryArchitecture({
   }
   decisionConflicts(decisions, warnings)
   const values = [...nodes.values()].sort((left, right) => left.key.localeCompare(right.key))
+  const sortedRelations = relations.sort((left, right) =>
+    `${left.from}:${left.to}:${left.relation}`.localeCompare(`${right.from}:${right.to}:${right.relation}`),
+  )
+  const sortedDecisions = decisions.sort((left, right) => left.id.localeCompare(right.id))
   return {
     indexVersion: architectureIndexVersion,
     sourceGraph: {
@@ -523,11 +552,10 @@ export async function analyzeRepositoryArchitecture({
     },
     repositoryName: repository.fullName,
     revision,
+    diagram: architectureMermaidDiagram(values, sortedRelations, sortedDecisions),
     nodes: values,
-    relations: relations.sort((left, right) =>
-      `${left.from}:${left.to}:${left.relation}`.localeCompare(`${right.from}:${right.to}:${right.relation}`),
-    ),
-    decisions: decisions.sort((left, right) => left.id.localeCompare(right.id)),
+    relations: sortedRelations,
+    decisions: sortedDecisions,
     warnings,
     summary: {
       packages: values.filter((node) => node.kind === 'package').length,

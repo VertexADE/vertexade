@@ -13,6 +13,7 @@ import {
   saveMobileThreadTasks,
   steerMobileQueuedMessage,
   submitMobileThreadInput,
+  cancelMobileThreadInput,
   transferMobileThreadContext,
   type MobileForkThreadInput,
   type MobileReviewSuggestion,
@@ -40,7 +41,7 @@ export function useMobileThreadController(options: ControllerOptions) {
 function useThreadModel(serviceUrl: string, thread: MobileThread) {
   const [tab, setTab] = useState<MobileThreadTab>('activity')
   const [message, setMessage] = useState('')
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const [suggestions, setSuggestions] = useState<MobileReviewSuggestion[]>([])
   const [agentOptions, setAgentOptions] = useState<MobileAgentOptions>(defaultMobileAgentOptions)
   const loader = useCallback(() => loadMobileThreadDetails(serviceUrl, thread), [serviceUrl, thread])
@@ -137,6 +138,7 @@ function createThreadActions(dependencies: ActionDependencies) {
     interrupt: () => void confirmThreadInterrupt(dependencies),
     retry: () => void dependencies.run(() => retryMobileThread(dependencies.serviceUrl, dependencies.thread), 'Thread retry started.'),
     submitAnswers: () => void dependencies.run(() => submitMobileThreadInput(dependencies.serviceUrl, dependencies.thread, dependencies.answers), 'Answers submitted to the agent.'),
+    cancelForm: () => void dependencies.run(() => cancelMobileThreadInput(dependencies.serviceUrl, dependencies.thread), 'Form cancelled.'),
     postSuggestions: () =>
       void dependencies.run(() => postMobileReviewSuggestions(dependencies.serviceUrl, dependencies.thread, dependencies.suggestions), 'Selected suggestions posted as one GitHub review.'),
     fork: (input: MobileForkThreadInput) =>

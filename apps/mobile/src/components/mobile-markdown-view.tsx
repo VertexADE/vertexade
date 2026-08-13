@@ -1,8 +1,11 @@
 'use dom'
 
 import type { DOMProps } from 'expo/dom'
+import { useEffect, useRef } from 'react'
 import { Markdown, type MarkdownComponents } from '@tanstack/markdown/react'
 import { calloutsExtension } from '@tanstack/markdown/extensions/callouts'
+import 'mermaid/dist/mermaid.min.js'
+import type mermaidType from 'mermaid'
 import { normalizeMobileMarkdown } from './mobile-markdown-normalize'
 
 export type MobileMarkdownViewProps = {
@@ -52,6 +55,9 @@ const styles = `
   summary { color: #f7fafc; cursor: pointer; font-weight: 650; margin: 0 -12px; min-height: 44px; padding: 11px 12px; }
   details[open] summary { border-bottom: 1px solid #28313c; margin-bottom: 10px; }
   details > :last-child { margin-bottom: 0; }
+  .mermaid-diagram { background: #ffffff; border: 1px solid #28313c; border-radius: 10px; margin: 0.8em 0; overflow-x: auto; padding: 12px; text-align: center; }
+  .mermaid-diagram svg { height: auto; max-width: 100%; }
+  pre.mermaid-error { border-color: #ef444466; }
   .markdown-body.on-accent { color: #ffffff; }
   .markdown-body.on-accent h1,
   .markdown-body.on-accent h2,
@@ -68,8 +74,37 @@ const styles = `
 `
 
 const mobileMarkdownExtensions = [calloutsExtension()]
+const mermaid = (globalThis as typeof globalThis & { mermaid: typeof mermaidType }).mermaid
 
 export default function MobileMarkdownView({ content, onOpenLink, tone = 'default' }: MobileMarkdownViewProps) {
+  const rootRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    let active = true
+    void (async () => {
+      const diagrams = [...root.querySelectorAll<HTMLElement>('pre code.language-mermaid')]
+      if (!diagrams.length) return
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark', maxEdges: 10_000, suppressErrorRendering: true })
+      await Promise.all(
+        diagrams.map(async (code, index) => {
+          try {
+            const { svg } = await mermaid.render(`mobile-mermaid-${Date.now()}-${index}`, code.textContent || '')
+            if (!active || !code.isConnected) return
+            const diagram = document.createElement('div')
+            diagram.className = 'mermaid-diagram'
+            diagram.innerHTML = svg
+            code.closest('pre')?.replaceWith(diagram)
+          } catch {
+            code.closest('pre')?.classList.add('mermaid-error')
+          }
+        }),
+      )
+    })()
+    return () => {
+      active = false
+    }
+  }, [content])
   const components = {
     a: ({ href, children, ...props }) => (
       <a
@@ -87,7 +122,7 @@ export default function MobileMarkdownView({ content, onOpenLink, tone = 'defaul
   return (
     <>
       <style>{styles}</style>
-      <main className={`markdown-body${tone === 'onAccent' ? ' on-accent' : ''}`}>
+      <main ref={rootRef} className={`markdown-body${tone === 'onAccent' ? ' on-accent' : ''}`}>
         <Markdown components={components} extensions={mobileMarkdownExtensions} allowHtml frontmatter={false}>
           {normalizeMobileMarkdown(content)}
         </Markdown>

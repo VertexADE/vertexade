@@ -17,6 +17,7 @@ import {
   runtimeSteerResponse as steerResponse,
 } from '../runtime-context.ts'
 import { matchThreadRoute, rejectThreadRoute, storedJob, type MatchedThreadRoute, type ThreadRoute } from './support.ts'
+import { cancelFormForJob, formResponseMarkdown, resolveFormRequest } from '../../agents/form-requests.ts'
 
 const controlRoutes = [
   {
@@ -69,13 +70,20 @@ const controlRoutes = [
     pattern: /^\/api\/agent-threads\/(\d+)\/input$/,
     handle: submitInput,
   },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/agent-threads\/(\d+)\/input$/,
+    handle: cancelInput,
+  },
 ] satisfies MatchedThreadRoute[]
 
 export const handleThreadControlRoutes: ThreadRoute = (request, url) => matchThreadRoute(request, url, controlRoutes)
 
 async function steer(request: Request, _url: URL, match: RegExpMatchArray) {
   const job = requiredStoredJob(match, 'Agent run not found')
-  return steerResponse(job, await requiredPrompt(request, 'Steering prompt is required'))
+  const prompt = await requiredPrompt(request, 'Steering prompt is required')
+  cancelPendingForm(job, 'Replaced by a chat message')
+  return steerResponse(job, prompt)
 }
 
 async function steerQueuedFollowUp(_request: Request, _url: URL, match: RegExpMatchArray) {
@@ -107,6 +115,7 @@ async function removeQueuedFollowUp(_request: Request, _url: URL, match: RegExpM
 async function queueFollowUp(request: Request, _url: URL, match: RegExpMatchArray) {
   const { job } = followUpContext(match, 'queue')
   const prompt = await requiredPrompt(request, 'Queued follow-up prompt is required')
+  cancelPendingForm(job, 'Replaced by a chat message')
   const queued = jobFollowUps.enqueue(job.id, prompt, job.agent_model, job.agent_reasoning_effort)
   notifyClients('job_follow_up_queued', job.id)
   if (!['starting', 'running'].includes(job.status)) void drainJobFollowUpQueue(job.id)
@@ -129,7 +138,9 @@ async function followUp(request: Request, _url: URL, match: RegExpMatchArray) {
   const { job, runtimeAgent } = followUpContext(match, 'resume')
   if (['running', 'starting'].includes(job.status)) rejectThreadRoute(409, `Wait for the current ${runtimeAgent.name} turn to finish first`)
   if (jobFollowUps.hasPending(job.id)) rejectThreadRoute(409, 'A queued follow-up is already waiting to run')
-  return json(202, await followUpJob(job, await requiredPrompt(request, 'Follow-up prompt is required')))
+  const prompt = await requiredPrompt(request, 'Follow-up prompt is required')
+  cancelPendingForm(job, 'Replaced by a chat message')
+  return json(202, await followUpJob(job, prompt))
 }
 
 function followUpContext(match: RegExpMatchArray, mode: 'queue' | 'resume') {
@@ -178,9 +189,9 @@ async function requiredPrompt(request: Request, message: string) {
 
 async function cancel(_request: Request, _url: URL, match: RegExpMatchArray) {
   const jobId = Number(match[1])
-  const job = db.select({ id: jobs.id, status: jobs.status }).from(jobs).where(eq(jobs.id, jobId)).get()
-  if (!job) rejectThreadRoute(404, 'Thread not found')
+  const job = requiredStoredJob(match, 'Thread not found')
   if (!['starting', 'running'].includes(job.status)) rejectThreadRoute(409, 'This thread is not active')
+  cancelPendingForm(job, 'The thread was interrupted')
   const child = requiredActiveJob(jobId)
   markCancelling(jobId)
   terminateChild(child, jobId)
@@ -244,20 +255,75 @@ async function submitInput(request: Request, _url: URL, match: RegExpMatchArray)
   const jobId = Number(match[1])
   const job = requiredStoredJob(match, 'Codex run not found')
   if (!job.input_request_id || !job.input_questions) rejectThreadRoute(409, 'This run is not waiting for input')
-  const child = requiredActiveJob(jobId)
-  if (!child.stdin?.writable) rejectThreadRoute(409, 'The live Codex connection is no longer available')
   const input = await body(request)
   const answers = input.answers && typeof input.answers === 'object' ? input.answers : null
   const questions = JSON.parse(job.input_questions)
-  if (!answers || questions.some((question) => missingAnswer(answers, question.id)))
-    rejectThreadRoute(400, 'Answer every Codex question before continuing')
-  await writeInputResponse(child, JSON.parse(job.input_request_id), answers)
+  const requestId = JSON.parse(job.input_request_id)
+  if (typeof requestId === 'string' && requestId.startsWith('form:')) {
+    if (!answers || questions.some((question) => question.required !== false && missingAnswer(answers, question.id))) {
+      rejectThreadRoute(400, 'Answer every required form field before continuing')
+    }
+    if (questions.some((question) => invalidFormAnswer(question, answers))) rejectThreadRoute(400, 'The form response is invalid')
+    if (!resolveFormRequest(requestId, { status: 'submitted', markdown: formResponseMarkdown(questions, answers) })) {
+      rejectThreadRoute(409, 'This form is no longer connected to the agent')
+    }
+    clearInputRequest(jobId, 'Form submitted; the agent is continuing…')
+  } else {
+    const child = requiredActiveJob(jobId)
+    if (!child.stdin?.writable) rejectThreadRoute(409, 'The live Codex connection is no longer available')
+    if (!answers || questions.some((question) => missingAnswer(answers, question.id)))
+      rejectThreadRoute(400, 'Answer every Codex question before continuing')
+    await writeInputResponse(child, requestId, answers)
+  }
   notifyClients('input_submitted', jobId)
   return json(202, { accepted: true })
 }
 
+async function cancelInput(_request: Request, _url: URL, match: RegExpMatchArray) {
+  const job = requiredStoredJob(match, 'Agent run not found')
+  if (!cancelPendingForm(job, 'Cancelled by the user')) rejectThreadRoute(409, 'This form cannot be cancelled')
+  return json(202, { cancelled: true })
+}
+
+function cancelPendingForm(job: ReturnType<typeof requiredStoredJob>, reason: string) {
+  if (!job.input_request_id) return false
+  let requestId: unknown
+  try {
+    requestId = JSON.parse(job.input_request_id)
+  } catch {
+    return false
+  }
+  if (typeof requestId !== 'string' || !requestId.startsWith('form:') || !cancelFormForJob(job.id, reason)) return false
+  clearInputRequest(job.id, reason)
+  job.input_questions = null
+  job.input_request_id = null
+  notifyClients('input_cancelled', job.id)
+  return true
+}
+
+function clearInputRequest(jobId: number, activity: string) {
+  db.update(jobs)
+    .set({
+      inputRequestId: null,
+      inputQuestions: null,
+      inputRequestedAt: null,
+      latestActivity: activity,
+      activityAt: sql`CURRENT_TIMESTAMP`,
+    })
+    .where(eq(jobs.id, jobId))
+    .run()
+}
+
 function missingAnswer(answers: Record<string, { answers?: unknown[] }>, questionId: string) {
   return !Array.isArray(answers[questionId]?.answers) || answers[questionId].answers.length === 0
+}
+
+function invalidFormAnswer(question: any, answers: Record<string, { answers?: unknown[] }>) {
+  const values = Array.isArray(answers[question.id]?.answers) ? answers[question.id].answers.map(String) : []
+  if (values.some((value) => !value.trim() || value.length > 20_000)) return true
+  if (question.type === 'text') return values.length > 1
+  const allowed = new Set((Array.isArray(question.options) ? question.options : []).map((option) => String(option.value || option.label)))
+  return (question.type === 'select' && values.length > 1) || values.some((value) => !allowed.has(value))
 }
 
 function writeInputResponse(child: ReturnType<typeof requiredActiveJob>, requestId: unknown, answers: object) {

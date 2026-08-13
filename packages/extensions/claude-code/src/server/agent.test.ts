@@ -20,7 +20,7 @@ describe('Claude Code agent', () => {
     const run = vi.fn().mockResolvedValue('')
     const environment = { HOME: home, PATH: bin }
     const agent = createClaudeCodeAgent({ run, env: environment })
-    await agent.prepareWorkspace?.(worktree)
+    await agent.prepareWorkspace?.({ path: worktree, sourceKind: 'git', strategy: 'worktree' })
     expect(run).toHaveBeenCalledWith('claude', ['--version'], { env: environment })
     expect(run).toHaveBeenCalledWith('gh', ['--version'], { env: environment })
     expect(run).toHaveBeenCalledWith('fallow', ['--version'], { env: environment })
@@ -44,7 +44,7 @@ describe('Claude Code agent', () => {
     const environment = { HOME: home, PATH: bin }
     const agent = createClaudeCodeAgent({ run: vi.fn().mockResolvedValue(''), env: environment })
 
-    await agent.prepareWorkspace?.(worktree)
+    await agent.prepareWorkspace?.({ path: worktree, sourceKind: 'git', strategy: 'worktree' })
 
     await expect(readFile(join(home, '.claude', 'skills', 'fallow', 'SKILL.md'), 'utf8')).resolves.toBe('# Fallow from npm\n')
     await rm(worktree, { recursive: true })

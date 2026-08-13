@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { openDashboardDatabase, type DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { AgentRegistry } from './registry.ts'
 import { SubagentHarness } from './subagent-harness.ts'
+import { resolveFormRequest } from './form-requests.ts'
 
 let directory = ''
 let database: DrizzleDashboardDatabase
@@ -88,6 +89,46 @@ function fixture() {
 }
 
 describe('VertexADE sub-agent harness', () => {
+  it('persists a form and returns its submitted Markdown to the waiting tool call', async () => {
+    const { harness } = fixture()
+    const launch = harness.decorateLaunch(10, { allowSubagents: false, mcpServers: [] }) as {
+      mcpServers: Array<{ env: Record<string, string> }>
+    }
+    expect(launch.mcpServers[0]?.env.VERTEXADE_SUBAGENTS_ENABLED).toBe('0')
+    const request = (path: string, init: RequestInit = {}) =>
+      new Request(`http://localhost${path}`, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${launch.mcpServers[0]?.env.VERTEXADE_SUBAGENT_TOKEN}`,
+          'content-type': 'application/json',
+        },
+      })
+    const response = harness.dispatch(
+      request('/api/internal/subagents/form', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Project setup',
+          fields: [{ id: 'name', label: 'Project name', type: 'text' }],
+        }),
+      }),
+    )
+    let requestId = ''
+    await vi.waitFor(() => {
+      const stored = database.$client.prepare('SELECT input_request_id,input_questions FROM jobs WHERE id=10').get() as {
+        input_request_id: string
+        input_questions: string
+      }
+      requestId = JSON.parse(stored.input_request_id)
+      expect(requestId).toMatch(/^form:/)
+      expect(JSON.parse(stored.input_questions)).toMatchObject([{ id: 'name', type: 'text', formTitle: 'Project setup' }])
+    })
+    resolveFormRequest(requestId, { status: 'submitted', markdown: '## Project setup\n\n- **Project name:** VertexADE' })
+    await expect(response.then((value) => value?.json())).resolves.toEqual({
+      status: 'submitted',
+      markdown: '## Project setup\n\n- **Project name:** VertexADE',
+    })
+  })
+
   it('injects a scoped built-in MCP server without exposing the token in storage', () => {
     const { launch } = fixture()
     expect(launch.mcpServers[0]).toMatchObject({

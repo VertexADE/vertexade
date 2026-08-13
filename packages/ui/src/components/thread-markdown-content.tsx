@@ -120,7 +120,7 @@ async function enhanceMermaid(host: HTMLElement, active: () => boolean): Promise
   if (!diagrams.length) return
   const [{ default: mermaid }] = await Promise.all([import('mermaid')])
   if (!active()) return
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' })
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark', maxEdges: 10_000, suppressErrorRendering: true })
   await Promise.all(
     diagrams.map(async (code, index) => {
       try {

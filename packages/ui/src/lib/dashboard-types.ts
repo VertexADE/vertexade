@@ -444,7 +444,13 @@ export type InputQuestion = {
   header: string
   question: string
   isSecret?: boolean
-  options?: { label: string; description: string }[] | null
+  description?: string
+  type?: 'text' | 'select' | 'checkbox'
+  required?: boolean
+  multiline?: boolean
+  formTitle?: string
+  formDescription?: string
+  options?: { label: string; value?: string; description: string }[] | null
 }
 
 export type {

@@ -6,10 +6,12 @@ import type { InputQuestion, JobLog } from '@vertexade/ui/lib/dashboard-types'
 export function useThreadPanelInputActions(jobId: number | null, job: JobLog | null, questions: InputQuestion[]) {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
+  const [selections, setSelections] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     setAnswers({})
     setCustom({})
+    setSelections({})
   }, [jobId])
 
   async function submitAnswers(event: FormEvent) {
@@ -17,21 +19,33 @@ export function useThreadPanelInputActions(jobId: number | null, job: JobLog | n
     if (!job) return
     const payload: Record<string, { answers: string[] }> = {}
     for (const question of questions) {
-      const value = answerValue(question.id, answers, custom)
-      if (!value) return toast.error(`Answer every ${job.agent_name} question`)
-      payload[question.id] = { answers: [value] }
+      const values =
+        question.type === 'checkbox' ? selections[question.id] || [] : [answerValue(question.id, answers, custom)].filter(Boolean)
+      if (question.required !== false && !values.length) return toast.error('Answer every required field')
+      payload[question.id] = { answers: values }
     }
     try {
       await api(`/api/agent-threads/${job.id}/input`, { method: 'POST', body: JSON.stringify({ answers: payload }) })
       toast.success(`Answer sent; ${job.agent_name} is continuing`)
       setAnswers({})
       setCustom({})
+      setSelections({})
     } catch (error) {
       toast.error((error as Error).message)
     }
   }
 
-  return { answers, setAnswers, custom, setCustom, submitAnswers }
+  async function cancelForm() {
+    if (!job) return
+    try {
+      await api(`/api/agent-threads/${job.id}/input`, { method: 'DELETE' })
+      toast.success('Form cancelled')
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
+  }
+
+  return { answers, setAnswers, custom, setCustom, selections, setSelections, submitAnswers, cancelForm }
 }
 
 function answerValue(questionId: string, answers: Record<string, string>, custom: Record<string, string>) {

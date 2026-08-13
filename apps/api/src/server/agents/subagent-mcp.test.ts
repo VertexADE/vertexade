@@ -5,6 +5,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   delete process.env.VERTEXADE_SUBAGENT_API_URL
   delete process.env.VERTEXADE_SUBAGENT_TOKEN
+  delete process.env.VERTEXADE_SUBAGENTS_ENABLED
 })
 
 describe('VertexADE sub-agent MCP server', () => {
@@ -15,6 +16,7 @@ describe('VertexADE sub-agent MCP server', () => {
       method: 'tools/list',
     })) as { tools: typeof subagentTools }
     expect(listed.tools.map(({ name }) => name)).toEqual([
+      'form',
       'list_agents',
       'spawn_agent',
       'get_agent',
@@ -34,6 +36,14 @@ describe('VertexADE sub-agent MCP server', () => {
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'vertexade-subagents' },
     })
+  })
+
+  it('only exposes the general form tool when sub-agents are disabled', async () => {
+    process.env.VERTEXADE_SUBAGENTS_ENABLED = '0'
+    const listed = (await handleSubagentMcpRequest({ jsonrpc: '2.0', id: 2, method: 'tools/list' })) as {
+      tools: typeof subagentTools
+    }
+    expect(listed.tools.map(({ name }) => name)).toEqual(['form'])
   })
 
   it('uses the scoped capability when spawning a selected model', async () => {

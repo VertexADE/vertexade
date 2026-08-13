@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Agent, AgentMcpServer } from '@vertexade/platform-contracts'
@@ -7,6 +7,7 @@ import { and, count, eq, inArray, sql } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { jobs, repositories } from '../database/schema/tables.ts'
 import type { AgentRegistry } from './registry.ts'
+import { waitForFormResolution } from './form-requests.ts'
 
 type JsonObject = Record<string, unknown>
 
@@ -26,6 +27,7 @@ function subagentJobRecord(row: typeof jobs.$inferSelect, fullName?: string) {
     worktree_path: row.worktreePath,
     base_repo_path: row.baseRepoPath,
     latest_activity: row.latestActivity,
+    input_questions: row.inputQuestions,
     result_text: row.resultText,
     created_at: row.createdAt,
     finished_at: row.finishedAt,
@@ -201,14 +203,6 @@ export class SubagentHarness {
 
   decorateLaunch(jobId: number, launch: Record<string, unknown>) {
     const allowed = launch.allowSubagents === true
-    if (!allowed) {
-      this.#database
-        .update(jobs)
-        .set({ allowSubagents: 0, subagentTokenHash: null, subagentTokenExpiresAt: null })
-        .where(eq(jobs.id, jobId))
-        .run()
-      return launch
-    }
     const token = `${jobId}.${randomBytes(32).toString('base64url')}`
     this.#database
       .update(jobs)
@@ -228,6 +222,7 @@ export class SubagentHarness {
       env: {
         VERTEXADE_SUBAGENT_API_URL: this.#apiUrl,
         VERTEXADE_SUBAGENT_TOKEN: token,
+        VERTEXADE_SUBAGENTS_ENABLED: allowed ? '1' : '0',
       },
       defaultEnabled: false,
     }
@@ -238,7 +233,7 @@ export class SubagentHarness {
     }
   }
 
-  #authorizedParent(request: Request) {
+  #authorizedParent(request: Request, requireSubagents: boolean) {
     const authorization = request.headers.get('authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
     const parentId = Number(token.split('.', 1)[0])
@@ -250,7 +245,7 @@ export class SubagentHarness {
       .where(eq(jobs.id, parentId))
       .get()
     const parent = storedParent ? subagentJobRecord(storedParent.job, storedParent.fullName) : undefined
-    if (!parent || !parent.allow_subagents || !safeHashMatch(parent.subagent_token_hash, token)) {
+    if (!parent || (requireSubagents && !parent.allow_subagents) || !safeHashMatch(parent.subagent_token_hash, token)) {
       throw new HarnessError('Invalid sub-agent capability', 401)
     }
     if (!activeStatuses.includes(parent.status)) throw new HarnessError('The parent run is no longer active', 409)
@@ -504,6 +499,70 @@ export class SubagentHarness {
     return input as JsonObject
   }
 
+  #formQuestions(input: JsonObject) {
+    const title = text(input.title, 200, 'Form title')
+    const description = optionalText(input.description, 2_000, 'Form description')
+    if (!Array.isArray(input.fields) || !input.fields.length || input.fields.length > 20) {
+      throw new HarnessError('A form requires between 1 and 20 fields')
+    }
+    const identifiers = new Set<string>()
+    const questions = input.fields.map((field, index) => {
+      if (!field || typeof field !== 'object' || Array.isArray(field)) throw new HarnessError(`Form field ${index + 1} is invalid`)
+      const value = field as JsonObject
+      const id = text(value.id, 100, `Form field ${index + 1} ID`)
+      if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id)) throw new HarnessError(`Form field ID ${id} is invalid`)
+      if (identifiers.has(id)) throw new HarnessError(`Form field ID ${id} is duplicated`)
+      identifiers.add(id)
+      const type = String(value.type || '')
+      if (!['text', 'select', 'checkbox'].includes(type)) throw new HarnessError(`Form field ${id} has an invalid type`)
+      const options = Array.isArray(value.options)
+        ? value.options.map((option, optionIndex) => {
+            if (!option || typeof option !== 'object' || Array.isArray(option))
+              throw new HarnessError(`Option ${optionIndex + 1} for ${id} is invalid`)
+            const candidate = option as JsonObject
+            return {
+              label: text(candidate.label, 200, `Option ${optionIndex + 1} label`),
+              value: text(candidate.value, 200, `Option ${optionIndex + 1} value`),
+              description: optionalText(candidate.description, 500, `Option ${optionIndex + 1} description`),
+            }
+          })
+        : []
+      if (type !== 'text' && !options.length) throw new HarnessError(`Form field ${id} requires options`)
+      return {
+        id,
+        header: index === 0 ? title : '',
+        question: text(value.label, 500, `Form field ${id} label`),
+        description: optionalText(value.description, 1_000, `Form field ${id} description`),
+        type,
+        required: value.required !== false,
+        multiline: type === 'text' && value.multiline === true,
+        options,
+        formTitle: title,
+        formDescription: description,
+      }
+    })
+    return questions
+  }
+
+  async #form(parent: any, input: JsonObject) {
+    if (parent.input_questions) throw new HarnessError('This thread already has a pending input request', 409)
+    const requestId = `form:${randomUUID()}`
+    const questions = this.#formQuestions(input)
+    this.#database
+      .update(jobs)
+      .set({
+        inputRequestId: JSON.stringify(requestId),
+        inputQuestions: JSON.stringify(questions),
+        inputRequestedAt: sql`CURRENT_TIMESTAMP`,
+        latestActivity: 'Waiting for your form response',
+        activityAt: sql`CURRENT_TIMESTAMP`,
+      })
+      .where(eq(jobs.id, parent.id))
+      .run()
+    this.#notify('input_required', parent.id)
+    return waitForFormResolution(requestId, parent.id)
+  }
+
   async #getRoute(pathname: string, parent: any) {
     if (pathname === '/api/internal/subagents/agents') {
       return Response.json({ parent_run_id: parent.id, agents: await this.#availableAgents() })
@@ -514,6 +573,7 @@ export class SubagentHarness {
   }
 
   async #postRoute(request: Request, pathname: string, parent: any) {
+    if (pathname === '/api/internal/subagents/form') return Response.json(await this.#form(parent, await this.#readJsonObject(request)))
     if (pathname === '/api/internal/subagents/runs') {
       return Response.json(await this.#spawn(parent, await this.#readJsonObject(request)), {
         status: 202,
@@ -540,7 +600,7 @@ export class SubagentHarness {
     const url = new URL(request.url)
     if (!url.pathname.startsWith('/api/internal/subagents/')) return null
     try {
-      const parent = this.#authorizedParent(request)
+      const parent = this.#authorizedParent(request, url.pathname !== '/api/internal/subagents/form')
       return await this.#authorizedRoute(request, url.pathname, parent)
     } catch (error) {
       const status = error instanceof HarnessError ? error.status : error instanceof HttpError ? error.status : 500

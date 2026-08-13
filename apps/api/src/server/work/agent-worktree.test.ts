@@ -26,7 +26,33 @@ describe('agent worktree allocation', () => {
     })
     await expect(realpath(result.worktree)).resolves.toBe(await realpath(root))
     expect(run).not.toHaveBeenCalled()
-    expect(prepare).toHaveBeenCalledWith(expect.anything(), result.worktree, expect.anything())
+    expect(prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      { path: result.worktree, sourceKind: 'directory', strategy: 'direct' },
+      expect.anything(),
+    )
+  })
+
+  it('links a general workspace without treating it as a Git repository', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vertexade-workspace-'))
+    const run = vi.fn()
+    const prepare = vi.fn()
+    const result = await allocateAgentWorktree(
+      { full_name: 'Local/workspace', local_path: root, source_kind: 'workspace', workspace_strategy: 'direct' },
+      { workspaceRoot: join(root, 'agents') },
+      '',
+      null,
+      { mode: 'combined', workItemKey: 'W-0002' },
+      { run, prepare, cleanup: vi.fn(), workItemWorkspaceRoot: join(root, 'work-items') },
+    )
+
+    expect(result).toMatchObject({ baseGitDir: null, headSha: null, workspaceStrategy: 'direct' })
+    expect(run).not.toHaveBeenCalled()
+    expect(prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      { path: result.worktree, sourceKind: 'workspace', strategy: 'direct' },
+      expect.anything(),
+    )
   })
 
   it('reuses the stable combined repository worktree', async () => {
@@ -62,8 +88,10 @@ describe('agent worktree allocation', () => {
     expect(run.mock.calls.flat(2)).not.toContain('add')
     expect(assertReusable).toHaveBeenCalledWith({ full_name: 'acme/api', local_path: '/repos/acme-api' }, worktree)
     expect(assertReusable.mock.invocationCallOrder[0]).toBeLessThan(prepare.mock.invocationCallOrder[0]!)
-    expect(prepare).toHaveBeenCalledWith({ full_name: 'acme/api', local_path: '/repos/acme-api' }, worktree, {
-      workspaceRoot: agentWorkspaceRoot,
-    })
+    expect(prepare).toHaveBeenCalledWith(
+      { full_name: 'acme/api', local_path: '/repos/acme-api' },
+      { path: worktree, sourceKind: 'git', strategy: 'worktree' },
+      { workspaceRoot: agentWorkspaceRoot },
+    )
   })
 })

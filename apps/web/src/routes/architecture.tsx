@@ -14,6 +14,7 @@ import { api } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { DevelopmentIntelligencePanel } from '../components/development/development-intelligence-panel'
 import { DevelopmentRepositorySelect } from '../components/development/development-repository-select'
+import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-content'
 import { useDevelopmentRepositorySelection } from '../lib/development-intelligence'
 import { useRxDashboardCollection } from '../lib/rxdb-dashboard-cache'
 
@@ -167,6 +168,17 @@ function RepositoryArchitectureView({ index }: { index: ArchitectureIndex }) {
           </CardContent>
         </Card>
       )}
+      {index.result.diagram ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Architecture diagram</CardTitle>
+            <CardDescription>Generated from the same source-backed boundaries, relations, and ADRs shown below.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThreadMarkdownContent content={`\`\`\`mermaid\n${index.result.diagram}\n\`\`\``} />
+          </CardContent>
+        </Card>
+      ) : null}
       <Card size="sm" layout="divided">
         <CardHeader>
           <CardTitle>System boundaries and contracts</CardTitle>

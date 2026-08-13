@@ -365,10 +365,10 @@ export function createClaudeCodeAgent({
     supportsReadOnlyMode: true,
     supportsEphemeral: true,
     subagentOrchestration: 'native',
-    async prepareWorkspace(worktree) {
+    async prepareWorkspace(workspace) {
       await ensureToolingAccess()
       await installFallowSkill(configDirectory, agentProcessEnvironment(env))
-      await trustWorkspaceMiseConfigs(run, worktree)
+      await trustWorkspaceMiseConfigs(run, workspace.path)
     },
     parseLaunchOptions: parseAgentLaunchOptions,
     launchOptions: async (context?: AgentLaunchOptionsContext) => {

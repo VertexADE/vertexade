@@ -35,7 +35,7 @@ async function api(path: string, options: RequestInit = {}) {
         ...options.headers,
       },
     },
-    timeoutMs: 65_000,
+    timeoutMs: path === '/api/internal/subagents/form' ? 86_400_000 : 65_000,
     attempts: 1,
   })
   const text = (await readResponseBody(response, maximumResponseBytes)).toString('utf8')
@@ -56,6 +56,49 @@ async function api(path: string, options: RequestInit = {}) {
 }
 
 export const subagentTools = [
+  {
+    name: 'form',
+    title: 'Ask the user with a form',
+    description:
+      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. Use this only when work cannot continue without structured user input. The submitted values are returned as Markdown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short form title.' },
+        description: { type: 'string', description: 'Optional explanation of why this input is needed.' },
+        fields: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Stable field identifier.' },
+              label: { type: 'string', description: 'User-facing field label.' },
+              description: { type: 'string', description: 'Optional help text.' },
+              type: { type: 'string', enum: ['text', 'select', 'checkbox'] },
+              required: { type: 'boolean', default: true },
+              multiline: { type: 'boolean', default: false },
+              options: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: { label: { type: 'string' }, value: { type: 'string' }, description: { type: 'string' } },
+                  required: ['label', 'value'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['id', 'label', 'type'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['title', 'fields'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
   {
     name: 'list_agents',
     title: 'List VertexADE child agents',
@@ -175,6 +218,10 @@ export const subagentTools = [
   },
 ]
 
+function availableTools() {
+  return process.env.VERTEXADE_SUBAGENTS_ENABLED !== '0' ? subagentTools : subagentTools.filter((tool) => tool.name === 'form')
+}
+
 function argumentsOf(request: JsonRpcRequest) {
   const value = request.params?.arguments
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : {}
@@ -195,6 +242,7 @@ async function waitForAgent(input: JsonObject) {
 }
 
 async function callTool(name: unknown, input: JsonObject) {
+  if (name === 'form') return api('/api/internal/subagents/form', { method: 'POST', body: JSON.stringify(input) })
   if (name === 'list_agents') return api('/api/internal/subagents/agents')
   if (name === 'spawn_agent') {
     return api('/api/internal/subagents/runs', { method: 'POST', body: JSON.stringify(input) })
@@ -223,7 +271,7 @@ export async function handleSubagentMcpRequest(request: JsonRpcRequest) {
       serverInfo: { name: 'vertexade-subagents', version: '0.0.1' },
     }
   if (request.method === 'ping') return {}
-  if (request.method === 'tools/list') return { tools: subagentTools }
+  if (request.method === 'tools/list') return { tools: availableTools() }
   if (request.method === 'tools/call') {
     try {
       return toolResult(await callTool(request.params?.name, argumentsOf(request)))

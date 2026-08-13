@@ -366,6 +366,7 @@ export type ArchitectureIndexResult = {
   sourceGraph?: DevelopmentSourceGraphSummary
   repositoryName: string
   revision: string
+  diagram?: string
   nodes: ArchitectureNode[]
   relations: ArchitectureRelation[]
   decisions: ArchitectureDecision[]

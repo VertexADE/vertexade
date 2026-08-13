@@ -105,6 +105,7 @@ function ThreadBody({ detail, controller, threadKey }: { detail: MobileThreadDet
         busy={controller.busy}
         onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
         onSubmit={controller.actions.submitAnswers}
+        onCancel={detail.inputQuestions.some((question) => question.formTitle) ? controller.actions.cancelForm : undefined}
       />
       <MobileThreadTabContent
         tab={controller.tab}
