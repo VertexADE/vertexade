@@ -101,7 +101,7 @@ export async function launchCreatedWork(
     resources: object
   },
 ) {
-  if (!options.startThread || !options.repositories.length) return null
+  if (!options.startThread) return null
   return backendApi<WorkLaunchResult>(item.backend_id, `/api/work-items/${item.id}/threads`, {
     method: 'POST',
     body: JSON.stringify({
@@ -120,10 +120,10 @@ export function notifyWorkCreated(item: WorkItem, result: WorkLaunchResult | nul
     return
   }
   if (result.errors.length) {
-    toast.warning(`${result.threads.length} threads started; ${result.errors.length} repositories need attention`)
+    toast.warning(`${item.key} was created, but its agent needs attention`)
     return
   }
-  toast.success(`${item.key} created with ${result.threads.length} independent threads`)
+  toast.success(`${item.key} created and its agent started`)
 }
 
 export function notifyWorkLaunchRecovery(item: WorkItem) {

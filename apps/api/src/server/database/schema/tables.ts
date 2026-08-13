@@ -531,6 +531,7 @@ export const automationSchedules = sqliteTable('automation_schedules', {
     .primaryKey()
     .references(() => automationRecipes.id, { onDelete: 'cascade' }),
   repositoryIds: text('repository_ids', { mode: 'json' }).$type<number[]>().default([]).notNull(),
+  executionMode: text('execution_mode').default('independent').notNull(),
   branchType: text('branch_type').default('chore').notNull(),
   scheduleMode: text('schedule_mode').notNull(),
   simpleSchedule: text('simple_schedule'),

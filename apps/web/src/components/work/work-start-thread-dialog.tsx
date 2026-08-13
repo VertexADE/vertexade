@@ -82,7 +82,6 @@ export function StartThreadDialog({
           busy={busy}
           uploadingImages={uploadingImages}
           prompt={prompt}
-          selectedCount={selected.length}
           onCancel={() => onOpenChange(false)}
           onSubmit={submit}
         />
@@ -104,7 +103,7 @@ function startThreadCopy(workKey: string, contributorReview: boolean, retrying: 
     icon: Bot,
     iconClassName: 'size-5 text-blue-400',
     title: `${verb} agent work`,
-    description: `${workKey} · continue this outcome with one independent thread per repository.`,
+    description: `${workKey} · continue this outcome with one agent in its unified Work-item workspace.`,
   }
 }
 
@@ -199,23 +198,21 @@ function ImplementationDeliveryOptions({
       <Label className="flex items-start gap-2 rounded-lg border p-3">
         <Checkbox checked={createPr} onCheckedChange={(value) => onCreatePrChange(Boolean(value))} />
         <span>
-          <strong className="block text-xs">Create a draft PR in every repository</strong>
-          <small className="text-[11px] text-muted-foreground">Each independent PR becomes a delivery link on this Work item.</small>
+          <strong className="block text-xs">Create draft PRs for Git repositories</strong>
+          <small className="text-[11px] text-muted-foreground">The agent links each repository’s delivery back to this Work item.</small>
         </span>
       </Label>
     </>
   )
 }
 
-function startThreadAction(contributorReview: boolean, retrying: boolean, busy: boolean, uploadingImages: boolean, selectedCount: number) {
+function startThreadAction(contributorReview: boolean, retrying: boolean, busy: boolean, uploadingImages: boolean) {
   const verb = ['Start', 'Retry'][Number(retrying)]
-  const suffix = ['s', ''][Number(selectedCount === 1)]
-  const workLabel = `${verb} ${selectedCount} agent thread${suffix}`
   return [
     uploadingImages ? { icon: Loader2, iconClassName: 'animate-spin', label: 'Embedding images…' } : null,
     busy ? { icon: Loader2, iconClassName: 'animate-spin', label: 'Starting…' } : null,
     contributorReview ? { icon: FileSearch, iconClassName: '', label: `${verb} review` } : null,
-    { icon: Bot, iconClassName: '', label: workLabel },
+    { icon: Bot, iconClassName: '', label: `${verb} agent thread` },
   ].find(Boolean)!
 }
 
@@ -225,7 +222,6 @@ function StartThreadFooter({
   busy,
   uploadingImages,
   prompt,
-  selectedCount,
   onCancel,
   onSubmit,
 }: {
@@ -234,13 +230,12 @@ function StartThreadFooter({
   busy: boolean
   uploadingImages: boolean
   prompt: string
-  selectedCount: number
   onCancel: () => void
   onSubmit: () => void
 }) {
-  const implementationReady = Boolean(prompt.trim() && selectedCount)
+  const implementationReady = Boolean(prompt.trim())
   const disabled = [busy, uploadingImages, contributorReview ? false : !implementationReady].some(Boolean)
-  const action = startThreadAction(contributorReview, retrying, busy, uploadingImages, selectedCount)
+  const action = startThreadAction(contributorReview, retrying, busy, uploadingImages)
   const ActionIcon = action.icon
   return (
     <DialogFooter className="mx-0 mb-0 rounded-none px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] sm:mx-0 sm:mb-0 sm:px-4">

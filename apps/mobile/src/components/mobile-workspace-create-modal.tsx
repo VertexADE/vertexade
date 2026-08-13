@@ -217,7 +217,7 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
           meta: repositoryDescription(repository),
         })),
       ]}
-      selectedIds={creation.repositoryIds.length ? creation.repositoryIds.map(String) : mode !== 'pullRequest' ? ['general'] : []}
+      selectedIds={creation.selectedRepositories.length ? creation.selectedRepositories.map((repository) => String(repository.id)) : mode !== 'pullRequest' ? ['general'] : []}
       testIdPrefix="create-repository"
       onSelect={(id) => id === 'general' ? creation.clearRepositories() : creation.toggleRepository(Number(id))}
       />

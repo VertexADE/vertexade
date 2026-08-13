@@ -448,6 +448,7 @@ describe('automation recipes', () => {
       steps: [],
       schedule: {
         repositoryIds: [1, 2],
+        executionMode: 'independent',
         branchType: 'chore',
         scheduleMode: 'simple',
         simpleSchedule: 'weekly',
@@ -461,6 +462,7 @@ describe('automation recipes', () => {
 
     expect(saved.schedule).toMatchObject({
       repositoryIds: [1, 2],
+      executionMode: 'independent',
       branchType: 'chore',
       cronExpression: '0 9 * * 1',
       allowSubagents: true,
@@ -468,6 +470,45 @@ describe('automation recipes', () => {
     await expect(recipes.run(saved.id)).resolves.toMatchObject({ started: 2, errors: [] })
     expect(launchThread).toHaveBeenCalledTimes(2)
     expect(vi.mocked(launchThread).mock.calls.map((call) => call[2]?.subject)).toEqual(['repository:1', 'repository:2'])
+  })
+
+  it('launches one unified scheduled Work flow with every selected repository', async () => {
+    const { database, registries, recipes, launchThread } = fixture()
+    registries.forModule('core').triggers.register({
+      id: 'core.scheduled',
+      name: 'Scheduled',
+      outputSchema: { type: 'object', properties: { entityType: { type: 'string', enum: ['repository'] } } },
+      subscribe: () => undefined,
+    })
+    database.$client
+      .prepare('INSERT INTO repositories (id,full_name,clone_url,local_path) VALUES (1,?,?,?),(2,?,?,?)')
+      .run('acme/api', 'git@example.test:acme/api.git', '/tmp/acme-api', 'acme/web', 'git@example.test:acme/web.git', '/tmp/acme-web')
+    const saved = recipes.save({
+      name: 'Unified maintenance',
+      triggerId: 'core.scheduled',
+      threadAction: 'work',
+      promptSteps: [{ name: 'Work', prompt: 'Update both repositories.' }],
+      steps: [],
+      schedule: {
+        repositoryIds: [1, 2],
+        executionMode: 'unified',
+        branchType: 'chore',
+        scheduleMode: 'simple',
+        simpleSchedule: 'weekly',
+        timezone: 'UTC',
+      },
+    })!
+
+    await expect(recipes.run(saved.id)).resolves.toMatchObject({ started: 1, errors: [] })
+    expect(launchThread).toHaveBeenCalledTimes(1)
+    expect(launchThread).toHaveBeenCalledWith(
+      'work',
+      expect.any(String),
+      expect.objectContaining({
+        data: expect.objectContaining({ launch: expect.objectContaining({ repositoryIds: [1, 2] }) }),
+      }),
+      expect.any(Object),
+    )
   })
 
   it('records a guarded Review as skipped without running bound actions', async () => {

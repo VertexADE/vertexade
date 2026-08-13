@@ -36,6 +36,7 @@ export function normalizeAutomationSchedule(value: unknown, database: DrizzleDas
   if (found.length !== repositoryIds.length) throw new Error('One or more repositories no longer exist')
   return {
     repositoryIds,
+    executionMode: input.executionMode === 'independent' ? 'independent' : 'unified',
     branchType,
     scheduleMode,
     simpleSchedule: scheduleMode === 'simple' ? simpleSchedule : null,
@@ -52,6 +53,7 @@ export function normalizeAutomationSchedule(value: unknown, database: DrizzleDas
 export function saveAutomationSchedule(database: DrizzleDashboardDatabase, recipeId: number, schedule: AutomationSchedule) {
   const values = {
     repositoryIds: schedule.repositoryIds,
+    executionMode: schedule.executionMode,
     branchType: schedule.branchType,
     scheduleMode: schedule.scheduleMode,
     simpleSchedule: schedule.simpleSchedule,
@@ -95,7 +97,8 @@ export class AutomationScheduleService {
     const errors: string[] = []
     let started = 0
     try {
-      for (const repositoryId of schedule.repositoryIds) {
+      const repositoryIds = schedule.executionMode === 'unified' ? schedule.repositoryIds.slice(0, 1) : schedule.repositoryIds
+      for (const repositoryId of repositoryIds) {
         const repository = database.select().from(repositories).where(eq(repositories.id, repositoryId)).get()
         if (!repository) {
           errors.push(`Repository ${repositoryId} was not found`)
@@ -153,6 +156,7 @@ export class AutomationScheduleService {
           model: schedule.model,
           reasoningEffort: schedule.reasoningEffort,
           allowSubagents: schedule.allowSubagents,
+          repositoryIds: schedule.executionMode === 'unified' ? schedule.repositoryIds : undefined,
           workKind: 'operational',
           source: {
             provider: 'vertexade',

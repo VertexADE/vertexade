@@ -29,13 +29,14 @@ export function useStartThreadDialog({
     if (!open) return
     setResourceSelection(null)
     setPrompt(item.description)
-    setCreatePr(true)
     setSplitWorkItem(item.sequential_execution)
     setReferences(item.resources.filter((resource) => resource.role === 'context').map(resourceReference))
     const scoped = item.resources
       .filter((resource) => resource.kind === 'repository' && resource.repository_id)
       .map((resource) => Number(resource.repository_id))
-    setSelected([...new Set(scoped.length ? scoped : [item.primary_repository_id].filter(Boolean).map(Number))])
+    const initialRepositories = [...new Set(scoped.length ? scoped : [item.primary_repository_id].filter(Boolean).map(Number))]
+    setSelected(initialRepositories)
+    setCreatePr(Boolean(initialRepositories.length))
     if (item.kind !== 'pr_review')
       void api<{ repositories: Pick<Repository, 'id' | 'full_name'>[] }>('/api/work-repositories')
         .then((result) => setRepositories(result.repositories))
@@ -63,9 +64,8 @@ export function useStartThreadDialog({
             ...(resourceSelection ? { resource_selection: resourceSelection } : {}),
           }),
         })
-        if (result.errors.length)
-          toast.warning(`${result.threads.length} threads started; ${result.errors.length} repositories need attention`)
-        else toast.success(`${result.threads.length} independent thread${result.threads.length === 1 ? '' : 's'} started`)
+        if (result.errors.length) toast.warning('The agent could not start and needs attention')
+        else toast.success('Agent thread started')
       }
       onOpenChange(false)
       onStarted()
@@ -84,7 +84,10 @@ export function useStartThreadDialog({
     setSplitWorkItem,
     repositories,
     selected,
-    setSelected,
+    setSelected: (value: number[]) => {
+      setSelected(value)
+      if (!value.length) setCreatePr(false)
+    },
     references,
     setReferences,
     busy,

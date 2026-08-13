@@ -83,7 +83,8 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     update({ busy: true, error: '' })
     try {
       if (!selectedBackend) throw new Error('Choose a server')
-      const message = await executeCreation(options.mode, { ...selectedBackend, serviceUrl: selectedBackend.serviceUrl || options.serviceUrl }, state, selectedWorkItem)
+      const submission = { ...state, repositoryIds: selectedRepositories.map((repository) => repository.id) }
+      const message = await executeCreation(options.mode, { ...selectedBackend, serviceUrl: selectedBackend.serviceUrl || options.serviceUrl }, submission, selectedWorkItem)
       await options.onCompleted(message)
       return
     } catch (reason) {

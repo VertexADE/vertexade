@@ -33,6 +33,10 @@ type AllocationInput = {
   baseGitDir: string
 }
 
+function isMissingPath(error: unknown) {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT'
+}
+
 async function commonGitDirectory(run: Run, path: string) {
   return resolve((await run('git', ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'])).trim())
 }
@@ -40,8 +44,8 @@ async function commonGitDirectory(run: Run, path: string) {
 async function reuseCombinedWorktree(input: AllocationInput, run: Run) {
   try {
     await stat(input.worktree)
-  } catch (error: any) {
-    if (error?.code === 'ENOENT') return null
+  } catch (error: unknown) {
+    if (isMissingPath(error)) return null
     throw error
   }
   const worktreeGitDir = await commonGitDirectory(run, input.worktree)
@@ -168,6 +172,27 @@ export async function allocateAgentWorktree(
     if (!['copy', 'move'].includes(strategy)) throw new Error('Plain directories require direct, copy, or move workspace mode')
     const directoryStrategy = strategy === 'copy' ? 'copy' : 'move'
     await mkdir(layout.root, { recursive: true })
+    try {
+      await stat(layout.worktree)
+      await dependencies.assertReusable?.(repository, layout.worktree)
+      await dependencies.prepare(
+        repository,
+        { path: layout.worktree, sourceKind: repository.source_kind, strategy: directoryStrategy },
+        agent,
+      )
+      return {
+        worktree: layout.worktree,
+        baseGitDir: null,
+        sessionCwd: layout.root,
+        workspaceMode: mode,
+        branchName: null,
+        headSha: null,
+        created: false,
+        workspaceStrategy: strategy,
+      }
+    } catch (error: unknown) {
+      if (!isMissingPath(error)) throw error
+    }
     await cp(repository.local_path, layout.worktree, { recursive: true, errorOnExist: true, force: false })
     await cp(repository.local_path, `${layout.worktree}.baseline`, { recursive: true, errorOnExist: true, force: false })
     await dependencies.prepare(

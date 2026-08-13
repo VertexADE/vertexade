@@ -131,6 +131,29 @@ describe('MobileWorkspaceCreateModal', () => {
     expect(onCompleted).toHaveBeenCalledWith('W-0002 agent thread started with draft PR delivery enabled.')
   })
 
+  test('shows and preserves General for existing repository-free Work', async () => {
+    startThread.mockResolvedValue()
+    const generalWork = {
+      ...workspace.workItems[0],
+      id: 8,
+      key: 'W-0008',
+      title: 'General operations',
+      primaryRepositoryId: 999,
+      repositoryNames: ['Workspace/General'],
+    }
+    render(<MobileWorkspaceCreateModal mode="thread" serviceUrl="http://fixture:4173" backends={backends} workspace={{ ...workspace, workItems: [...workspace.workItems, generalWork] }} initialWorkItem={generalWork} onClose={jest.fn()} onCompleted={jest.fn().mockResolvedValue(undefined)} />)
+
+    expect(screen.getByTestId('create-repository-general')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.getByText('Managed · isolated · no repository or Git required')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(startThread).toHaveBeenCalledWith('http://fixture:4173', expect.objectContaining({
+      workItemId: 8,
+      prompt: 'Finish the existing outcome',
+    })))
+    expect(startThread.mock.calls[0]?.[1]).not.toHaveProperty('repositoryIds')
+  })
+
   test('closes through completion with a recoverable notice when Work exists but its draft PR thread fails', async () => {
     createWork.mockResolvedValue({ id: 4, key: 'W-0004', title: 'Partial delivery', backendId: 'local', backendName: 'Local' })
     startThread.mockRejectedValue(new Error('Agent unavailable'))

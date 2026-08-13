@@ -59,6 +59,66 @@ describe('automation thread launcher', () => {
     )
   })
 
+  it('starts repository-free Work in a managed general workspace', async () => {
+    const { work, launch, launchWork } = fixture()
+    const item = work.create({ title: 'Investigate operations' })
+
+    await launch('work', 'Investigate and report.', {
+      data: { entityType: 'work-item', entityId: item.id },
+    })
+
+    expect(launchWork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Investigate operations',
+        workItemId: item.id,
+        repository: expect.objectContaining({ full_name: 'Workspace/General' }),
+      }),
+      'Investigate and report.',
+      expect.any(Object),
+    )
+  })
+
+  it('creates one new Work item containing every repository for a unified scheduled launch', async () => {
+    const { database, work } = fixture()
+    database.$client
+      .prepare('INSERT INTO repositories (full_name,clone_url,local_path) VALUES (?,?,?)')
+      .run('acme/web', 'git@example.test:acme/web.git', '/tmp/acme-web')
+    const launchWork = vi.fn(async (target, _prompt, options) => {
+      const item = work.create({ title: target.title })
+      for (const repositoryId of options.repositoryIds || []) {
+        const repository = database.$client.prepare('SELECT id, full_name FROM repositories WHERE id = ?').get(repositoryId) as {
+          id: number
+          full_name: string
+        }
+        work.linkRepository(item.id, repository)
+      }
+      return { id: 20 }
+    })
+    const launch = createAutomationThreadLauncher(database, {
+      launchWork,
+      launchPullRequestWork: vi.fn(async () => ({ id: 21 })),
+      resumeWork: vi.fn(async () => ({ id: 22 })),
+      launchPullRequestReview: vi.fn(async () => ({ id: 23 })),
+      launchWorktreeReview: vi.fn(async () => ({ id: 24 })),
+    })
+
+    expect(work.list()).toHaveLength(0)
+    await launch('work', 'Update both repositories.', {
+      data: {
+        entityType: 'repository',
+        entityId: 1,
+        launch: { repositoryIds: [1, 2], branchType: 'chore' },
+      },
+    })
+
+    expect(launchWork).toHaveBeenCalledTimes(1)
+    expect(work.list()).toHaveLength(1)
+    expect(work.list()[0]).toMatchObject({
+      title: 'Automated work for acme/api',
+      repository_names: ['acme/api', 'acme/web'],
+    })
+  })
+
   it('starts Improve flows in a writable Work thread for approval-gated continuation', async () => {
     const { work, launch, launchWork, launchPullRequestReview } = fixture()
     const item = work.create({ title: 'Improve API', repositoryId: 1 })

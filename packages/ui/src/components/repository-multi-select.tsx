@@ -51,7 +51,7 @@ export function RepositoryMultiSelect({
         {!repositories.length && <p className="col-span-full p-3 text-center text-xs text-muted-foreground">{emptyMessage}</p>}
       </div>
       <small className="text-xs text-muted-foreground">
-        Each repository gets one reusable Work-item worktree shared by its sequential agent threads.
+        One agent works across the selected sources in a unified Work-item folder. Each source keeps its own reusable workspace.
       </small>
     </fieldset>
   )

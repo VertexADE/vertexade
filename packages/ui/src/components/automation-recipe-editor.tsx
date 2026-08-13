@@ -337,7 +337,8 @@ function recipeTriggerSummary(
     return `When ${event} occurs, ${outcome}`
   }
   const repositoryLabel = schedule.repositoryIds.length === 1 ? 'repository' : 'repositories'
-  return `On ${scheduleCadence(schedule)} (${schedule.timezone}), ${outcome} for ${schedule.repositoryIds.length} selected ${repositoryLabel}`
+  const execution = schedule.executionMode === 'unified' ? 'in one unified Work item' : 'as independent runs'
+  return `On ${scheduleCadence(schedule)} (${schedule.timezone}), ${outcome} ${execution} for ${schedule.repositoryIds.length} selected ${repositoryLabel}`
 }
 
 export function ThreadOutcome({

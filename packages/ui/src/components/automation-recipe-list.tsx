@@ -113,7 +113,7 @@ function RecipeSummary({ recipe, triggerName }: { recipe: AutomationRecipe; trig
       {recipe.schedule && (
         <p className="mt-1 text-xs text-muted-foreground">
           {recipe.schedule.repositoryIds.length} {recipe.schedule.repositoryIds.length === 1 ? 'repository' : 'repositories'} ·{' '}
-          {recipe.schedule.timezone}
+          {recipe.schedule.executionMode === 'unified' ? 'Unified Work' : 'Independent runs'} · {recipe.schedule.timezone}
           {recipe.schedule.nextRunAt ? ` · Next ${new Date(recipe.schedule.nextRunAt).toLocaleString()}` : ''}
         </p>
       )}

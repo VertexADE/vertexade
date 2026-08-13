@@ -393,6 +393,7 @@ export type AutomationRecipe = {
 
 export type AutomationSchedule = {
   repositoryIds: number[]
+  executionMode: 'independent' | 'unified'
   branchType: string
   scheduleMode: 'simple' | 'cron'
   simpleSchedule: 'hourly' | 'daily' | 'weekly' | null

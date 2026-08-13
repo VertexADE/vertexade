@@ -179,6 +179,7 @@ function scheduleFromRow(row: Record<string, unknown> | null | undefined): Autom
   if (!row?.recipeId) return null
   return {
     repositoryIds: parseJson<number[]>(row.repositoryIds, []),
+    executionMode: row.executionMode === 'unified' ? 'unified' : 'independent',
     branchType: String(row.branchType || 'chore'),
     scheduleMode: row.scheduleMode === 'cron' ? 'cron' : 'simple',
     simpleSchedule: ['hourly', 'daily', 'weekly'].includes(String(row.simpleSchedule))

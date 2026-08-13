@@ -3,10 +3,11 @@ import { and, desc, eq, inArray, isNotNull, notInArray, sql, type SQL } from 'dr
 import { automaticReviewLaunchAllowed } from '../automatic-review-queue.ts'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { jobs, pullRequests, repositories, workItemResources, workItems, workResources } from '../database/schema/tables.ts'
+import { generalWorkspaceRepository } from '../work/general-workspace.ts'
 
 type Repository = { id: number; full_name: string; clone_url: string; local_path: string }
 type PullRequest = Record<string, unknown> & { repo_id: number; number: number; title: string }
-type WorkTarget = { repository: Repository; title: string; workItemId: number | null }
+type WorkTarget = { repository: Repository; repositories?: Repository[]; title: string; workItemId: number | null }
 export type AutomationThreadLaunchResult = { jobId: number } | { skippedReason: string }
 
 export type AutomationThreadLaunchOptions = {
@@ -18,6 +19,7 @@ export type AutomationThreadLaunchOptions = {
   allowSubagents?: boolean
   workKind?: 'implementation' | 'pr_review' | 'investigation' | 'operational'
   source?: Record<string, unknown>
+  repositoryIds?: number[]
 }
 
 export type AutomationThreadLaunchDependencies = {
@@ -67,6 +69,7 @@ function triggerLaunchOptions(trigger?: TriggerEvent): AutomationThreadLaunchOpt
       ? (String(input.workKind) as AutomationThreadLaunchOptions['workKind'])
       : undefined,
     source: Object.keys(record(input.source)).length ? record(input.source) : undefined,
+    repositoryIds: Array.isArray(input.repositoryIds) ? input.repositoryIds.map(Number).filter(Number.isInteger) : undefined,
   }
 }
 
@@ -90,28 +93,32 @@ function repositoryById(database: DrizzleDashboardDatabase, id: number) {
 
 function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): WorkTarget {
   if (target.entityType === 'work-item') {
-    const row = requireRow(
+    const item = requireRow(
       database
-        .select({
-          repository: {
-            id: repositories.id,
-            full_name: repositories.fullName,
-            clone_url: repositories.cloneUrl,
-            local_path: repositories.localPath,
-          },
-          workItemId: workItems.id,
-          workTitle: workItems.title,
-        })
+        .select({ id: workItems.id, title: workItems.title, repositoryId: workItems.primaryRepositoryId })
         .from(workItems)
-        .innerJoin(repositories, eq(repositories.id, workItems.primaryRepositoryId))
         .where(eq(workItems.id, target.entityId))
         .get(),
-      'The triggered Work item has no repository target',
+      'The triggered Work item is no longer available',
     )
+    const linkedIds = database
+      .select({ repositoryId: workResources.repositoryId })
+      .from(workItemResources)
+      .innerJoin(workResources, eq(workResources.id, workItemResources.resourceId))
+      .where(and(eq(workItemResources.workItemId, item.id), eq(workResources.kind, 'repository')))
+      .all()
+      .map((row) => Number(row.repositoryId))
+      .filter(Number.isInteger)
+    const repositoryIds = [...new Set([...(item.repositoryId ? [item.repositoryId] : []), ...linkedIds])]
+    const linkedRepositories = repositoryIds
+      .map((id) => repositoryById(database, id))
+      .filter((value): value is Repository => Boolean(value))
+    const workspace = linkedRepositories.length ? linkedRepositories : [generalWorkspaceRepository(database)]
     return {
-      repository: row.repository,
-      title: row.workTitle,
-      workItemId: row.workItemId,
+      repository: workspace[0],
+      repositories: workspace,
+      title: item.title,
+      workItemId: item.id,
     }
   }
   if (target.entityType === 'agent-thread') {

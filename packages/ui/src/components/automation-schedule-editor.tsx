@@ -21,6 +21,7 @@ function localTimezone() {
 export function newAutomationSchedule(): AutomationSchedule {
   return {
     repositoryIds: [],
+    executionMode: 'unified',
     branchType: 'chore',
     scheduleMode: 'simple',
     simpleSchedule: 'daily',
@@ -55,8 +56,23 @@ export function AutomationScheduleEditor({
     <section className="space-y-3 rounded-lg border border-violet-500/20 bg-violet-500/[.035] p-3">
       <div>
         <strong className="text-xs">2. Timing and scope</strong>
-        <p className="text-xs text-muted-foreground">Choose when this automation runs and which repositories receive an independent run.</p>
+        <p className="text-xs text-muted-foreground">Choose when this automation runs and whether its repositories share one Work item.</p>
       </div>
+      <Label className="flex-col items-stretch gap-1">
+        <span className="text-xs text-muted-foreground">Execution</span>
+        <Select
+          value={value.executionMode}
+          onValueChange={(executionMode) => update({ executionMode: executionMode as AutomationSchedule['executionMode'] })}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unified">One unified Work item</SelectItem>
+            <SelectItem value="independent">Independent run per repository</SelectItem>
+          </SelectContent>
+        </Select>
+      </Label>
       <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)]">
         <Label className="min-w-0 flex-col items-stretch gap-1">
           <span className="text-xs text-muted-foreground">Cadence</span>

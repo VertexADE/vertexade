@@ -55,6 +55,32 @@ describe('agent worktree allocation', () => {
     )
   })
 
+  it('reuses an existing copied general workspace for later threads', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vertexade-general-reuse-'))
+    const workItemWorkspaceRoot = join(root, 'work-items')
+    const worktree = join(workItemWorkspaceRoot, 'W-0003', 'Workspace--General')
+    await mkdir(worktree, { recursive: true })
+    const prepare = vi.fn()
+    const assertReusable = vi.fn()
+
+    const result = await allocateAgentWorktree(
+      { full_name: 'Workspace/General', local_path: join(root, 'template'), source_kind: 'workspace', workspace_strategy: 'copy' },
+      { workspaceRoot: join(root, 'agents') },
+      '',
+      null,
+      { mode: 'combined', workItemKey: 'W-0003' },
+      { run: vi.fn(), prepare, assertReusable, cleanup: vi.fn(), workItemWorkspaceRoot },
+    )
+
+    expect(result).toMatchObject({ worktree, created: false, baseGitDir: null })
+    expect(assertReusable).toHaveBeenCalledWith(expect.objectContaining({ full_name: 'Workspace/General' }), worktree)
+    expect(prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      { path: worktree, sourceKind: 'workspace', strategy: 'copy' },
+      expect.anything(),
+    )
+  })
+
   it('reuses the stable combined repository worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-combined-'))
     const agentWorkspaceRoot = join(root, 'agents', 'codex')

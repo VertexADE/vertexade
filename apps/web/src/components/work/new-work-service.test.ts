@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import type { WorkBoardData, WorkItem } from '@vertexade/ui/lib/dashboard-types'
-import { readWorkLaunchPreferences, rememberWorkLaunchPreferences, suggestedWorkRepositories } from './new-work-service'
+const { backendApi } = vi.hoisted(() => ({ backendApi: vi.fn() }))
+vi.mock('@vertexade/ui/lib/dashboard-api', () => ({ backendApi }))
+import { launchCreatedWork, readWorkLaunchPreferences, rememberWorkLaunchPreferences, suggestedWorkRepositories } from './new-work-service'
 
 describe('work launch preferences', () => {
   const values = new Map<string, string>()
@@ -54,5 +56,37 @@ describe('suggested work repositories', () => {
 
   it('suggests the most recently used active workspace on first launch', () => {
     expect(suggestedWorkRepositories(data)).toEqual([2])
+  })
+})
+
+describe('created Work launch', () => {
+  beforeEach(() => backendApi.mockReset())
+
+  it('starts repository-free Work in the managed general workspace', async () => {
+    backendApi.mockResolvedValue({ status: 'started', threads: [{ id: 12 }], errors: [] })
+    const item = { id: 7, key: 'W-0007', backend_id: 'primary' } as WorkItem
+
+    await launchCreatedWork(item, {
+      startThread: true,
+      repositories: [],
+      description: 'Investigate the operational question',
+      createPr: false,
+      splitWorkItem: false,
+      resources: {},
+    })
+
+    expect(backendApi).toHaveBeenCalledWith(
+      'primary',
+      '/api/work-items/7/threads',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          repository_ids: [],
+          prompt: 'Investigate the operational question',
+          create_pr: false,
+          split_work_item: false,
+        }),
+      }),
+    )
   })
 })

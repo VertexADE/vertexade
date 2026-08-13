@@ -114,7 +114,7 @@ describe('Work HTTP API', () => {
     expect(work.get(item.id)?.attention).toBeNull()
     expect(work.get(item.id)?.repository_names).toEqual(['example/api', 'example/web'])
     expect(work.get(item.id)?.events[0]).toMatchObject({
-      event_type: 'thread_batch_started',
+      event_type: 'thread_started',
     })
     expect(work.get(item.id)?.events.find((event: any) => event.event_type === 'sequential_execution_requested')).toMatchObject({
       payload: { repositoryCount: 2, approvalRequired: true },

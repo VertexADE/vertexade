@@ -416,10 +416,10 @@ export class WorkService {
 
   launchBatchFinished(workItemId: number, started: number, errors: { repository: string; error: string }[]) {
     this.batchFinished(workItemId, started, errors, {
-      singular: 'independent repository thread',
-      plural: 'independent repository threads',
-      event: 'thread_batch',
-      notification: 'work_thread_batch_started',
+      singular: 'agent thread',
+      plural: 'agent threads',
+      event: 'thread',
+      notification: 'work_thread_started',
     })
   }
 

@@ -752,6 +752,13 @@ const migrations: Migration[] = [
   orderedFollowUpMigration,
   runContextMigration,
   localDirectoryMigration,
+  {
+    version: 46,
+    name: 'automation-schedule-execution-mode',
+    migrate(database) {
+      database.exec("ALTER TABLE automation_schedules ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'independent'")
+    },
+  },
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

@@ -391,8 +391,14 @@ const {
 const workRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'workItem', options)
 const reviewRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'review', options)
 const automationThreadLauncher = createAutomationThreadLauncher(db, {
-  launchWork: (target, prompt, options) =>
-    launchRepositoryTask(target.repository, target.title, prompt, false, options.branchType || 'feature', null, {
+  launchWork: (target, prompt, options) => {
+    const selectedRepositories = options.repositoryIds?.length
+      ? options.repositoryIds
+          .map((id) => db.select().from(repositories).where(eq(repositories.id, id)).get())
+          .filter(Boolean)
+          .map(repositoryRecord)
+      : undefined
+    return launchRepositoryTask(target.repository, target.title, prompt, false, options.branchType || 'feature', null, {
       workItemId: target.workItemId,
       workKind: options.workKind || 'implementation',
       workSource: options.source,
@@ -400,7 +406,9 @@ const automationThreadLauncher = createAutomationThreadLauncher(db, {
       allowSubagents: options.allowSubagents,
       permissionMode: options.source ? 'full' : undefined,
       githubWrite: Boolean(options.source),
-    }),
+      repositories: selectedRepositories || target.repositories,
+    })
+  },
   launchPullRequestWork: (repository, pullRequest, prompt, options) =>
     launchJob(repository, pullRequest, prompt, { kind: 'task', ...workRuntime(options) }),
   resumeWork: (jobId, prompt) => {
