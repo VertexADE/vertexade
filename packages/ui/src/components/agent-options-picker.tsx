@@ -277,8 +277,17 @@ export function AgentOptionsPicker({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Agent model, reasoning, and delegation settings" title="Agent launch settings">
-          <BrainCircuit />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 max-w-[22rem] gap-1.5 px-2 text-[11px] font-normal"
+          aria-label="Change model, reasoning, and delegation settings"
+          title="Change model and reasoning"
+        >
+          <BrainCircuit className="size-3.5 shrink-0 text-blue-500" />
+          <span className="max-w-36 truncate font-medium">{selected?.name || current.model || `${agentName} default`}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="max-w-20 truncate capitalize text-muted-foreground">{current.reasoningEffort || 'Default reasoning'}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(42rem,calc(100vw-1rem))] space-y-3">

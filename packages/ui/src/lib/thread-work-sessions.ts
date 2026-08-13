@@ -6,6 +6,7 @@ export type ThreadWorkSession = {
   trigger?: TimelineEvent
   activity: TimelineEvent[]
   finalMessage?: TimelineEvent
+  changes?: TimelineEvent
   duration: string
   actions: number
 }
@@ -30,8 +31,13 @@ export function buildThreadWorkSessions(events: TimelineEvent[], threadComplete:
     const triggerIndex = messages.findIndex((event) => event.kind === 'user_message' && event.text.trim())
     const complete = messages.some((event) => event.kind === 'completed') || (threadComplete && index === groups.length - 1)
     const finalIndex = complete ? findFinalMessage(messages) : -1
+    const changesIndex = messages.findLastIndex((event) => event.kind === 'changes')
     const activity = messages.filter(
-      (_event, messageIndex) => messageIndex !== triggerIndex && messageIndex !== finalIndex && messages[messageIndex].kind !== 'completed',
+      (event, messageIndex) =>
+        messageIndex !== triggerIndex &&
+        messageIndex !== finalIndex &&
+        event.kind !== 'changes' &&
+        messages[messageIndex].kind !== 'completed',
     )
     return {
       key: messages[0]?.key || `session-${index}`,
@@ -39,6 +45,7 @@ export function buildThreadWorkSessions(events: TimelineEvent[], threadComplete:
       trigger: triggerIndex >= 0 ? messages[triggerIndex] : undefined,
       activity,
       finalMessage: finalIndex >= 0 ? messages[finalIndex] : undefined,
+      changes: changesIndex >= 0 ? messages[changesIndex] : undefined,
       duration: sessionDuration(messages),
       actions: activity.filter((event) => event.kind === 'action').length,
     }

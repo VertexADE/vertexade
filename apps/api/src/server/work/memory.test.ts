@@ -57,6 +57,14 @@ describe('WorkMemoryService', () => {
     expect(launch.writableRoots).toEqual([memory.directory(item.id)])
   })
 
+  it('keeps memory instructions before a final user request', async () => {
+    const { memory, item } = await setup()
+    const launch = await memory.launchContext(item.id, 'Trusted context\n\n<user_request>\nBuild it\n</user_request>')
+
+    expect(launch.prompt.indexOf('Shared Work memory:')).toBeLessThan(launch.prompt.indexOf('<user_request>'))
+    expect(launch.prompt).toMatch(/<user_request>\nBuild it\n<\/user_request>$/)
+  })
+
   it('rejects oversized memory and removes the complete Work memory directory', async () => {
     const { memory, item } = await setup()
     await expect(memory.write(item.id, 'x'.repeat(200_001))).rejects.toThrow('cannot exceed 200 KB')

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
-import type { MobileInputQuestion, MobileQueuedFollowUp, MobileThreadDetails } from '@/mobile-detail-service'
+import type { MobileDiffFile, MobileInputQuestion, MobileQueuedFollowUp, MobileThreadDetails } from '@/mobile-detail-service'
 import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { DetailSection, useDetailLoadEarlier } from './mobile-detail-shell'
@@ -79,6 +79,9 @@ type ThreadMessage = {
   meta: string
   time: string
   tool: boolean
+  files: MobileDiffFile[]
+  additions: number
+  deletions: number
 }
 type ThreadWorkSession = {
   id: string
@@ -118,6 +121,9 @@ function initialPrompt(detail: MobileThreadDetails): ThreadMessage[] {
           meta: '',
           time: detail.createdAt,
           tool: false,
+          files: [],
+          additions: 0,
+          deletions: 0,
         },
       ]
     : []
@@ -150,6 +156,9 @@ function threadMessage(event: MobileThreadDetails['events'][number], agentName: 
     meta: [event.status, formatDate(event.time)].filter(Boolean).join(' · '),
     time: event.time,
     tool: isToolEvent(event),
+    files: event.files || [],
+    additions: event.additions || 0,
+    deletions: event.deletions || 0,
   }
 }
 
@@ -174,6 +183,7 @@ function WorkSession({ session }: { session: ThreadWorkSession }) {
         <SessionActivity expanded={expanded} messages={presentation.activity} />
       </View>
       <SessionMessage message={presentation.finalMessage} emptyText="No final response." />
+      <TurnChanges message={presentation.changes} />
     </View>
   )
 }
@@ -183,15 +193,51 @@ function workSessionPresentation(session: ThreadWorkSession) {
   const finalIndex = session.complete ? findFinalAssistantIndex(session.messages) : -1
   const trigger = triggerIndex >= 0 ? session.messages[triggerIndex] : undefined
   const finalMessage = finalIndex >= 0 ? session.messages[finalIndex] : undefined
-  const activity = session.messages.filter((_message, index) => index !== triggerIndex && index !== finalIndex)
+  const changes = session.messages.findLast((message) => message.files.length > 0)
+  const activity = session.messages.filter((message, index) => index !== triggerIndex && index !== finalIndex && !message.files.length)
   const tools = activity.filter((message) => message.tool).length
   return {
     activity,
     finalMessage,
+    changes,
     title: session.complete ? `Worked for ${workDuration(session.messages)}` : 'Agent is working',
     tools,
     trigger,
   }
+}
+
+function TurnChanges({ message }: { message?: ThreadMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!message?.files.length) return null
+  return (
+    <View style={styles.turnChanges}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((value) => !value)}
+        style={styles.turnChangesHeader}
+      >
+        <MobileSymbol name="doc.on.doc" fallback="▤" color={colors.accent} size={14} />
+        <Text style={styles.turnChangesTitle}>{message.files.length} changed {message.files.length === 1 ? 'file' : 'files'}</Text>
+        <Text style={styles.turnChangesAdditions}>+{message.additions}</Text>
+        <Text style={styles.turnChangesDeletions}>−{message.deletions}</Text>
+        <MobileSymbol name={expanded ? 'chevron.down' : 'chevron.right'} fallback={expanded ? '⌄' : '›'} color={colors.muted} size={12} />
+      </Pressable>
+      {expanded ? (
+        <View style={styles.turnChangesFiles}>
+          <Text style={styles.turnChangesSummary}>{message.text}</Text>
+          {message.files.map((file) => (
+            <View key={`${file.status}:${file.path}`} style={styles.turnChangesFile}>
+              <MobileSymbol name="doc.text" fallback="·" color={colors.muted} size={12} />
+              <Text numberOfLines={2} style={styles.turnChangesPath}>{file.path}</Text>
+              <Text style={styles.turnChangesAdditions}>+{file.additions}</Text>
+              <Text style={styles.turnChangesDeletions}>−{file.deletions}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  )
 }
 
 function SessionMessage({ message, emptyText }: { message?: ThreadMessage; emptyText: string }) {

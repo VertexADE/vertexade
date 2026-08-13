@@ -91,11 +91,13 @@ export function parseAgentThreadArguments({ cwd = false }: { cwd?: boolean } = {
 
 export function applySubagentInstructions(prompt: string, allowSubagents: unknown) {
   if (allowSubagents !== true) return prompt
-  return `${prompt.trim()}
-
-<subagent_orchestration>
+  const instructions = `<subagent_orchestration>
 Sub-agent delegation is enabled for this run. VertexADE provides a sub-agent MCP tool that can launch one bounded child at a time using any enabled agent and model; use its list tool before selecting a different runtime. Native provider sub-agents may also be available. A VertexADE child edits this Work item's existing repository worktree directly, so wait for it to finish before doing more work, validate its result and the shared diff, then explicitly accept the changes with the integration tool. Delegate only concrete work when it materially improves quality. Keep ownership of the overall result, give every child a narrow task and expected output, and do not delegate unresolved user decisions. VertexADE child runs cannot recursively delegate.
 </subagent_orchestration>`
+  const marker = '<user_request>'
+  const index = prompt.lastIndexOf(marker)
+  if (index < 0) return `${prompt.trim()}\n\n${instructions}`
+  return `${prompt.slice(0, index).trim()}\n\n${instructions}\n\n${prompt.slice(index).trim()}`
 }
 
 export async function trustWorkspaceMiseConfigs(run: AgentRunner, worktree: string) {

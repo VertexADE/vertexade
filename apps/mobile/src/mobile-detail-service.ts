@@ -101,6 +101,9 @@ export type MobileThreadEvent = {
   time: string
   status: string
   event: string
+  files?: MobileDiffFile[]
+  additions?: number
+  deletions?: number
 }
 export type MobileQueuedFollowUp = {
   id: number
@@ -646,6 +649,7 @@ function mobileThreadListFields(record: Record<string, unknown>, fallbackAgentNa
 
 function threadEvent(record: Record<string, unknown>, index: number): MobileThreadEvent {
   const data = recordValue(record.data)
+  const summary = recordValue(data.diff_summary)
   return {
     id: stringValue(record.id, 200) || String(index),
     kind: stringValue(record.kind, 100),
@@ -654,6 +658,9 @@ function threadEvent(record: Record<string, unknown>, index: number): MobileThre
     time: stringValue(record.time, 100),
     status: stringValue(record.status, 100),
     event: stringValue(data.event, 100),
+    files: recordArray(summary.files).map(diffFile),
+    additions: nonNegativeInteger(summary.additions),
+    deletions: nonNegativeInteger(summary.deletions),
   }
 }
 

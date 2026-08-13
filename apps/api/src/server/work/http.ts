@@ -452,6 +452,10 @@ async function handleThread(request: Request, identifier: string, dependencies: 
           workspaceMode,
           workItemKey: currentWorkItem.key,
           repositories: selectedRepositories,
+          displayPrompt: requestedPrompt,
+          contextReferences: currentWorkItem.resources
+            .filter((resource: any) => resource.kind !== 'repository')
+            .map((resource: any) => ({ provider: resource.provider, kind: resource.kind, label: resource.label })),
         },
       )
       threads = [{ ...(thread as any), full_name: primaryRepository.full_name }]

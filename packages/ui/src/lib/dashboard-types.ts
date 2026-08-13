@@ -396,6 +396,8 @@ export type DiffFile = {
 }
 export type JobLog = Job & {
   prompt: string
+  display_prompt: string | null
+  run_context: RunContext | null
   content: string
   diff: string
   events: LogEvent[]
@@ -410,6 +412,17 @@ export type JobLog = Job & {
     reasoning_effort: string | null
     queued_at: string
   }[]
+}
+
+export type RunContext = {
+  permission?: string
+  workspace?: { mode?: string; directory?: string }
+  repositories?: Array<{ name?: string; directory?: string; branch?: string; baseBranch?: string }>
+  agent?: { id?: string; model?: string | null; reasoningEffort?: string | null; subagents?: boolean }
+  delivery?: string
+  resources?: { skills?: string[]; mcpServers?: string[] }
+  references?: Array<{ provider?: string; kind?: string; label?: string }>
+  inputTrust?: string
 }
 
 export type JobDiffPreview = {

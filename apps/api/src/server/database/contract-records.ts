@@ -113,6 +113,8 @@ export function jobRecord(row: Job) {
     automatic_review: row.automaticReview,
     agent_model: row.agentModel,
     agent_reasoning_effort: row.agentReasoningEffort,
+    run_context: row.runContext,
+    display_prompt: row.displayPrompt,
     review_phase: row.reviewPhase,
     review_phase_started_at: row.reviewPhaseStartedAt,
     review_details: row.reviewDetails,

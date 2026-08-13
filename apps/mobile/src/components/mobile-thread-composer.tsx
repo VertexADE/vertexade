@@ -99,6 +99,14 @@ export function MobileThreadComposer({
         <MobileAttachButton controller={attachments} />
         <VoiceButton voice={voice} />
         {voicePreferences.cleanupMode !== 'off' ? <TranscriptScrubButton disabled={!value.trim() || voice.active} scrubber={scrubber} value={value} /> : null}
+      </View>
+      <View testID="thread-composer-context" style={styles.composerContextRow}>
+        <MobileGlass style={styles.composerMachineGlass}>
+          <View accessibilityLabel={`Machine ${detail.backendName || 'Local'}`} style={styles.composerMachine}>
+            <MobileSymbol name="desktopcomputer" fallback="▣" color={colors.muted} size={15} />
+            <Text numberOfLines={1} style={styles.composerMachineText}>{detail.backendName || 'Local'}</Text>
+          </View>
+        </MobileGlass>
         <MobileGlass interactive style={styles.composerConfigGlass}>
           <Pressable
             testID="thread-settings"
@@ -110,8 +118,8 @@ export function MobileThreadComposer({
           >
             <MobileSymbol name="gearshape" fallback="⚙" color={colors.accent} size={17} />
             <View style={styles.composerConfigCopy}>
-              <Text numberOfLines={1} style={styles.composerConfigTitle}>{agentOptionLabel(options)}</Text>
-              <Text numberOfLines={1} style={styles.composerConfigMeta}>{agentConfigLabel(options)}</Text>
+              <Text numberOfLines={1} style={styles.composerConfigTitle}>{options.model || detail.model || 'Default model'}</Text>
+              <Text numberOfLines={1} style={styles.composerConfigMeta}>{agentConfigLabel(options, detail)}</Text>
             </View>
             <MobileSymbol name="chevron.right" fallback="›" color={colors.muted} size={13} />
           </Pressable>
@@ -151,12 +159,12 @@ function TranscriptScrubButton({ disabled, scrubber, value }: { disabled: boolea
   )
 }
 
-function agentOptionLabel(options: MobileAgentLaunchOptions) {
-  return options.agentId || 'Default agent'
-}
-
-function agentConfigLabel(options: MobileAgentLaunchOptions) {
-  return [options.model || 'Default model', options.reasoningEffort || 'Default reasoning', options.allowSubagents ? 'Subagents on' : 'Subagents off'].join(' · ')
+function agentConfigLabel(options: MobileAgentLaunchOptions, detail: MobileThreadDetails) {
+  return [
+    options.reasoningEffort || detail.reasoningEffort || 'Default reasoning',
+    options.agentId || detail.agentId || 'Default agent',
+    options.allowSubagents ? 'Subagents on' : 'Subagents off',
+  ].join(' · ')
 }
 
 type VoiceController = ReturnType<typeof useMobileVoiceInput>

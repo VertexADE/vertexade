@@ -1,15 +1,9 @@
 name: Build unsigned iOS app
 
 on:
+  # Temporarily disabled for automatic pull-request runs. Keep manual dispatch
+  # available while the native pipeline is being stabilized.
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/ios.yml'
-      - 'apps/mobile/**'
-      - 'packages/platform-client/**'
-      - 'packages/platform-contracts/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
 
 permissions:
   contents: read

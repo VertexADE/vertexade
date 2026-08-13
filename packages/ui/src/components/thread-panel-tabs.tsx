@@ -1,4 +1,4 @@
-import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { Conversation, ConversationContent, ConversationScrollButton } from '@vertexade/ui/components/ai-elements/conversation'
@@ -63,6 +63,7 @@ export function ThreadPanelTabs(props: ThreadPanelTabsProps) {
         suggestionCount={props.suggestions.length}
       />
       <ActivityTab {...props} />
+      <RunContextTab job={props.job} />
       <SummaryTab {...props} />
       <FindingsTab {...props} />
       <SuggestionsTab {...props} />
@@ -92,10 +93,99 @@ function ThreadTabsNavigation({
           <FindingsTabTrigger job={job} />
           <SuggestionsTabTrigger job={job} count={suggestionCount} />
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="context">Run context</TabsTrigger>
           <TabsTrigger value="changes">Changes {diffCountLabel(job)}</TabsTrigger>
         </TabsList>
       </div>
       <DiffSummary job={job} />
+    </div>
+  )
+}
+
+function RunContextTab({ job }: Pick<ThreadPanelTabsProps, 'job'>) {
+  const context = job?.run_context
+  const agent = context?.agent
+  const repositories = context?.repositories || []
+  const resources = context?.resources
+
+  return (
+    <TabsContent value="context" className="min-h-0 flex-1 overflow-auto p-3 sm:p-5">
+      <div className="mx-auto grid w-full max-w-4xl gap-3 sm:grid-cols-2">
+        <RunContextCard title="Boundaries">
+          <ContextRow label="Permission" value={context?.permission} />
+          <ContextRow label="Input" value={context?.inputTrust} />
+          <ContextRow label="Delivery" value={context?.delivery} />
+        </RunContextCard>
+        <RunContextCard title="Agent configuration">
+          <ContextRow label="Agent" value={agent?.id || job?.agent_name} />
+          <ContextRow label="Model" value={agent?.model || job?.agent_model} />
+          <ContextRow label="Reasoning" value={agent?.reasoningEffort || job?.agent_reasoning_effort} />
+          <ContextRow label="Sub-agents" value={agent?.subagents === undefined ? undefined : agent.subagents ? 'Enabled' : 'Disabled'} />
+        </RunContextCard>
+        <RunContextCard title="Workspace" className="sm:col-span-2">
+          <ContextRow label="Mode" value={context?.workspace?.mode || job?.workspace_mode} />
+          <ContextRow label="Directory" value={context?.workspace?.directory || job?.session_cwd || job?.worktree_path} code />
+          {repositories.map((repository, index) => (
+            <div key={`${repository.name || 'repository'}-${index}`} className="rounded-lg border bg-muted/20 p-3">
+              <div className="font-medium">{repository.name || 'Repository'}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {[repository.branch, repository.baseBranch ? `from ${repository.baseBranch}` : null].filter(Boolean).join(' ') ||
+                  'Branch not recorded'}
+              </div>
+              {repository.directory ? <code className="mt-2 block break-all text-xs">{repository.directory}</code> : null}
+            </div>
+          ))}
+        </RunContextCard>
+        <RunContextCard title="Enabled resources" className="sm:col-span-2">
+          <ContextTags label="Skills" values={resources?.skills} />
+          <ContextTags label="MCP servers" values={resources?.mcpServers} />
+          <ContextTags
+            label="References"
+            values={context?.references?.map(
+              (reference) => reference.label || `${reference.provider || 'external'} ${reference.kind || 'context'}`,
+            )}
+          />
+        </RunContextCard>
+        {!context ? (
+          <p className="text-sm text-muted-foreground sm:col-span-2">Detailed launch context was not recorded for this older run.</p>
+        ) : null}
+      </div>
+    </TabsContent>
+  )
+}
+
+function RunContextCard({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
+  return (
+    <section className={cn('space-y-3 rounded-xl border bg-card p-4', className)}>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function ContextRow({ label, value, code = false }: { label: string; value?: string | null; code?: boolean }) {
+  if (!value) return null
+  return (
+    <div className="grid gap-1 text-sm sm:grid-cols-[8rem_1fr]">
+      <span className="text-muted-foreground">{label}</span>
+      {code ? <code className="break-all text-xs">{value}</code> : <span>{value}</span>}
+    </div>
+  )
+}
+
+function ContextTags({ label, values }: { label: string; values?: string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-24 text-sm text-muted-foreground">{label}</span>
+      {values?.length ? (
+        values.map((value) => (
+          <Badge key={value} variant="secondary">
+            {value}
+          </Badge>
+        ))
+      ) : (
+        <span className="text-sm">None</span>
+      )}
     </div>
   )
 }
@@ -139,7 +229,7 @@ function ActivityTab(props: ThreadPanelTabsProps) {
     <TabsContent value="activity" className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
       <Conversation className="min-h-0 flex-1">
         <ConversationContent
-          className={cn('mx-auto w-full', props.activityOnly ? 'max-w-none gap-2 px-3 py-2' : 'max-w-5xl gap-4 px-3 py-4 sm:px-5 sm:py-5')}
+          className={cn('mx-auto w-full max-w-[760px]', props.activityOnly ? 'gap-2 px-3 py-2' : 'gap-4 px-3 py-4 sm:px-5 sm:py-5')}
         >
           <ThreadActivity
             job={props.job}

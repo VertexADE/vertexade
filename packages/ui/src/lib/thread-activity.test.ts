@@ -16,7 +16,7 @@ function job(overrides: Partial<JobLog> = {}) {
 
 describe('thread activity events', () => {
   it('renders the persisted result when the raw transcript is unavailable', () => {
-    expect(threadActivityEvents(job({ prompt: 'Original request' }))).toEqual([
+    expect(threadActivityEvents(job({ display_prompt: 'Original request' }))).toEqual([
       {
         kind: 'user_message',
         title: 'You',
@@ -42,7 +42,19 @@ describe('thread activity events', () => {
     const prompt = { kind: 'user_message', title: 'You', text: 'Original request', time: '2026-08-05T14:11:52Z' }
     const action = { kind: 'action', title: 'Inspect', text: 'Checked files', time: null }
 
-    expect(threadActivityEvents(job({ prompt: 'Original request', events: [action] }))).toEqual([prompt, action])
-    expect(threadActivityEvents(job({ prompt: 'Original request', events: [prompt, action] }))).toEqual([prompt, action])
+    expect(threadActivityEvents(job({ display_prompt: 'Original request', events: [action] }))).toEqual([prompt, action])
+    expect(threadActivityEvents(job({ display_prompt: 'Original request', events: [prompt, action] }))).toEqual([prompt, action])
+  })
+
+  it('never renders the internal provider prompt', () => {
+    expect(threadActivityEvents(job({ prompt: '[agent-safety]\nTrusted context' }))).toEqual([
+      {
+        kind: 'message',
+        title: 'Codex',
+        text: 'Persisted result',
+        time: '2026-08-05T14:20:52Z',
+        status: 'completed',
+      },
+    ])
   })
 })

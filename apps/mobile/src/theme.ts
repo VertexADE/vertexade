@@ -11,6 +11,7 @@ export const colors = {
   warning: '#e0ad4f',
   danger: '#f05b63',
   info: '#64d2ff',
+  success: '#30d158',
   glass: 'rgba(44, 44, 46, 0.72)',
   glassStrong: 'rgba(28, 28, 30, 0.88)',
   glassBorder: 'rgba(255, 255, 255, 0.10)',

@@ -578,6 +578,7 @@ async function resolveAgentLaunch(workItemId, prompt, agentId = agentLaunchConte
   return {
     prompt: applySkillInstructions(profilePrompt, resources),
     mcpServers: resources.mcpServers,
+    resourceSummary: { skills: resources.skills.map((skill) => skill.name), mcpServers: resources.mcpServers.map((server) => server.name) },
   }
 }
 subagentHarness = new SubagentHarness({

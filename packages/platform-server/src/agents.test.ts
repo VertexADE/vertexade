@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   agentProcessEnvironment,
+  applySubagentInstructions,
   migrateAgentEnvironmentsV1,
   normalizeAgentEnvironments,
   publicAgentEnvironment,
@@ -16,6 +17,13 @@ const directories: string[] = []
 afterEach(async () => Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))))
 
 describe('agent platform helpers', () => {
+  it('keeps sub-agent instructions before the final user request', () => {
+    const prompt = applySubagentInstructions('Trusted context\n\n<user_request>\nBuild it\n</user_request>', true)
+
+    expect(prompt.indexOf('<subagent_orchestration>')).toBeLessThan(prompt.indexOf('<user_request>'))
+    expect(prompt).toMatch(/<user_request>\nBuild it\n<\/user_request>$/)
+  })
+
   it('removes inherited Node IPC settings while preserving agent tooling', () => {
     expect(
       agentProcessEnvironment(

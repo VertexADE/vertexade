@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Send,
   Sparkles,
+  Server,
   Terminal,
   X,
 } from 'lucide-react'
@@ -413,7 +414,7 @@ export function FollowUpComposer({
   stopping: boolean
   onInterrupt: () => void
 }) {
-  const view = followUpView(job, options)
+  const view = followUpView(job)
   const queued = job.queued_follow_ups || []
   const hasPrompt = Boolean(value.trim())
   const textarea = useRef<HTMLTextAreaElement>(null)
@@ -435,17 +436,16 @@ export function FollowUpComposer({
         compact ? 'p-2 sm:px-3' : 'p-2 sm:px-5 sm:py-3',
       )}
     >
-      <div className={cn('mx-auto border bg-card/60', compact ? 'max-w-none rounded-lg p-2' : 'max-w-5xl rounded-xl p-2 sm:p-2.5')}>
-        <div className={cn('items-center justify-between gap-2 px-1 sm:flex', compact ? 'mb-1 flex' : 'mb-2 hidden')}>
+      <div className="mx-auto w-full max-w-[760px] rounded-xl border bg-card/60 p-2 sm:p-2.5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
           <div>
             <strong className="text-xs">{compact ? 'Continue' : view.title}</strong>
           </div>
           <div className="flex items-center gap-1">
-            {!compact ? (
-              <Badge variant="secondary" className="hidden max-w-56 truncate text-xs sm:inline-flex">
-                {view.modelLabel}
-              </Badge>
-            ) : null}
+            <Badge variant="secondary" className="h-7 max-w-48 gap-1 truncate px-2 text-[11px]" title={job.backend_name || 'Local'}>
+              <Server className="size-3.5 shrink-0" />
+              <span className="truncate">{job.backend_name || 'Local'}</span>
+            </Badge>
             {view.active ? (
               <Badge variant="outline" className="border-blue-500/40 text-xs text-blue-400">
                 Live turn
@@ -584,25 +584,15 @@ function QueuedFollowUps({
   )
 }
 
-function followUpView(job: JobLog, options: AgentLaunchOptions) {
+function followUpView(job: JobLog) {
   const active = ['starting', 'running'].includes(job.status)
   const steering = job.can_steer && active
   return {
     active,
     steering,
     title: active ? 'Guide this work run' : 'Continue this task',
-    modelLabel: followUpModelLabel(job, options, active),
     placeholder: active ? `Add the next instruction to the queue…` : `Ask ${job.agent_name} to clarify, revise, or continue…`,
   }
-}
-
-function followUpModelLabel(job: JobLog, options: AgentLaunchOptions, preferThread = false) {
-  if (preferThread) return threadContextLabel(job.agent_model, job.agent_reasoning_effort, `${job.agent_name} default`)
-  return threadContextLabel(
-    options.model ?? job.agent_model,
-    options.reasoningEffort ?? job.agent_reasoning_effort,
-    `${job.agent_name} default`,
-  )
 }
 
 function queuedFollowUpModelLabel(job: JobLog, queued: JobLog['queued_follow_ups'][number]) {

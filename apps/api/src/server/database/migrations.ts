@@ -5,6 +5,7 @@ import { migrateCanonicalPaths } from './canonical-paths-migration.ts'
 import { developmentMigrations } from './development-migrations.ts'
 import { developmentIntelligenceMigration } from './development-intelligence-migration.ts'
 import { orderedFollowUpMigration } from './ordered-follow-up-migration.ts'
+import { runContextMigration } from './run-context-migration.ts'
 import { addColumn, columns, tableExists } from './migration-utils.ts'
 import type { Migration } from './migration.ts'
 
@@ -748,6 +749,7 @@ const migrations: Migration[] = [
   },
   developmentIntelligenceMigration,
   orderedFollowUpMigration,
+  runContextMigration,
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

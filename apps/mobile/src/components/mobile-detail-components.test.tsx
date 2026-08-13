@@ -429,6 +429,18 @@ describe('mobile full detail views', () => {
         },
         {
           id: 'event-5',
+          kind: 'changes',
+          title: 'Files changed',
+          text: 'Updated the native composer layout',
+          time: '2026-08-11T10:03:30Z',
+          status: 'completed',
+          event: 'diff_updated',
+          files: [{ path: 'apps/mobile/src/components/mobile-thread-composer.tsx', additions: 12, deletions: 3, status: 'modified', binary: false }],
+          additions: 12,
+          deletions: 3,
+        },
+        {
+          id: 'event-6',
           kind: 'message',
           title: 'Codex',
           text: 'The composer now uses native spacing.',
@@ -436,7 +448,7 @@ describe('mobile full detail views', () => {
           status: 'completed',
           event: 'agent_message',
         },
-        { id: 'event-6', kind: 'system', title: 'Turn completed', text: '', time: '2026-08-11T10:05:00Z', status: 'completed', event: 'turn_completed' },
+        { id: 'event-7', kind: 'system', title: 'Turn completed', text: '', time: '2026-08-11T10:05:00Z', status: 'completed', event: 'turn_completed' },
       ],
     })
 
@@ -451,6 +463,9 @@ describe('mobile full detail views', () => {
     expect(screen.getByText('Worked for 2m')).toBeOnTheScreen()
     expect(screen.getByText(/The composer now uses native spacing/)).toBeOnTheScreen()
     expect(screen.queryByText('Inspect composer')).not.toBeOnTheScreen()
+    expect(screen.getByText('1 changed file')).toBeOnTheScreen()
+    fireEvent.press(screen.getByText('1 changed file'))
+    expect(screen.getByText('apps/mobile/src/components/mobile-thread-composer.tsx')).toBeOnTheScreen()
     fireEvent.press(screen.getByText('Worked for 2m'))
     expect(screen.getByText(/The composer now uses native spacing/)).toBeOnTheScreen()
     expect(screen.getByText('Inspect composer')).toBeOnTheScreen()
@@ -614,8 +629,9 @@ describe('mobile full detail views', () => {
     expect(screen.getByLabelText('Start voice input')).toBeOnTheScreen()
     expect(screen.getByLabelText('Clean up message')).toBeOnTheScreen()
     expect(screen.getByLabelText('Execution settings')).toBeOnTheScreen()
-    expect(screen.getByText('codex')).toBeOnTheScreen()
-    expect(screen.getByText('gpt-5.6 · high · Subagents off')).toBeOnTheScreen()
+    expect(screen.getByLabelText('Machine Fixture')).toBeOnTheScreen()
+    expect(screen.getByText('gpt-5.6')).toBeOnTheScreen()
+    expect(screen.getByText('high · codex · Subagents off')).toBeOnTheScreen()
   })
 
   test('renders review summary, findings, and editable suggestions before posting', async () => {

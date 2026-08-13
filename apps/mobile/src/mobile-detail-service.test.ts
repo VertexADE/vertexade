@@ -226,7 +226,19 @@ describe('mobile detail service', () => {
           source_job_id: 3,
           review_phase: 'complete',
           review_summary: 'Ready to merge',
-          events: [{ data: { event: 'turn_completed' }, title: 'Completed' }],
+          events: [
+            {
+              data: {
+                event: 'diff_updated',
+                diff_summary: {
+                  files: [{ path: 'src/app.ts', additions: 4, deletions: 1, status: 'modified', binary: false }],
+                  additions: 4,
+                  deletions: 1,
+                },
+              },
+              title: 'Files changed',
+            },
+          ],
         })
       if (path.endsWith('/diff')) return Promise.resolve({ diff: '', diff_summary: { files: [] } })
       return Promise.resolve({
@@ -243,7 +255,7 @@ describe('mobile detail service', () => {
       model: 'gpt-5.6',
       reasoningEffort: 'high',
       sourceJobId: 3,
-      events: [{ event: 'turn_completed' }],
+      events: [{ event: 'diff_updated', files: [{ path: 'src/app.ts' }], additions: 4, deletions: 1 }],
       suggestions: [{ id: 4, selected: true, replacement: '  return value\n' }],
     })
   })

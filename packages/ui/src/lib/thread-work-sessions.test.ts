@@ -10,6 +10,7 @@ describe('thread work sessions', () => {
       [
         event('u1', 'user_message', 'Implement it', '2026-08-13T10:00:00Z'),
         event('a1', 'action', 'Inspected files', '2026-08-13T10:00:05Z'),
+        event('d1', 'changes', 'Changed two files', '2026-08-13T10:00:50Z'),
         event('m1', 'message', 'Done', '2026-08-13T10:01:00Z'),
         event('c1', 'completed', '', '2026-08-13T10:01:00Z'),
         event('u2', 'user_message', 'Refine it', '2026-08-13T10:02:00Z'),
@@ -19,7 +20,14 @@ describe('thread work sessions', () => {
     )
 
     expect(sessions).toHaveLength(2)
-    expect(sessions[0]).toMatchObject({ complete: true, duration: '1m', actions: 1, trigger: { key: 'u1' }, finalMessage: { key: 'm1' } })
+    expect(sessions[0]).toMatchObject({
+      complete: true,
+      duration: '1m',
+      actions: 1,
+      trigger: { key: 'u1' },
+      finalMessage: { key: 'm1' },
+      changes: { key: 'd1' },
+    })
     expect(sessions[0].activity.map(({ key }) => key)).toEqual(['a1'])
     expect(sessions[1]).toMatchObject({ complete: false, actions: 1, trigger: { key: 'u2' } })
   })

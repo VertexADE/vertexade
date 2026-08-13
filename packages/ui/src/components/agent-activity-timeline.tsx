@@ -221,15 +221,17 @@ function SessionMessage({
 
 function WorkSession({
   session,
+  index,
   onOpenFile,
   worktreePath,
 }: {
   session: ThreadWorkSession
+  index: number
   onOpenFile: (reference: FileReference) => void
   worktreePath: string
 }) {
   return (
-    <section className="space-y-3" data-thread-work-session>
+    <section id={`thread-turn-${index + 1}`} className="scroll-mt-20 space-y-3" data-thread-work-session>
       <SessionMessage event={session.trigger} onOpenFile={onOpenFile} worktreePath={worktreePath} />
       {session.activity.length ? (
         <details className="group/session overflow-hidden rounded-xl border border-border/55 bg-muted/[.08]" open={!session.complete}>
@@ -250,6 +252,11 @@ function WorkSession({
         </details>
       ) : null}
       <SessionMessage event={session.finalMessage} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+      {session.changes ? (
+        <div className="flex justify-end" aria-label="Changes made in this turn">
+          <ChangesEvent event={session.changes} onOpenFile={onOpenFile} />
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -297,14 +304,20 @@ function ChangesEvent({ event, onOpenFile }: { event: TimelineEvent; onOpenFile:
   const files = diffFiles(event)
   if (!files.length) return <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{event.text}</p>
   return (
-    <div className="mt-2 overflow-hidden rounded-lg border bg-background/60">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/30 px-2.5 py-2 text-xs">
+    <details className="group/details mt-1 w-full max-w-xl overflow-hidden rounded-md border bg-background/60">
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/30">
+        <FileCode2 className="size-3.5 shrink-0 text-blue-500" />
         <strong>
           {files.length} {files.length === 1 ? 'file' : 'files'}
         </strong>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{event.text.split('\n', 1)[0] || 'File changes'}</span>
         <span className="font-mono text-emerald-500">+{files.reduce((total, file) => total + Number(file.additions || 0), 0)}</span>
         <span className="font-mono text-red-500">−{files.reduce((total, file) => total + Number(file.deletions || 0), 0)}</span>
-      </div>
+        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-180" />
+      </summary>
+      {event.text ? (
+        <p className="whitespace-pre-wrap break-words border-t px-2.5 py-2 text-xs text-muted-foreground">{event.text}</p>
+      ) : null}
       <ul className="max-h-72 divide-y overflow-auto">
         {files.map((file) => {
           const status = fileStatus(file)
@@ -334,7 +347,7 @@ function ChangesEvent({ event, onOpenFile }: { event: TimelineEvent; onOpenFile:
           )
         })}
       </ul>
-    </div>
+    </details>
   )
 }
 
@@ -375,12 +388,23 @@ function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: 
   const terminal = event.kind === 'completed'
   if (event.kind === 'action') {
     return (
-      <li className="relative flex min-w-0 items-center gap-2 py-0.5 text-[11px] text-muted-foreground">
-        <EventIcon event={event} />
-        <strong className="shrink-0 font-medium text-foreground/80">{event.title}</strong>
-        <span className="min-w-0 flex-1 truncate font-mono">{actionSummary(event)}</span>
-        <EventStatus event={event} />
-        <ActionDuration event={event} />
+      <li className="relative min-w-0 py-0.5 text-[11px] text-muted-foreground">
+        <details className="group/details w-full max-w-xl overflow-hidden rounded-md border border-transparent hover:border-border/55 hover:bg-muted/20">
+          <summary className="flex min-h-7 cursor-pointer list-none items-center gap-2 px-1.5 py-1">
+            <EventIcon event={event} />
+            <strong className="shrink-0 font-medium text-foreground/80">{event.title}</strong>
+            <span className="min-w-0 flex-1 truncate font-mono">{actionSummary(event)}</span>
+            <EventStatus event={event} />
+            <ActionDuration event={event} />
+            <ChevronDown className="size-3 shrink-0 transition-transform group-open/details:rotate-180" />
+          </summary>
+          <div className="border-t border-border/45 px-2.5 py-2">
+            <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/80">{event.text}</p>
+            <div className="mt-1 flex justify-end">
+              <CopyAction event={event} />
+            </div>
+          </div>
+        </details>
       </li>
     )
   }
@@ -450,7 +474,7 @@ export function AgentActivityTimeline({
   const summary = timelineSummary(timeline, state)
   const sessions = buildThreadWorkSessions(visible, state === 'completed')
   return (
-    <section className="space-y-3" data-agent-timeline>
+    <section className="relative space-y-3" data-agent-timeline>
       <header className="sticky top-0 z-20 flex items-center gap-2 border-y border-border/55 bg-background/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/85">
         <ListChecks className="size-4 text-muted-foreground" />
         <strong className="text-xs">Activity</strong>
@@ -464,11 +488,39 @@ export function AgentActivityTimeline({
           </span>
         ) : null}
       </header>
-      <div className="space-y-5">
-        {sessions.map((session) => (
-          <WorkSession key={session.key} session={session} onOpenFile={onOpenFile} worktreePath={worktreePath} />
-        ))}
+      <div className="relative">
+        <TurnRail sessions={sessions} />
+        <div className="space-y-5">
+          {sessions.map((session, index) => (
+            <WorkSession key={session.key} session={session} index={index} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+          ))}
+        </div>
       </div>
     </section>
+  )
+}
+
+function TurnRail({ sessions }: { sessions: ThreadWorkSession[] }) {
+  if (sessions.length < 2) return null
+  return (
+    <nav aria-label="Conversation turns" className="absolute right-full top-0 mr-3 hidden h-full w-8 lg:block">
+      <ol className="sticky top-14 flex flex-col items-center gap-1.5 rounded-full border bg-background/90 px-1 py-1.5 shadow-sm backdrop-blur">
+        {sessions.map((session, index) => (
+          <li key={session.key}>
+            <a
+              href={`#thread-turn-${index + 1}`}
+              className={cn(
+                'grid size-6 place-items-center rounded-full text-[10px] font-semibold transition-colors hover:bg-blue-500/15 hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+                session.complete ? 'bg-muted text-muted-foreground' : 'bg-blue-500 text-white',
+              )}
+              title={`Jump to turn ${index + 1}${session.duration ? ` · ${session.duration}` : ''}`}
+              aria-label={`Jump to turn ${index + 1}`}
+            >
+              {index + 1}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
   )
 }

@@ -2,15 +2,15 @@ import type { JobLog, LogEvent } from './dashboard-types'
 
 export function threadActivityEvents(job: JobLog): LogEvent[] {
   if (job.events.length) {
-    const prompt = job.prompt?.trim()
-    const promptAlreadyPresent = prompt && job.events.some((event) => event.kind === 'user_message' && event.text.trim() === prompt)
+    const prompt = job.display_prompt?.trim()
+    const promptAlreadyPresent = job.events.some((event) => event.kind === 'user_message')
     return prompt && !promptAlreadyPresent
       ? [{ kind: 'user_message', title: 'You', text: prompt, time: job.created_at }, ...job.events]
       : job.events
   }
   if (!job.result_text?.trim()) return []
   return [
-    ...(job.prompt?.trim() ? [{ kind: 'user_message', title: 'You', text: job.prompt, time: job.created_at }] : []),
+    ...(job.display_prompt?.trim() ? [{ kind: 'user_message', title: 'You', text: job.display_prompt, time: job.created_at }] : []),
     {
       kind: 'message',
       title: job.agent_name,

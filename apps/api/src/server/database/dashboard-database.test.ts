@@ -61,6 +61,7 @@ describe('dashboard database migrations', () => {
       { version: 41, name: 'single-active-work-item-worktree' },
       { version: 42, name: 'development-repository-knowledge' },
       { version: 43, name: 'ordered-job-follow-up-queue' },
+      { version: 44, name: 'agent-run-context-summary' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',
@@ -86,6 +87,8 @@ describe('dashboard database migrations', () => {
         'subagent_token_expires_at',
         'subagent_base_sha',
         'subagent_integrated_at',
+        'run_context',
+        'display_prompt',
       ]),
     )
     expect(

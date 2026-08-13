@@ -118,6 +118,8 @@ export const jobs = sqliteTable(
     automaticReview: integer('automatic_review').default(0).notNull(),
     agentModel: text('agent_model'),
     agentReasoningEffort: text('agent_reasoning_effort'),
+    runContext: text('run_context', { mode: 'json' }).$type<Record<string, unknown>>(),
+    displayPrompt: text('display_prompt'),
     reviewPhase: text('review_phase'),
     reviewPhaseStartedAt: text('review_phase_started_at'),
     reviewDetails: text('review_details'),
