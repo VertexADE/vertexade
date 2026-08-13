@@ -21,6 +21,8 @@ export const repositories = sqliteTable(
     fullName: text('full_name').notNull(),
     cloneUrl: text('clone_url').notNull(),
     localPath: text('local_path').notNull(),
+    sourceKind: text('source_kind').$type<'git' | 'directory' | 'workspace'>().default('git').notNull(),
+    workspaceStrategy: text('workspace_strategy').default('worktree').notNull(),
     createdAt: text('created_at')
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),

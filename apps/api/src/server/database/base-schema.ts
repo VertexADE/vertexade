@@ -1,7 +1,8 @@
 export const baseSchema = `
   CREATE TABLE IF NOT EXISTS repositories (
     id INTEGER PRIMARY KEY, full_name TEXT NOT NULL UNIQUE, clone_url TEXT NOT NULL,
-    local_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    local_path TEXT NOT NULL, source_kind TEXT NOT NULL DEFAULT 'git',
+    workspace_strategy TEXT NOT NULL DEFAULT 'worktree', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     synced_at TEXT, codex_bootstrapped_at TEXT
   );
   CREATE TABLE IF NOT EXISTS pull_requests (

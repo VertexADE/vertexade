@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileText,
   FolderGit2,
+  FolderInput,
   GitCommitHorizontal,
   MessageSquareText,
   MoreHorizontal,
@@ -62,6 +63,28 @@ async function setThreadArchived(job: Job, archived: boolean, onChanged: () => v
   try {
     await api(`/api/agent-threads/${job.id}/archive`, { method: 'POST', body: JSON.stringify({ archived }) })
     toast.success(archived ? 'Agent run archived; worktree retained' : 'Agent run restored')
+    onChanged()
+  } catch (error) {
+    toast.error((error as Error).message)
+  }
+}
+
+async function applyDirectoryChanges(job: Job, confirmAction: ReturnType<typeof useConfirm>, onChanged: () => void) {
+  try {
+    const preview = await api<{ strategy: 'copy' | 'move'; changed: string[]; deleted: string[]; conflicts: string[] }>(
+      `/api/agent-threads/${job.id}/directory-apply/preview`,
+    )
+    if (!preview.changed.length) return toast.info('No directory changes to apply')
+    if (preview.conflicts.length) return toast.error(`${preview.conflicts.length} changed path(s) also changed in the source directory`)
+    const confirmed = await confirmAction({
+      title: preview.strategy === 'move' ? 'Replace the source directory?' : 'Apply directory changes?',
+      description: `${preview.changed.length} changed path(s), including ${preview.deleted.length} deletion(s), will be applied to the original directory.${preview.strategy === 'move' ? ' VertexADE will stage the result and roll back if replacement fails.' : ''}`,
+      confirmLabel: preview.strategy === 'move' ? 'Replace directory' : 'Apply changes',
+      destructive: preview.strategy === 'move',
+    })
+    if (!confirmed) return
+    await api(`/api/agent-threads/${job.id}/directory-apply`, { method: 'POST', body: '{}' })
+    toast.success(`Applied ${preview.changed.length} changed path(s) to the source directory`)
     onChanged()
   } catch (error) {
     toast.error((error as Error).message)
@@ -405,6 +428,7 @@ export function ThreadRow({
   const fileCount = job.diff_file_count ?? parseJson<unknown[]>(job.diff_files, []).length
   const title = threadTitle(job)
   const busy = ['starting', 'running'].includes(job.status)
+  const canApplyDirectory = !busy && ['copy', 'move'].includes(job.directory_workspace_strategy || '')
   return (
     <article
       data-agent-provider={job.agent_id}
@@ -495,6 +519,11 @@ export function ThreadRow({
             <Badge variant="outline" className="border-amber-500/50 text-[11px] text-amber-500">
               PR merged · cleanup suggested
             </Badge>
+          )}
+          {canApplyDirectory && (
+            <Button variant="outline" size="xs" onClick={() => void applyDirectoryChanges(job, confirmAction, onChanged)}>
+              <FolderInput /> Apply to directory
+            </Button>
           )}
         </div>
       </div>

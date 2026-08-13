@@ -62,6 +62,7 @@ describe('dashboard database migrations', () => {
       { version: 42, name: 'development-repository-knowledge' },
       { version: 43, name: 'ordered-job-follow-up-queue' },
       { version: 44, name: 'agent-run-context-summary' },
+      { version: 45, name: 'local-directory-workspaces' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',

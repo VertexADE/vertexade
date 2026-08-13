@@ -84,7 +84,7 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     valid,
     setTitle: (title: string) => update({ title }),
     setPrompt: (prompt: string) => update({ prompt }),
-    setRepositoryId: (repositoryId: number) => update({ repositoryId }),
+    setRepositoryId: (repositoryId: number | null) => update({ repositoryId }),
     setCreatePullRequest: (createPullRequest: boolean) => update({ createPullRequest }),
     setAgentOptions: (agentOptions: MobileAgentOptions) => update({ agentOptions }),
     chooseBackend,
@@ -123,7 +123,7 @@ function initialPrompt(item: MobileWorkItem | undefined): string {
 
 function validCreation(mode: MobileCreateMode, state: CreationState, selectedWorkItem: MobileWorkItem | null): boolean {
   if (mode === 'work') return Boolean(state.title.trim() && state.backendId)
-  if (mode === 'thread') return Boolean(selectedWorkItem && state.repositoryId && state.prompt.trim())
+  if (mode === 'thread') return Boolean(selectedWorkItem && state.prompt.trim())
   return Boolean(state.title.trim() && state.repositoryId && state.prompt.trim())
 }
 
@@ -154,11 +154,11 @@ async function startExistingWorkThread(
   state: CreationState,
   selectedWorkItem: MobileWorkItem | null,
 ): Promise<string> {
-  if (!selectedWorkItem || !state.repositoryId) throw new Error('Choose Work and a repository')
+  if (!selectedWorkItem) throw new Error('Choose Work')
   await startMobileThread(serviceUrl, {
     backendId,
     workItemId: selectedWorkItem.id,
-    repositoryId: state.repositoryId,
+    ...(state.repositoryId ? { repositoryId: state.repositoryId } : {}),
     prompt: state.prompt,
     createPullRequest: state.createPullRequest,
     agentOptions: state.agentOptions,

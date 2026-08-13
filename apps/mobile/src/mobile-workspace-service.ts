@@ -65,6 +65,7 @@ export type MobileThread = MobileSource & {
   pullRequestNumber: number | null
   pullRequestUrl: string
   archived: boolean
+  repositorySourceKind?: 'git' | 'directory' | 'workspace'
 }
 
 export type MobileWorkspace = {
@@ -84,7 +85,7 @@ export type CreateMobileWorkItemInput = {
 export type StartMobileThreadInput = {
   backendId: string
   workItemId: number
-  repositoryId: number
+  repositoryId?: number
   prompt: string
   createPullRequest: boolean
   agentOptions?: MobileAgentOptions
@@ -170,7 +171,7 @@ export async function startMobileThread(serviceUrl: string, input: StartMobileTh
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(input.agentOptions ? mobileAgentHeaders(input.agentOptions) : {}) },
       body: JSON.stringify({
-        repository_ids: [input.repositoryId],
+        repository_ids: input.repositoryId === undefined ? [] : [input.repositoryId],
         prompt,
         create_pr: input.createPullRequest,
         ...(input.agentOptions?.agentId ? { agent_id: input.agentOptions.agentId } : {}),
@@ -257,6 +258,7 @@ function parseThread(value: unknown, backends: MobileBackend[], defaultBackend: 
     pullRequestNumber: optionalPositiveInteger(record.linked_pr_number) ?? optionalPositiveInteger(record.pr_number),
     pullRequestUrl: optionalString(record.linked_pr_url, 4_000),
     archived: Boolean(record.archived_at),
+    repositorySourceKind: choice(record.repository_source_kind, ['git', 'directory', 'workspace'] as const, 'git'),
   }
 }
 

@@ -113,6 +113,7 @@ import {
   runtimeWorkMemory as workMemory,
 } from './runtime-context.ts'
 import { highlightRules, jobs, presets, pullRequests, repositories } from '../database/schema/tables.ts'
+import { applyDirectoryWorkspace, previewDirectoryApply } from '../work/directory-workspace.ts'
 import { highlightRuleRecord, presetRecord, pullRequestRecord, repositoryRecord } from '../database/contract-records.ts'
 import {
   LinkedServerAccessError,
@@ -548,6 +549,34 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
     if (summary.running) return json(409, { error: 'A repository refresh is already running' })
     return json(summary.errors.length ? 207 : 200, summary)
   }
+  const directoryApplyMatch = url.pathname.match(/^\/api\/agent-threads\/(\d+)\/directory-apply(?:\/(preview))?$/)
+  if (directoryApplyMatch && ['GET', 'POST'].includes(request.method)) {
+    const row = db
+      .select({
+        status: jobs.status,
+        workspace: jobs.worktreePath,
+        source: repositories.localPath,
+        sourceKind: repositories.sourceKind,
+        strategy: repositories.workspaceStrategy,
+      })
+      .from(jobs)
+      .innerJoin(repositories, eq(repositories.id, jobs.repoId))
+      .where(eq(jobs.id, Number(directoryApplyMatch[1])))
+      .get()
+    if (!row) return json(404, { error: 'Agent thread not found' })
+    if (row.sourceKind !== 'directory' || !['copy', 'move'].includes(row.strategy)) {
+      return json(400, { error: 'This thread does not use an applicable directory workspace' })
+    }
+    if (['starting', 'running'].includes(row.status))
+      return json(409, { error: 'Wait for the agent session to finish before applying changes' })
+    const strategy = row.strategy as 'copy' | 'move'
+    if (request.method === 'GET' || directoryApplyMatch[2]) {
+      return json(200, await previewDirectoryApply(row.source, row.workspace, strategy))
+    }
+    const result = await applyDirectoryWorkspace(row.source, row.workspace, strategy)
+    notifyClients('directory_workspace_applied', Number(directoryApplyMatch[1]))
+    return json(200, { ...result, applied: true })
+  }
   if (request.method === 'GET' && url.pathname === '/api/agent-threads') {
     void refreshMergedThreadState()
     const archive = url.searchParams.get('archive') || 'open'
@@ -559,6 +588,41 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
   }
   if (request.method === 'POST' && url.pathname === '/api/repositories') {
     const input = await body(request)
+    if (input.local_path) {
+      const localPath = await realpath(String(input.local_path))
+      const localStat = await stat(localPath)
+      if (!localStat.isDirectory()) return json(400, { error: 'Local path must be a directory' })
+      let git = false
+      try {
+        const root = await run('git', ['-C', localPath, 'rev-parse', '--show-toplevel'])
+        git = resolve(root.trim()) === resolve(localPath)
+      } catch {}
+      const requested = String(input.workspace_strategy || '').trim()
+      const allowed = git ? ['worktree', 'direct'] : ['direct', 'copy', 'move']
+      const workspaceStrategy = requested || (git ? 'worktree' : 'direct')
+      if (!allowed.includes(workspaceStrategy)) {
+        return json(400, {
+          error: git ? 'Git directories support worktree or direct mode' : 'Plain directories support direct, copy, or move mode',
+        })
+      }
+      const existing = db.select().from(repositories).where(eq(repositories.localPath, localPath)).get()
+      if (existing) return json(200, { repo: repositoryRecord(existing), open_prs: 0, agent_bootstrapped: false })
+      const label =
+        String(input.name || basename(localPath))
+          .trim()
+          .slice(0, 100) || basename(localPath)
+      let fullName = `Local/${label}`
+      let suffix = 2
+      while (db.select({ id: repositories.id }).from(repositories).where(eq(repositories.fullName, fullName)).get()) {
+        fullName = `Local/${label} ${suffix++}`
+      }
+      db.insert(repositories)
+        .values({ fullName, cloneUrl: localPath, localPath, sourceKind: git ? 'git' : 'directory', workspaceStrategy })
+        .run()
+      const stored = db.select().from(repositories).where(eq(repositories.fullName, fullName)).get()!
+      notifyClients('repository')
+      return json(201, { repo: repositoryRecord(stored), open_prs: 0, agent_bootstrapped: false })
+    }
     const identity = scmProvider(input.repository).parseRepository(input.repository)
     const fullName = identity.id
     const localPath = join(REPOS, fullName.split('/')[1])

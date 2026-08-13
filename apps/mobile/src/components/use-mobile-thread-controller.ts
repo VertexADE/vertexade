@@ -142,7 +142,9 @@ function createThreadActions(dependencies: ActionDependencies) {
     fork: (input: MobileForkThreadInput) =>
       void dependencies.run(
         () => forkMobileThread(dependencies.serviceUrl, dependencies.thread, input),
-        'New branch, worktree, and forked run started.',
+        dependencies.thread.repositorySourceKind === 'workspace'
+          ? 'New isolated workspace and forked run started.'
+          : 'New branch, worktree, and forked run started.',
         (forked) => dependencies.onOpenThread?.(forked),
       ),
     reReview: () =>

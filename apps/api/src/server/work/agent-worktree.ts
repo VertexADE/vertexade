@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm, rmdir, stat } from 'node:fs/promises'
+import { cp, mkdir, rm, rmdir, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { vertexWorkItemDirectory } from '@vertexade/platform-server/configuration'
 import { parseWorkItemWorkspaceMode, workItemWorkspaceLayout } from './workspace-layout.ts'
 
-type Repository = { full_name: string; local_path: string }
+type Repository = {
+  full_name: string
+  local_path: string
+  source_kind?: 'git' | 'directory' | 'workspace'
+  workspace_strategy?: 'worktree' | 'direct' | 'copy' | 'move'
+}
 type RuntimeAgent = { workspaceRoot: string }
 type Run = (command: string, args: string[]) => Promise<string>
 
@@ -119,6 +124,20 @@ export async function allocateAgentWorktree(
   workspace: { mode?: unknown; workItemKey?: string },
   dependencies: Dependencies,
 ) {
+  const strategy = repository.workspace_strategy || 'worktree'
+  if (strategy === 'direct') {
+    await dependencies.prepare(repository, repository.local_path, agent)
+    return {
+      worktree: repository.local_path,
+      baseGitDir: repository.source_kind === 'directory' ? null : await commonGitDirectory(dependencies.run, repository.local_path),
+      sessionCwd: repository.local_path,
+      workspaceMode: 'repository' as const,
+      branchName: null,
+      headSha: repository.source_kind === 'directory' ? null : revision,
+      created: false,
+      workspaceStrategy: strategy,
+    }
+  }
   const mode = parseWorkItemWorkspaceMode(workspace.mode, 'repository')
   const layout = workItemWorkspaceLayout({
     agentWorkspaceRoot: agent.workspaceRoot,
@@ -129,6 +148,23 @@ export async function allocateAgentWorktree(
     mode,
     identifier: randomUUID(),
   })
+  if (repository.source_kind === 'directory' || repository.source_kind === 'workspace') {
+    if (!['copy', 'move'].includes(strategy)) throw new Error('Plain directories require direct, copy, or move workspace mode')
+    await mkdir(layout.root, { recursive: true })
+    await cp(repository.local_path, layout.worktree, { recursive: true, errorOnExist: true, force: false })
+    await cp(repository.local_path, `${layout.worktree}.baseline`, { recursive: true, errorOnExist: true, force: false })
+    await dependencies.prepare(repository, layout.worktree, agent)
+    return {
+      worktree: layout.worktree,
+      baseGitDir: null,
+      sessionCwd: layout.root,
+      workspaceMode: mode,
+      branchName: null,
+      headSha: null,
+      created: true,
+      workspaceStrategy: strategy,
+    }
+  }
   await dependencies.run('git', ['-C', repository.local_path, 'config', 'extensions.worktreeConfig', 'true'])
   const input: AllocationInput = {
     repository,

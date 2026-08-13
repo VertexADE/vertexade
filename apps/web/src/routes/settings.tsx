@@ -351,11 +351,11 @@ function SettingsPage() {
     [load],
   )
 
-  async function addRepository(repository: string) {
+  async function addRepository(input: { repository: string } | { local_path: string; name?: string; workspace_strategy?: string }) {
     try {
       const result = await api<{ repo: Repository; open_prs: number }>('/api/repositories', {
         method: 'POST',
-        body: JSON.stringify({ repository }),
+        body: JSON.stringify(input),
       })
       await load()
       toast.success(`Added ${result.repo.full_name} · ${result.open_prs} open PRs`)

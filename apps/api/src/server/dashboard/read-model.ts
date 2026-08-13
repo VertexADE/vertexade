@@ -131,7 +131,13 @@ export function persistedThreadContext(jobId) {
 }
 
 function dashboardData() {
-  const repositories = db.select().from(repositoryTable).orderBy(asc(repositoryTable.fullName)).all().map(repositoryRecord)
+  const repositories = db
+    .select()
+    .from(repositoryTable)
+    .where(sql`${repositoryTable.sourceKind}<>'workspace'`)
+    .orderBy(asc(repositoryTable.fullName))
+    .all()
+    .map(repositoryRecord)
   const prs = db.all(sql`SELECT p.*, r.full_name,
     review.id AS latest_agent_review_id,
     review.head_sha AS latest_agent_review_head_sha,
@@ -238,6 +244,8 @@ export function threadSummaries(archive = 'all') {
     j.branch_name,j.linked_pr_number,
     j.linked_pr_url,j.archived_at,j.pr_merged_at,j.pr_closed_at,j.review_phase,j.review_phase_started_at,
     j.agent_model,j.agent_reasoning_effort,j.ephemeral,j.work_item_id,j.agent_id,j.subagent_integrated_at,r.full_name,
+    r.source_kind AS repository_source_kind,
+    CASE WHEN r.source_kind='directory' THEN r.workspace_strategy ELSE NULL END AS directory_workspace_strategy,
     CASE WHEN json_valid(j.diff_files) THEN json_array_length(j.diff_files) ELSE 0 END AS diff_file_count,
     (SELECT COUNT(*) FROM job_follow_up_queue queue WHERE queue.job_id=j.id AND queue.status='queued') AS queued_follow_up_count
     FROM jobs j JOIN repositories r ON r.id=j.repo_id

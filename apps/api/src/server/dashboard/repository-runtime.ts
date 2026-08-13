@@ -525,6 +525,7 @@ export async function refreshAllRepositories() {
   try {
     const storedRepositories = db.select().from(repositories).orderBy(asc(repositories.id)).all().map(repositoryRecord)
     for (const repo of storedRepositories) {
+      if (repo.clone_url === repo.local_path) continue
       try {
         summary.open_prs += await syncRepository(repo)
         summary.repositories += 1
@@ -742,6 +743,10 @@ export async function repositoryReviewers(repo) {
 }
 
 export async function ensureClone(repo) {
+  if (repo.clone_url === repo.local_path || repo.source_kind === 'directory') {
+    await stat(repo.local_path)
+    return
+  }
   const keyPath = repositoryCredentials(repo.full_name).sshKeyPath
   const gitEnvironment = keyPath ? { ...process.env, GIT_SSH_COMMAND: sshCommand(keyPath) } : undefined
   let cloned = false

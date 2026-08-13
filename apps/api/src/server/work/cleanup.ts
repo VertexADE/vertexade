@@ -315,6 +315,12 @@ export function createWorkCleanup(dependencies: Dependencies) {
     const runtimeAgent = dependencies.agents.require(job.agent_id || dependencies.defaultAgentId)
     assertSafeWorktree(job, runtimeAgent, workItemWorkspaceRoot)
     if (!(await pathExists(job.worktree_path))) return
+    if (String(job.full_name).startsWith('Local/') || job.full_name === 'Workspace/General') {
+      if (resolve(job.worktree_path) === resolve(job.repository_path)) return
+      await removeDirectory(job.worktree_path)
+      await removeDirectory(`${job.worktree_path}.baseline`)
+      return
+    }
     if (!(await pathExists(job.base_repo_path))) return removeDirectory(job.worktree_path)
     await removeRegisteredWorktree(job)
     try {

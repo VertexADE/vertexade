@@ -57,6 +57,7 @@ import { jobSessionCwd, parseWorkItemWorkspaceMode, relativeWorktreePath, workIt
 import { createCoreRoutes } from '../core-routes.ts'
 import { worktreeCodeReviewPrompt } from '../work/prompts.ts'
 import { populateWorktreeSnapshot } from '../work/worktree-snapshot.ts'
+import { previewDirectoryApply } from '../work/directory-workspace.ts'
 import { WorktreePreviewRuntime, normalizePreviewSettings } from '../previews/runtime.ts'
 import { WorktreePreviewGateway } from '../previews/gateway.ts'
 import { openDashboardDatabase } from '../database/dashboard-database.ts'
@@ -401,13 +402,35 @@ export function createJobProcessMonitor({
       }
       try {
         const storedJob = db
-          .select({ headSha: jobs.headSha, worktreePath: jobs.worktreePath, kind: jobs.kind, repoId: jobs.repoId })
+          .select({
+            headSha: jobs.headSha,
+            worktreePath: jobs.worktreePath,
+            kind: jobs.kind,
+            repoId: jobs.repoId,
+            sourcePath: repositories.localPath,
+            sourceKind: repositories.sourceKind,
+            workspaceStrategy: repositories.workspaceStrategy,
+          })
           .from(jobs)
+          .innerJoin(repositories, eq(repositories.id, jobs.repoId))
           .where(eq(jobs.id, jobId))
           .get()
         const job = storedJob ? jobRecord(storedJob) : null
-        const diff = await run('git', ['-C', job.worktree_path, 'diff', '--no-ext-diff', '--binary', job.head_sha, '--'])
-        if (diff.trim()) storeJobDiff(jobId, diff)
+        if (storedJob?.sourceKind === 'directory' && ['copy', 'move'].includes(storedJob.workspaceStrategy)) {
+          const preview = await previewDirectoryApply(
+            storedJob.sourcePath,
+            storedJob.worktreePath,
+            storedJob.workspaceStrategy as 'copy' | 'move',
+          )
+          db.update(jobs)
+            .set({ diffFiles: JSON.stringify(preview.changed), diffAdditions: 0, diffDeletions: preview.deleted.length })
+            .where(eq(jobs.id, jobId))
+            .run()
+          notifyClients('diff', jobId)
+        } else if (storedJob?.sourceKind !== 'directory') {
+          const diff = await run('git', ['-C', job.worktree_path, 'diff', '--no-ext-diff', '--binary', job.head_sha, '--'])
+          if (diff.trim()) storeJobDiff(jobId, diff)
+        }
         if (job.kind === 'pre_pr') {
           const storedRepository = db.select().from(repositories).where(eq(repositories.id, job.repo_id)).get()
           const repo = storedRepository ? repositoryRecord(storedRepository) : null

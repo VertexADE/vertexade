@@ -24,6 +24,8 @@ export function repositoryRecord(row: Repository) {
     full_name: row.fullName,
     clone_url: row.cloneUrl,
     local_path: row.localPath,
+    source_kind: row.sourceKind,
+    workspace_strategy: row.workspaceStrategy,
     created_at: row.createdAt,
     synced_at: row.syncedAt,
   }

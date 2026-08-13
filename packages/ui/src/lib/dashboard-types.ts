@@ -5,6 +5,8 @@ export type Repository = BackendAttributed & {
   id: number
   full_name: string
   local_path: string
+  source_kind: 'git' | 'directory' | 'workspace'
+  workspace_strategy: 'worktree' | 'direct' | 'copy' | 'move'
   synced_at: string | null
 }
 
@@ -96,6 +98,8 @@ export type Job = BackendAttributed & {
   agent_reasoning_effort: string | null
   work_item_id: number | null
   queued_follow_up_count?: number
+  repository_source_kind?: 'git' | 'directory' | 'workspace'
+  directory_workspace_strategy?: 'direct' | 'copy' | 'move' | null
 }
 
 export type WorkResource = {
@@ -223,7 +227,9 @@ export type WorkItem = BackendAttributed & {
 
 export type WorkBoardData = {
   items: WorkItem[]
-  repositories: Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'>[]
+  repositories: Array<
+    Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'> & Partial<Pick<Repository, 'source_kind' | 'workspace_strategy'>>
+  >
 }
 
 export type WorkLaunchResult = {

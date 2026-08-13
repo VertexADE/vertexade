@@ -164,7 +164,12 @@ function ThreadActionsHeader({
   onBack(): void
 }) {
   const menu = view === 'menu'
-  const title = view === 'fork' ? 'Fork into a worktree' : view === 'transfer' ? 'Send to a worktree' : 'Thread actions'
+  const title =
+    view === 'fork'
+      ? `Fork into a ${detail.repositorySourceKind === 'workspace' ? 'workspace' : 'worktree'}`
+      : view === 'transfer'
+        ? 'Send to a worktree'
+        : 'Thread actions'
   return <MobileSheetHeader
     title={title}
     subtitle={`Run #${detail.id} · ${detail.fullName}`}
@@ -286,7 +291,17 @@ function ThreadWorkflowActions({
   const canReReview = detail.kind === 'review' && detail.status === 'completed'
   return (
     <View style={styles.actionList}>
-      {canForkMobileThread(detail) ? <ActionOption title="Fork into a new worktree" text="Keep the conversation and continue on a separate branch." onPress={() => onView('fork')} /> : null}
+      {canForkMobileThread(detail) ? (
+        <ActionOption
+          title={`Fork into a new ${detail.repositorySourceKind === 'workspace' ? 'workspace' : 'worktree'}`}
+          text={
+            detail.repositorySourceKind === 'workspace'
+              ? 'Copy the files and conversation into an isolated workspace.'
+              : 'Keep the conversation and continue on a separate branch.'
+          }
+          onPress={() => onView('fork')}
+        />
+      ) : null}
       {canTransferMobileThread(detail) ? <ActionOption title="Send output to another worktree" text="Create a durable child Work item and transfer this result." onPress={() => onView('transfer')} /> : null}
       {canSaveMobileThreadTasks(detail) ? <ActionOption disabled={busy} title="Save stack findings as tasks" text="Add the report manifest to the PR action list." onPress={() => runAndClose(onClose, onSaveTasks)} /> : null}
       {canReReview ? <ActionOption disabled={busy} title="Start a fresh re-review" text="Review the pull request’s current head again." onPress={() => runAndClose(onClose, onReReview)} /> : null}
@@ -334,7 +349,10 @@ function ForkThreadForm({
   const valid = Boolean(title.trim() && prompt.trim())
   return (
     <ScrollView contentContainerStyle={styles.actionModalContent} keyboardShouldPersistTaps="handled">
-      <Text style={styles.muted}>The fork keeps this completed conversation but works on a separate branch and worktree.</Text>
+      <Text style={styles.muted}>
+        The fork keeps this completed conversation but works in a separate{' '}
+        {detail.repositorySourceKind === 'workspace' ? 'copy of the workspace' : 'branch and worktree'}.
+      </Text>
       <ChoiceGroup label="Start from" values={['current', 'main']} value={base} onChange={(value) => setBase(value as typeof base)} />
       <ChoiceGroup label="Branch type" values={['feature', 'fix', 'chore', 'refactor', 'test', 'docs']} value={branchType} onChange={setBranchType} />
       <View style={styles.formGroup}>

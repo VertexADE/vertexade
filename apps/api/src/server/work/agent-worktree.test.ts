@@ -5,6 +5,23 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 import { allocateAgentWorktree } from './agent-worktree.ts'
 
 describe('agent worktree allocation', () => {
+  it('uses a plain local directory directly without invoking Git', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vertexade-direct-'))
+    const prepare = vi.fn()
+    const run = vi.fn()
+    const result = await allocateAgentWorktree(
+      { full_name: 'Local/docs', local_path: root, source_kind: 'directory', workspace_strategy: 'direct' },
+      { workspaceRoot: join(root, 'agents') },
+      '',
+      null,
+      { workItemKey: 'W-0001' },
+      { run, prepare, cleanup: vi.fn() },
+    )
+    expect(result).toMatchObject({ worktree: root, sessionCwd: root, workspaceStrategy: 'direct', baseGitDir: null })
+    expect(run).not.toHaveBeenCalled()
+    expect(prepare).toHaveBeenCalledOnce()
+  })
+
   it('reuses the stable combined repository worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-combined-'))
     const agentWorkspaceRoot = join(root, 'agents', 'codex')

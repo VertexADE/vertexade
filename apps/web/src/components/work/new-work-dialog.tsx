@@ -68,7 +68,7 @@ export function NewWorkDialog({
   const launchSummary = startThread
     ? selectedRepositoryNames.length
       ? `Start now · ${selectedRepositoryNames.join(', ')}`
-      : 'Choose a workspace to start'
+      : 'Start in a managed general workspace'
     : 'Add to Work · start later'
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,11 +95,7 @@ export function NewWorkDialog({
                 className="text-base"
                 placeholder="What should be different when this is done?"
               />
-              <p className="text-xs text-muted-foreground">
-                {repositories.length || !startThread
-                  ? 'One sentence is enough. The rest is optional.'
-                  : 'Add one sentence, then choose where the work should run.'}
-              </p>
+              <p className="text-xs text-muted-foreground">One sentence is enough. The rest is optional.</p>
             </section>
 
             {backends.length > 1 && (
@@ -269,15 +265,7 @@ export function NewWorkDialog({
               <Button type="button" variant="outline" className="hidden sm:inline-flex" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button
-                disabled={
-                  busy ||
-                  generatingTitle ||
-                  uploadingImages ||
-                  (!title.trim() && !description.trim()) ||
-                  (startThread && !repositories.length)
-                }
-              >
+              <Button disabled={busy || generatingTitle || uploadingImages || (!title.trim() && !description.trim())}>
                 {busy || uploadingImages ? <Loader2 className="animate-spin" /> : startThread ? <Bot /> : <Plus />}
                 {uploadingImages
                   ? 'Adding images…'
@@ -321,7 +309,7 @@ function RepositoryChooser({
           <RepositoryMultiSelect repositories={repositories} selected={selected} onChange={onChange} />
         </PopoverContent>
       </Popover>
-      {!selected.length && <p className="text-[11px] text-amber-300">Select at least one repository to start an agent.</p>}
+      {!selected.length && <p className="text-[11px] text-muted-foreground">No repository · use a managed general workspace.</p>}
     </div>
   )
 }

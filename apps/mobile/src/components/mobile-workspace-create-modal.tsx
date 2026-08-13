@@ -150,12 +150,15 @@ function RepositoryTarget({ mode, creation }: { mode: MobileCreateMode; creation
   if (mode === 'work' && !creation.repositories.length) return null
   return (
     <OptionGroup
-      label={mode === 'work' ? 'Repository (optional)' : 'Repository'}
+      label={mode === 'pullRequest' ? 'Repository' : 'Repository (optional)'}
       empty="No repositories are available on this server. Add or sync one in VertexADE web first."
-      options={creation.repositories.map((repository) => ({ id: String(repository.id), label: repository.fullName }))}
-      selectedId={creation.repositoryId === null ? '' : String(creation.repositoryId)}
+      options={[
+        ...(mode === 'pullRequest' ? [] : [{ id: 'general', label: 'General workspace', meta: 'No repository or Git required' }]),
+        ...creation.repositories.map((repository) => ({ id: String(repository.id), label: repository.fullName })),
+      ]}
+      selectedId={creation.repositoryId === null && mode !== 'pullRequest' ? 'general' : String(creation.repositoryId || '')}
       testIdPrefix="create-repository"
-      onSelect={(id) => creation.setRepositoryId(Number(id))}
+      onSelect={(id) => creation.setRepositoryId(id === 'general' ? null : Number(id))}
     />
   )
 }

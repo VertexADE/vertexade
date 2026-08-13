@@ -17,6 +17,7 @@ import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts
 import { jobs as jobsTable, pullRequests as pullRequestsTable, repositories as repositoriesTable } from '../database/schema/tables.ts'
 import { pullRequestRecord } from '../database/contract-records.ts'
 import { workDeletionRoute } from './deletion-route.ts'
+import { generalWorkspaceRepository } from './general-workspace.ts'
 
 type RepositoryRow = {
   id: number
@@ -25,6 +26,8 @@ type RepositoryRow = {
   local_path: string
   created_at: string
   synced_at: string | null
+  source_kind: 'git' | 'directory' | 'workspace'
+  workspace_strategy: 'worktree' | 'direct' | 'copy' | 'move'
 }
 
 type Dependencies = {
@@ -131,6 +134,8 @@ function repositories(db: DrizzleDashboardDatabase, ids: number[]) {
         local_path: repositoriesTable.localPath,
         created_at: repositoriesTable.createdAt,
         synced_at: repositoriesTable.syncedAt,
+        source_kind: repositoriesTable.sourceKind,
+        workspace_strategy: repositoriesTable.workspaceStrategy,
       })
       .from(repositoriesTable)
       .where(inArray(repositoriesTable.id, ids))
@@ -146,6 +151,7 @@ function repositoryCatalog(db: DrizzleDashboardDatabase) {
   return db
     .select({ id: repositoriesTable.id, full_name: repositoriesTable.fullName })
     .from(repositoriesTable)
+    .where(sql`${repositoriesTable.sourceKind}<>'workspace'`)
     .orderBy(asc(sql`lower(${repositoriesTable.fullName})`))
     .all()
 }
@@ -420,8 +426,7 @@ async function handleThread(request: Request, identifier: string, dependencies: 
       .filter((resource: any) => resource.kind === 'repository')
       .map((resource: any) => resource.repository_id)
     const ids = repositoryIds(input, scopedIds.length ? scopedIds : [currentWorkItem.primary_repository_id].filter(Boolean))
-    if (!ids.length) return json(400, { error: 'Choose at least one repository for this work item' })
-    const selectedRepositories = repositories(db, ids)
+    const selectedRepositories = ids.length ? repositories(db, ids) : [generalWorkspaceRepository(db)]
     const requestedPrompt = String(input.prompt || currentWorkItem.description || '').trim()
     if (!requestedPrompt) return json(400, { error: 'A task prompt is required to start a thread' })
     const sequential = input.split_work_item === undefined ? Boolean(currentWorkItem.sequential_execution) : input.split_work_item === true

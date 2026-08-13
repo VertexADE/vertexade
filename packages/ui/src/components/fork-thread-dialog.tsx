@@ -31,6 +31,7 @@ export function ForkThreadDialog({
     reasoningEffort: '',
     allowSubagents: false,
   })
+  const workspaceOnly = source?.repository_source_kind === 'workspace'
   useEffect(() => {
     if (source) {
       setTitle('')
@@ -61,7 +62,7 @@ export function ForkThreadDialog({
         },
         body: JSON.stringify({ title, prompt, base, branch_type: branchType }),
       })
-      toast.success('New branch, worktree, and forked run started')
+      toast.success(workspaceOnly ? 'New isolated workspace and forked run started' : 'New branch, worktree, and forked run started')
       onForked(job)
     } catch (error) {
       toast.error((error as Error).message)
@@ -74,43 +75,45 @@ export function ForkThreadDialog({
       <DialogContent>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Fork run into a new worktree</DialogTitle>
+            <DialogTitle>{workspaceOnly ? 'Fork run into a new workspace' : 'Fork run into a new worktree'}</DialogTitle>
             <DialogDescription>
-              The new {source?.agent_name || 'agent'} run keeps this run’s completed conversation history. Its work happens on a separate
-              branch and worktree.
+              The new {source?.agent_name || 'agent'} run keeps this run’s completed conversation history. Its work happens in a separate{' '}
+              {workspaceOnly ? 'copy of the workspace' : 'branch and worktree'}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Start from</Label>
-                <Select value={base} onValueChange={(value) => setBase(value as typeof base)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="current">Current branch</SelectItem>
-                    <SelectItem value="main">Main / default branch</SelectItem>
-                  </SelectContent>
-                </Select>
+            {!workspaceOnly && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Start from</Label>
+                  <Select value={base} onValueChange={(value) => setBase(value as typeof base)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">Current branch</SelectItem>
+                      <SelectItem value="main">Main / default branch</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Branch type</Label>
+                  <Select value={branchType} onValueChange={setBranchType}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="feature">feature/</SelectItem>
+                      <SelectItem value="fix">fix/</SelectItem>
+                      <SelectItem value="chore">chore/</SelectItem>
+                      <SelectItem value="refactor">refactor/</SelectItem>
+                      <SelectItem value="test">test/</SelectItem>
+                      <SelectItem value="docs">docs/</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Branch type</Label>
-                <Select value={branchType} onValueChange={setBranchType}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="feature">feature/</SelectItem>
-                    <SelectItem value="fix">fix/</SelectItem>
-                    <SelectItem value="chore">chore/</SelectItem>
-                    <SelectItem value="refactor">refactor/</SelectItem>
-                    <SelectItem value="test">test/</SelectItem>
-                    <SelectItem value="docs">docs/</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
             <Input
               required
               maxLength={100}
