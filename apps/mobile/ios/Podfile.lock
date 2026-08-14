@@ -1704,6 +1704,28 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-webview (14.0.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - React-NativeModulesApple (0.86.2):
     - hermes-engine
     - React-callinvoker
@@ -2368,7 +2390,7 @@ DEPENDENCIES:
   - "Diffs (from `../../../node_modules/.pnpm/react-native-diffs@1.0.3_patch_hash=f150127e4a4d8296e58e73ba93cc157683d55865b9d390fac3a_d2b2862f69240656dd7e0a318be7c7d0/node_modules/react-native-diffs`)"
   - "EXApplication (from `../../../node_modules/.pnpm/expo-application@57.0.2_expo@57.0.11/node_modules/expo-application/ios`)"
   - "EXConstants (from `../../../node_modules/.pnpm/expo-constants@57.0.9_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-colo_233810215cd75227227d3e8a21b012da/node_modules/expo-constants/ios`)"
-  - "Expo (from `../../../node_modules/.pnpm/expo@57.0.11_3c447cb2a4237e89c86a3896a113cef4/node_modules/expo`)"
+  - "Expo (from `../../../node_modules/.pnpm/expo@57.0.11_634888889084eb6d12d9c453b04bfea3/node_modules/expo`)"
   - "ExpoAiKit (from `../../../node_modules/.pnpm/expo-ai-kit@0.14.0_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-color@1_51236b83dcbd3b9040ad36bd46b86983/node_modules/expo-ai-kit/ios`)"
   - "ExpoAsset (from `../../../node_modules/.pnpm/expo-asset@57.0.9_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-color@10_990533a6a1b159b497f17018493f757e/node_modules/expo-asset/ios`)"
   - "ExpoClipboard (from `../../../node_modules/.pnpm/expo-clipboard@57.0.1_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-colo_6eb9f6c1fe22f65a1d11484e70b8c7ec/node_modules/expo-clipboard/ios`)"
@@ -2437,6 +2459,7 @@ DEPENDENCIES:
   - "react-native-fluidaudio (from `../../../node_modules/.pnpm/@fluidinference+react-native-fluidaudio@0.1.0_patch_hash=a4fdd34331f7be62ed27a6349ec42b_316805a756fde6998823e6491c0e8b53/node_modules/@fluidinference/react-native-fluidaudio`)"
   - "react-native-keyboard-controller (from `../../../node_modules/.pnpm/react-native-keyboard-controller@1.21.9_be569d899ae850b1336d97184ea71ed2/node_modules/react-native-keyboard-controller`)"
   - "react-native-safe-area-context (from `../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.2_@babel+core@7.29.7_supports-co_da8c9cca9f0e66bd94757cb60dc12b45/node_modules/react-native-safe-area-context`)"
+  - "react-native-webview (from `../../../node_modules/.pnpm/react-native-webview@14.0.1_react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2._d0a2c944575f194a15a8f4b2260d6426/node_modules/react-native-webview`)"
   - "React-NativeModulesApple (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)"
   - "React-networking (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/networking`)"
   - "React-oscompat (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/oscompat`)"
@@ -2491,7 +2514,7 @@ EXTERNAL SOURCES:
   EXConstants:
     :path: "../../../node_modules/.pnpm/expo-constants@57.0.9_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-colo_233810215cd75227227d3e8a21b012da/node_modules/expo-constants/ios"
   Expo:
-    :path: "../../../node_modules/.pnpm/expo@57.0.11_3c447cb2a4237e89c86a3896a113cef4/node_modules/expo"
+    :path: "../../../node_modules/.pnpm/expo@57.0.11_634888889084eb6d12d9c453b04bfea3/node_modules/expo"
   ExpoAiKit:
     :path: "../../../node_modules/.pnpm/expo-ai-kit@0.14.0_expo@57.0.11_react-native@0.86.2_@babel+core@7.29.7_supports-color@1_51236b83dcbd3b9040ad36bd46b86983/node_modules/expo-ai-kit/ios"
   ExpoAsset:
@@ -2627,6 +2650,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.21.9_be569d899ae850b1336d97184ea71ed2/node_modules/react-native-keyboard-controller"
   react-native-safe-area-context:
     :path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.2_@babel+core@7.29.7_supports-co_da8c9cca9f0e66bd94757cb60dc12b45/node_modules/react-native-safe-area-context"
+  react-native-webview:
+    :path: "../../../node_modules/.pnpm/react-native-webview@14.0.1_react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2._d0a2c944575f194a15a8f4b2260d6426/node_modules/react-native-webview"
   React-NativeModulesApple:
     :path: "../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-networking:
@@ -2783,6 +2808,7 @@ SPEC CHECKSUMS:
   react-native-fluidaudio: eb8b9f01e01524ac94d617455ce16dddf84b7d92
   react-native-keyboard-controller: d4796248609d4c03cd6b5f73a9fd083d7c5f33d6
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
+  react-native-webview: fa32202d241bd953cb7aa323f266a43ff86dfac9
   React-NativeModulesApple: 167e532fb9bae30f3c66636b8ee0092bab263667
   React-networking: 89f6b69755a3176f30e56ba1ba8e214b1518ecfb
   React-oscompat: db6675ddaef3bddd1b41533627f3d26ec710c05f
