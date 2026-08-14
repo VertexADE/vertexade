@@ -90,6 +90,24 @@ describe('Codex agent', () => {
     })
   })
 
+  it('reloads MCP servers after resuming an existing thread', () => {
+    const launch = createCodexAgent({ run: vi.fn() }).launch({
+      cwd: '/work',
+      base: '/repo',
+      prompt: 'continue',
+      resume: 'existing-thread',
+    })
+    const result = spawnSync(launch.command, [...launch.args, '--dry-run'], {
+      encoding: 'utf8',
+      env: { ...process.env, ...launch.env },
+    })
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      resumeId: 'existing-thread',
+      resumeSetupMethods: ['thread/resume', 'config/mcpServer/reload'],
+    })
+  })
+
   it('starts an ephemeral app-server thread when requested', () => {
     const agent = createCodexAgent({ run: vi.fn() })
     expect(agent.supportsEphemeral).toBe(true)

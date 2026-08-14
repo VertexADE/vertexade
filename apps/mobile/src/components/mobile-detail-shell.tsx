@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type MutableRefObject, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
@@ -109,10 +109,19 @@ function DetailTab<Tab extends string>({
 
 function MobileDetailBody<Tab extends string>({ loading, error, footer, children, initialScrollToEnd, onRetry }: MobileDetailShellProps<Tab>) {
   const ready = !loading && !error
+  const [footerHeight, setFooterHeight] = useState(0)
   return (
     <View style={styles.detailBody}>
-      <MobileDetailContent loading={loading} error={error} initialScrollToEnd={initialScrollToEnd} onRetry={onRetry}>{children}</MobileDetailContent>
-      {ready ? footer : null}
+      <MobileDetailContent loading={loading} error={error} footerHeight={ready ? footerHeight : 0} initialScrollToEnd={initialScrollToEnd} onRetry={onRetry}>{children}</MobileDetailContent>
+      {ready && footer ? (
+        <View
+          testID="detail-footer-overlay"
+          style={styles.footerOverlay}
+          onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
+        >
+          {footer}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -121,9 +130,10 @@ function MobileDetailContent({
   loading,
   error,
   children,
+  footerHeight,
   initialScrollToEnd,
   onRetry,
-}: Pick<MobileDetailShellProps<string>, 'loading' | 'error' | 'children' | 'initialScrollToEnd' | 'onRetry'>) {
+}: Pick<MobileDetailShellProps<string>, 'loading' | 'error' | 'children' | 'initialScrollToEnd' | 'onRetry'> & { footerHeight: number }) {
   const scroll = useRef<ScrollView>(null)
   const openingAtEnd = useRef(Boolean(initialScrollToEnd))
   const loadEarlier = useRef<(() => void) | null>(null)
@@ -145,7 +155,7 @@ function MobileDetailContent({
       <ScrollView
         ref={scroll}
         testID="detail-scroll-view"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, footerHeight > 0 && { paddingBottom: footerHeight }]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={32}

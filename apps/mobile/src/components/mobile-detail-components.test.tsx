@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
 import * as ImagePicker from 'expo-image-picker'
 import * as Clipboard from 'expo-clipboard'
+import { StyleSheet } from 'react-native'
 import {
   cancelMobileQueuedMessage,
   deliverMobileThreadMessage,
@@ -301,6 +302,17 @@ describe('mobile full detail views', () => {
     jest.mocked(postMobileReviewSuggestions).mockResolvedValue(1)
     jest.mocked(uploadMobilePromptImages).mockResolvedValue([])
     jest.mocked(updateMobileWorkState).mockResolvedValue(undefined)
+  })
+
+  test('overlays the measured thread composer so glass can reveal the transcript underneath', async () => {
+    render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
+
+    const overlay = await screen.findByTestId('detail-footer-overlay')
+    expect(StyleSheet.flatten(overlay.props.style)).toMatchObject({ position: 'absolute', bottom: 0, left: 0, right: 0 })
+    fireEvent(overlay, 'layout', { nativeEvent: { layout: { height: 216, width: 390, x: 0, y: 0 } } })
+    await waitFor(() => {
+      expect(StyleSheet.flatten(screen.getByTestId('detail-scroll-view').props.contentContainerStyle)).toMatchObject({ paddingBottom: 216 })
+    })
   })
 
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {

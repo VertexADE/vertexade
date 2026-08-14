@@ -59,6 +59,7 @@ const model = option('model')
 const reasoningEffort = option('reasoning-effort')
 const serviceTier = option('service-tier')
 const dryRun = process.argv.includes('--dry-run')
+const resumeSetupMethods = ['thread/resume', 'config/mcpServer/reload'] as const
 const reviewMode = process.argv.includes('--review-mode')
 const fullAccess = process.argv.includes('--full-access')
 const readOnly = process.argv.includes('--read-only')
@@ -152,7 +153,7 @@ function emitRequestedThreadContext(currentThreadId: string | null) {
 }
 
 if (dryRun) {
-  emit('dry_run', { threadParams, prompt, resumeId, forkId, reasoningEffort, serviceTier: serviceTier || 'normal' })
+  emit('dry_run', { threadParams, prompt, resumeId, forkId, reasoningEffort, serviceTier: serviceTier || 'normal', resumeSetupMethods })
   process.exit(0)
 }
 
@@ -369,13 +370,14 @@ async function main() {
       ...threadResponseDetails(forked),
     })
   } else if (resumeId) {
-    const resumed = await request<ThreadResponse>('thread/resume', {
+    const resumed = await request<ThreadResponse>(resumeSetupMethods[0], {
       threadId: resumeId,
       cwd,
       runtimeWorkspaceRoots: roots,
       excludeTurns: true,
       config: threadConfig,
     })
+    await request(resumeSetupMethods[1], {})
     emit('thread_roots_updated', {
       thread_id: resumeId,
       cwd,

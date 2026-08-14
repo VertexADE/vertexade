@@ -8,6 +8,7 @@ export const mobileDetailStyles = StyleSheet.create({
     paddingTop: 0,
   },
   detailBody: { flex: 1 },
+  footerOverlay: { bottom: 0, left: 0, position: 'absolute', right: 0 },
   header: {
     backgroundColor: colors.background,
     borderBottomColor: colors.border,
