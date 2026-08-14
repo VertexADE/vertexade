@@ -2,10 +2,19 @@ import { createMobilePlatformClient } from './platform-service'
 import { requiredRecord } from './mobile-value-parsers'
 
 export type MobileSkill = { id: string; source: string; skill: string; name: string; description: string; url: string; defaultEnabled: boolean }
-export type MobileMcpServer = { id: string; name: string; transport: 'stdio' | 'sse'; command?: string; args?: string[]; url?: string; defaultEnabled: boolean }
+export type MobileMcpServer = { id: string; name: string; transport: 'stdio' | 'http' | 'sse'; command?: string; args?: string[]; url?: string; defaultEnabled: boolean }
 export type MobileCustomAgent = { id: string; name: string; description: string; agentId: string; model: string; reasoningEffort: string; promptPrefix: string; skillIds: string[]; mcpServerIds: string[] }
 export type MobileAgentResourceCatalog = { skills: MobileSkill[]; mcpServers: MobileMcpServer[]; profiles: MobileCustomAgent[] }
-export type MobileMcpRegistryResult = { id: string; name: string; description: string; version: string; repositoryUrl: string; installable: boolean; transport?: 'stdio' | 'sse'; command?: string; args?: string[]; url?: string; requiredInputs: string[] }
+export type MobileMcpRegistryResult = { id: string; name: string; description: string; version: string; repositoryUrl: string; installable: boolean; transport?: 'stdio' | 'http' | 'sse'; command?: string; args?: string[]; url?: string; requiredInputs: string[] }
+export type MobileMcpTool = { name: string; title?: string; description?: string; inputSchema?: Record<string, unknown>; appResourceUri: string | null }
+export type MobileMcpAppDescriptor = {
+  serverId: string
+  toolName: string
+  resourceUri: string
+  html: string
+  csp: { connectDomains: string[]; resourceDomains: string[]; frameDomains: string[]; baseUriDomains: string[] }
+  permissions: { camera: boolean; microphone: boolean; geolocation: boolean; clipboardWrite: boolean }
+}
 
 function client(serviceUrl: string, backendId: string) {
   return createMobilePlatformClient(serviceUrl, backendId)
@@ -30,10 +39,38 @@ export async function searchMobileMcpRegistry(serviceUrl: string, backendId: str
   return Array.isArray(value.results) ? value.results as MobileMcpRegistryResult[] : []
 }
 
-export async function saveMobileMcpServer(serviceUrl: string, backendId: string, input: { name: string; transport: 'stdio' | 'sse'; endpoint: string; args?: string[] }) {
+export async function loadMobileMcpTools(serviceUrl: string, backendId: string, serverId: string): Promise<MobileMcpTool[]> {
+  const value = requiredRecord(await client(serviceUrl, backendId).request(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/tools`), 'VertexADE returned invalid MCP tools')
+  return Array.isArray(value.tools) ? value.tools as MobileMcpTool[] : []
+}
+
+export async function loadMobileMcpApp(serviceUrl: string, backendId: string, serverId: string, toolName: string): Promise<MobileMcpAppDescriptor> {
+  return requiredRecord(
+    await client(serviceUrl, backendId).request(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/apps/${encodeURIComponent(toolName)}`),
+    'VertexADE returned an invalid MCP App',
+  ) as MobileMcpAppDescriptor
+}
+
+export async function callMobileMcpTool(
+  serviceUrl: string,
+  backendId: string,
+  serverId: string,
+  toolName: string,
+  arguments_: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  return client(serviceUrl, backendId).request(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ arguments: arguments_ }),
+    signal,
+  })
+}
+
+export async function saveMobileMcpServer(serviceUrl: string, backendId: string, input: { name: string; transport: 'stdio' | 'http' | 'sse'; endpoint: string; args?: string[] }) {
   await request(serviceUrl, backendId, '/api/agent-resources/mcp', 'POST', input.transport === 'stdio'
     ? { name: input.name, transport: 'stdio', command: input.endpoint, args: input.args || [], env: {}, defaultEnabled: false }
-    : { name: input.name, transport: 'sse', url: input.endpoint, headers: {}, defaultEnabled: false })
+    : { name: input.name, transport: input.transport, url: input.endpoint, headers: {}, defaultEnabled: false })
 }
 
 export async function saveMobileCustomAgent(serviceUrl: string, backendId: string, profile: Omit<MobileCustomAgent, 'id'> & { id?: string }) {

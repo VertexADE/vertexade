@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
-import { handleSubagentMcpRequest, subagentTools } from './subagent-mcp.ts'
+import { handleSubagentMcpRequest, modernProtocolVersion, subagentTools } from './subagent-mcp.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -47,6 +47,93 @@ describe('VertexADE sub-agent MCP server', () => {
     expect(listed.tools.map(({ name }) => name)).toEqual(['form'])
     expect(listed.tools[0]?.description).toMatch(/available in every collaboration mode, including Default mode/i)
     expect(listed.tools[0]?.description).toMatch(/Prefer it over a plain chat questionnaire/i)
+  })
+
+  it('supports modern stateless discovery and MCP App resources', async () => {
+    const metadata = {
+      'io.modelcontextprotocol/protocolVersion': modernProtocolVersion,
+      'io.modelcontextprotocol/clientInfo': { name: 'test', version: '1.0.0' },
+      'io.modelcontextprotocol/clientCapabilities': {
+        extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } },
+      },
+    }
+    await expect(
+      handleSubagentMcpRequest({ jsonrpc: '2.0', id: 10, method: 'server/discover', params: { _meta: metadata } }),
+    ).resolves.toMatchObject({
+      supportedVersions: [modernProtocolVersion, '2025-06-18'],
+      resultType: 'complete',
+      ttlMs: 60_000,
+      cacheScope: 'private',
+      capabilities: { extensions: { 'io.modelcontextprotocol/ui': expect.any(Object) } },
+      _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'vertexade-subagents' } },
+    })
+
+    const listed = (await handleSubagentMcpRequest({
+      jsonrpc: '2.0',
+      id: 11,
+      method: 'tools/list',
+      params: { _meta: metadata },
+    })) as { tools: typeof subagentTools; resultType: string }
+    expect(listed.resultType).toBe('complete')
+    expect(listed.tools[0]?._meta).toEqual({ ui: { resourceUri: 'ui://vertexade/form/index.html' } })
+
+    await expect(
+      handleSubagentMcpRequest({
+        jsonrpc: '2.0',
+        id: 12,
+        method: 'resources/read',
+        params: { uri: 'ui://vertexade/form/index.html', _meta: metadata },
+      }),
+    ).resolves.toMatchObject({
+      resultType: 'complete',
+      cacheScope: 'private',
+      contents: [{ uri: 'ui://vertexade/form/index.html', mimeType: 'text/html;profile=mcp-app' }],
+    })
+  })
+
+  it('keeps the legacy initialize protocol available', async () => {
+    await expect(
+      handleSubagentMcpRequest({
+        jsonrpc: '2.0',
+        id: 13,
+        method: 'initialize',
+        params: { protocolVersion: '2025-11-25' },
+      }),
+    ).resolves.toMatchObject({ protocolVersion: '2025-11-25', serverInfo: { name: 'vertexade-subagents' } })
+  })
+
+  it('uses stateless MRTR elicitation for modern form calls', async () => {
+    const meta = { 'io.modelcontextprotocol/protocolVersion': modernProtocolVersion }
+    const first = await handleSubagentMcpRequest({
+      jsonrpc: '2.0',
+      id: 14,
+      method: 'tools/call',
+      params: {
+        name: 'form',
+        arguments: {
+          title: 'Release',
+          fields: [{ id: 'channel', label: 'Channel', type: 'select', options: [{ label: 'Stable', value: 'stable' }] }],
+        },
+        _meta: meta,
+      },
+    })
+    expect(first).toMatchObject({
+      resultType: 'input_required',
+      inputRequests: { form: { method: 'elicitation/create', params: { requestedSchema: { required: ['channel'] } } } },
+    })
+    await expect(
+      handleSubagentMcpRequest({
+        jsonrpc: '2.0',
+        id: 15,
+        method: 'tools/call',
+        params: {
+          name: 'form',
+          arguments: { title: 'Release', fields: [] },
+          inputResponses: { form: { action: 'accept', content: { channel: 'stable' } } },
+          _meta: meta,
+        },
+      }),
+    ).resolves.toMatchObject({ resultType: 'complete', structuredContent: { channel: 'stable' } })
   })
 
   it('uses the scoped capability when spawning a selected model', async () => {

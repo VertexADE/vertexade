@@ -48,7 +48,8 @@
     "react-native-nitro-modules": "^0.35.10",
     "react-native-safe-area-context": "5.7.0",
     "react-native-screens": "^4.26.2",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "react-native-webview": "^14.0.1"
   },
   "devDependencies": {
     "@testing-library/react-native": "^13.3.3",

@@ -42,7 +42,7 @@ export type AgentMcpServer = {
   defaultEnabled: boolean
 } & (
   | { transport: 'stdio'; command: string; args: string[]; env: Record<string, string> }
-  | { transport: 'sse'; url: string; headers: Record<string, string> }
+  | { transport: 'http' | 'sse'; url: string; headers: Record<string, string> }
 )
 export type AgentLaunchResources = { skills: AgentResolvedSkill[]; mcpServers: AgentMcpServer[] }
 export type AgentSubagentOrchestration = 'native' | 'harness'

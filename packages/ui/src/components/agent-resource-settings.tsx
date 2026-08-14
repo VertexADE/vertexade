@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { CustomAgentSettings, type CustomAgentProfile } from '@vertexade/ui/components/custom-agent-settings'
 import { useConfirm } from '@vertexade/ui/components/confirm-provider'
+import { McpAppFrame, type McpAppCallResult, type McpAppFrameDescriptor } from '@vertexade/ui/components/mcp-app-frame'
 
 type Skill = {
   id: string
@@ -25,7 +26,7 @@ type Skill = {
 type Mcp = {
   id: string
   name: string
-  transport: 'stdio' | 'sse'
+  transport: 'stdio' | 'http' | 'sse'
   command?: string
   args?: string[]
   url?: string
@@ -42,7 +43,7 @@ type McpRegistryResult = {
   version: string
   repositoryUrl: string
   installable: boolean
-  transport?: 'stdio' | 'sse'
+  transport?: 'stdio' | 'http' | 'sse'
   command?: string
   args?: string[]
   url?: string
@@ -213,7 +214,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
   const [searching, setSearching] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState('')
-  const [transport, setTransport] = useState<'stdio' | 'sse'>('stdio')
+  const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio')
   const [endpoint, setEndpoint] = useState('')
   const [args, setArgs] = useState('')
   const [secrets, setSecrets] = useState('')
@@ -299,12 +300,13 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
           <form onSubmit={save} className="space-y-2 border-t p-3">
             <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
               <Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Server name" />
-              <Select value={transport} onValueChange={(value) => setTransport(value as 'stdio' | 'sse')}>
+              <Select value={transport} onValueChange={(value) => setTransport(value as 'stdio' | 'http' | 'sse')}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="stdio">stdio</SelectItem>
+                  <SelectItem value="http">Streamable HTTP</SelectItem>
                   <SelectItem value="sse">SSE</SelectItem>
                 </SelectContent>
               </Select>
@@ -313,7 +315,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
               required
               value={endpoint}
               onChange={(event) => setEndpoint(event.target.value)}
-              placeholder={stdio ? 'Executable, e.g. npx' : 'https://example.com/sse'}
+              placeholder={stdio ? 'Executable, e.g. npx' : 'https://example.com/mcp'}
             />
             <StdioArguments visible={stdio} value={args} onChange={setArgs} />
             <Textarea
@@ -332,8 +334,85 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
           </form>
         </details>
         <ResourceList items={servers} kind="mcp" {...actions} />
+        <McpAppExplorer servers={servers} />
       </CardContent>
     </Card>
+  )
+}
+
+type McpToolSummary = { name: string; title?: string; description?: string; appResourceUri?: string | null }
+
+function McpAppExplorer({ servers }: { servers: Mcp[] }) {
+  const [serverId, setServerId] = useState('')
+  const [tools, setTools] = useState<McpToolSummary[]>([])
+  const [app, setApp] = useState<McpAppFrameDescriptor | null>(null)
+  const [loading, setLoading] = useState(false)
+  const load = async (id: string) => {
+    setServerId(id)
+    setApp(null)
+    if (!id) return setTools([])
+    setLoading(true)
+    try {
+      const result = await api<{ tools: McpToolSummary[] }>(`/api/agent-resources/mcp/${encodeURIComponent(id)}/tools`)
+      setTools(result.tools)
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+  const open = async (tool: McpToolSummary) => {
+    try {
+      setApp(
+        await api<McpAppFrameDescriptor>(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/apps/${encodeURIComponent(tool.name)}`),
+      )
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
+  }
+  const callTool = useCallback(
+    (name: string, args: Record<string, unknown>, signal?: AbortSignal) =>
+      api<McpAppCallResult>(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        body: JSON.stringify({ arguments: args }),
+        signal,
+      }),
+    [serverId],
+  )
+  if (!servers.length) return null
+  return (
+    <details className="rounded-lg border bg-background/25">
+      <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-medium">Explore MCP tools and Apps</summary>
+      <div className="space-y-3 border-t p-3">
+        <Select value={serverId} onValueChange={(value) => void load(value)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select an MCP server" />
+          </SelectTrigger>
+          <SelectContent>
+            {servers.map((server) => (
+              <SelectItem key={server.id} value={server.id}>
+                {server.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {loading ? <span className="text-xs text-muted-foreground">Connecting…</span> : null}
+        {tools.map((tool) => (
+          <div key={tool.name} className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
+            <div className="min-w-0 flex-1">
+              <strong>{tool.title || tool.name}</strong>
+              <p className="truncate text-muted-foreground">{tool.description}</p>
+            </div>
+            {tool.appResourceUri ? (
+              <Button size="xs" variant="outline" onClick={() => void open(tool)}>
+                Open App
+              </Button>
+            ) : null}
+          </div>
+        ))}
+        {app ? <McpAppFrame descriptor={app} callTool={callTool} /> : null}
+      </div>
+    </details>
   )
 }
 
@@ -386,7 +465,7 @@ function McpRegistryResults({
 
 function mcpInput(input: {
   name: string
-  transport: 'stdio' | 'sse'
+  transport: 'stdio' | 'http' | 'sse'
   endpoint: string
   args: string
   secrets: string

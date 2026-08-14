@@ -11,7 +11,12 @@ type JsonRpcRequest = {
   params?: JsonObject
 }
 
-const protocolVersion = '2025-06-18'
+export const modernProtocolVersion = '2026-07-28'
+const legacyProtocolVersion = '2025-06-18'
+const serverInfo = { name: 'vertexade-subagents', version: '0.0.1' }
+const cacheMetadata = { ttlMs: 60_000, cacheScope: 'private' as const }
+const formResourceUri = 'ui://vertexade/form/index.html'
+const appMimeType = 'text/html;profile=mcp-app'
 const maximumResponseBytes = 250_000
 const formInstructions =
   'The form tool is available in every collaboration mode, including Default mode. When you need structured user input, prefer form for questionnaires, multiple questions, choices, or checklists instead of writing a questionnaire in chat. Ask only for information that cannot be inferred safely, keep the form concise, and continue normally when the user cancels it or sends a chat message instead.'
@@ -100,6 +105,7 @@ export const subagentTools = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    _meta: { ui: { resourceUri: formResourceUri } },
   },
   {
     name: 'list_agents',
@@ -265,21 +271,145 @@ function toolResult(value: JsonObject, isError = false) {
   return { content: [{ type: 'text', text }], structuredContent: value, isError }
 }
 
+function formElicitation(input: JsonObject) {
+  const fields = Array.isArray(input.fields)
+    ? input.fields.filter((field): field is JsonObject => Boolean(field && typeof field === 'object'))
+    : []
+  const properties = Object.fromEntries(
+    fields.map((field) => {
+      const options = Array.isArray(field.options)
+        ? field.options.filter((option): option is JsonObject => Boolean(option && typeof option === 'object'))
+        : []
+      const values = options.map((option) => String(option.value || option.label || '')).filter(Boolean)
+      const base = {
+        title: String(field.label || field.id || ''),
+        ...(field.description ? { description: String(field.description) } : {}),
+      }
+      if (field.type === 'checkbox' && values.length)
+        return [String(field.id), { ...base, type: 'array', items: { type: 'string', enum: values } }]
+      if (field.type === 'checkbox') return [String(field.id), { ...base, type: 'boolean' }]
+      if (field.type === 'select') return [String(field.id), { ...base, type: 'string', enum: values }]
+      return [String(field.id), { ...base, type: 'string' }]
+    }),
+  )
+  return {
+    resultType: 'input_required',
+    inputRequests: {
+      form: {
+        method: 'elicitation/create',
+        params: {
+          mode: 'form',
+          message: [input.title, input.description].filter(Boolean).map(String).join('\n\n'),
+          requestedSchema: {
+            type: 'object',
+            properties,
+            required: fields.filter((field) => field.required !== false).map((field) => String(field.id)),
+          },
+        },
+      },
+    },
+    requestState: JSON.stringify({ tool: 'form' }),
+  }
+}
+
+function modernFormResponse(request: JsonRpcRequest) {
+  if (request.params?.name !== 'form' || !requestProtocolVersion(request)) return null
+  const responses = recordValue(request.params.inputResponses)
+  if (!Object.keys(responses).length) return modernResult(request, formElicitation(argumentsOf(request)))
+  const response = recordValue(responses.form)
+  const action = String(response.action || 'cancel')
+  const content = recordValue(response.content)
+  return modernResult(request, toolResult(action === 'accept' ? content : { [action]: true }))
+}
+
+function recordValue(value: unknown): JsonObject {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : {}
+}
+
+function requestProtocolVersion(request: JsonRpcRequest) {
+  const metadata = request.params?._meta
+  return metadata && typeof metadata === 'object' ? String((metadata as JsonObject)['io.modelcontextprotocol/protocolVersion'] || '') : ''
+}
+
+function modernResult<T extends JsonObject>(request: JsonRpcRequest, result: T): T & JsonObject {
+  if (!requestProtocolVersion(request) && request.method !== 'server/discover') return result
+  return {
+    ...result,
+    resultType: result.resultType || 'complete',
+    _meta: {
+      ...(result._meta && typeof result._meta === 'object' ? result._meta : {}),
+      'io.modelcontextprotocol/serverInfo': serverInfo,
+    },
+  }
+}
+
+function formAppHtml() {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:15px system-ui}body{margin:0;padding:16px;background:transparent}#root{display:grid;gap:12px}button,input,textarea,select{font:inherit}</style></head><body><div id="root" role="form" aria-live="polite"></div><script>window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/sandbox-resource-ready'},'*')</script></body></html>`
+}
+
+class McpRequestError extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+    readonly data?: JsonObject,
+  ) {
+    super(message)
+  }
+}
+
 export async function handleSubagentMcpRequest(request: JsonRpcRequest) {
   if (request.method === 'initialize')
     return {
-      protocolVersion: String(request.params?.protocolVersion || protocolVersion),
+      protocolVersion: String(request.params?.protocolVersion || legacyProtocolVersion),
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'vertexade-subagents', version: '0.0.1' },
       instructions: formInstructions,
     }
+  if (request.method === 'server/discover')
+    return modernResult(request, {
+      supportedVersions: [modernProtocolVersion, legacyProtocolVersion],
+      capabilities: {
+        tools: { listChanged: false },
+        resources: { listChanged: false, subscribe: false },
+        extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [appMimeType] } },
+      },
+      instructions: formInstructions,
+      ...cacheMetadata,
+    })
+  const requestedVersion = requestProtocolVersion(request)
+  if (requestedVersion && requestedVersion !== modernProtocolVersion)
+    throw new McpRequestError(-32022, 'Unsupported protocol version', {
+      supported: [modernProtocolVersion, legacyProtocolVersion],
+      requested: requestedVersion,
+    })
   if (request.method === 'ping') return {}
-  if (request.method === 'tools/list') return { tools: availableTools() }
+  if (request.method === 'tools/list') return modernResult(request, { tools: availableTools(), ...cacheMetadata })
+  if (request.method === 'resources/list')
+    return modernResult(request, {
+      resources: [{ uri: formResourceUri, name: 'VertexADE form', mimeType: appMimeType }],
+      ...cacheMetadata,
+    })
+  if (request.method === 'resources/read') {
+    if (request.params?.uri !== formResourceUri) throw new McpRequestError(-32602, 'Unknown resource URI')
+    return modernResult(request, {
+      contents: [
+        {
+          uri: formResourceUri,
+          mimeType: appMimeType,
+          text: formAppHtml(),
+          _meta: { ui: { csp: {}, permissions: {} } },
+        },
+      ],
+      ...cacheMetadata,
+    })
+  }
   if (request.method === 'tools/call') {
+    const form = modernFormResponse(request)
+    if (form) return form
     try {
-      return toolResult(await callTool(request.params?.name, argumentsOf(request)))
+      return modernResult(request, toolResult(await callTool(request.params?.name, argumentsOf(request))))
     } catch (error) {
-      return toolResult({ error: error instanceof Error ? error.message : String(error) }, true)
+      return modernResult(request, toolResult({ error: error instanceof Error ? error.message : String(error) }, true))
     }
   }
   throw new Error(`Unsupported MCP method: ${request.method}`)
@@ -307,7 +437,11 @@ async function runSubagentMcpServer() {
       write({
         jsonrpc: '2.0',
         id: request.id,
-        error: { code: -32601, message: error instanceof Error ? error.message : String(error) },
+        error: {
+          code: error instanceof McpRequestError ? error.code : -32601,
+          message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof McpRequestError && error.data ? { data: error.data } : {}),
+        },
       })
     }
   }

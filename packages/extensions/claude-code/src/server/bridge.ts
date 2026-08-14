@@ -26,8 +26,8 @@ function mcpConfiguration() {
     mcpServers: Object.fromEntries(
       values.map((server) => [
         server.name,
-        server.transport === 'sse'
-          ? { type: 'sse', url: server.url, headers: server.headers || {} }
+        server.transport !== 'stdio'
+          ? { type: server.transport, url: server.url, headers: server.headers || {} }
           : { command: server.command, args: server.args || [], env: server.env || {} },
       ]),
     ),

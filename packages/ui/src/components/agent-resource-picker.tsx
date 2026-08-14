@@ -13,7 +13,7 @@ type Selectable = {
   name: string
   enabled: boolean
   defaultEnabled: boolean
-  transport?: 'stdio' | 'sse'
+  transport?: 'stdio' | 'http' | 'sse'
   source?: string
   skill?: string
 }

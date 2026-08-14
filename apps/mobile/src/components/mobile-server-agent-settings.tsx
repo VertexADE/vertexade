@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native'
 import {
   addMobileSkill,
+  callMobileMcpTool,
+  loadMobileMcpApp,
+  loadMobileMcpTools,
   loadMobileAgentResources,
   removeMobileAgentResource,
   saveMobileCustomAgent,
@@ -11,9 +14,12 @@ import {
   type MobileAgentResourceCatalog,
   type MobileCustomAgent,
   type MobileMcpRegistryResult,
+  type MobileMcpAppDescriptor,
+  type MobileMcpTool,
 } from '@/mobile-agent-resources'
 import { colors } from '@/theme'
 import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileMcpApp } from './mobile-mcp-app'
 import { MobileSheetHeader } from './mobile-sheet-header'
 import { mobileServerSettingsStyles as styles } from './mobile-server-agent-settings.styles'
 
@@ -70,15 +76,26 @@ function McpSection({ catalog, ...context }: SettingsSectionProps) {
   const [name, setName] = useState('')
   const [endpoint, setEndpoint] = useState('')
   const [args, setArgs] = useState<string[]>([])
-  const [transport, setTransport] = useState<'stdio' | 'sse'>('stdio')
+  const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio')
+  const [explorer, setExplorer] = useState<{ serverId: string; tools: MobileMcpTool[]; app: MobileMcpAppDescriptor | null; loading: boolean; error: string }>({ serverId: '', tools: [], app: null, loading: false, error: '' })
   async function search() { if (!query.trim()) return; setResults(await searchMobileMcpRegistry(context.serviceUrl, context.backendId, query)) }
   function configure(result: MobileMcpRegistryResult) { if (!result.installable || !result.transport) return; setName(result.name); setTransport(result.transport); setEndpoint(result.transport === 'stdio' ? result.command || '' : result.url || ''); setArgs(result.args || []); if (result.requiredInputs.length) Alert.alert('Configuration required', `Add these values after installation: ${result.requiredInputs.join(', ')}`) }
   async function add() { if (!name.trim() || !endpoint.trim()) return contextError('Name and command or URL are required'); await saveMobileMcpServer(context.serviceUrl, context.backendId, { name: name.trim(), endpoint: endpoint.trim(), transport, args }); setName(''); setEndpoint(''); setArgs([]); await context.reload() }
+  async function inspect(serverId: string) {
+    setExplorer({ serverId, tools: [], app: null, loading: true, error: '' })
+    try { setExplorer({ serverId, tools: await loadMobileMcpTools(context.serviceUrl, context.backendId, serverId), app: null, loading: false, error: '' }) }
+    catch (reason) { setExplorer({ serverId, tools: [], app: null, loading: false, error: reason instanceof Error ? reason.message : 'Could not inspect this MCP server' }) }
+  }
+  async function openApp(tool: MobileMcpTool) {
+    try { setExplorer((current) => ({ ...current, loading: true, error: '' })); const app = await loadMobileMcpApp(context.serviceUrl, context.backendId, explorer.serverId, tool.name); setExplorer((current) => ({ ...current, app, loading: false })) }
+    catch (reason) { setExplorer((current) => ({ ...current, loading: false, error: reason instanceof Error ? reason.message : 'Could not open this MCP App' })) }
+  }
   return <><SectionHeading title="MCP servers" text="Search the official MCP Registry or configure a server manually." />
     <InlineForm value={query} placeholder="Search official MCP Registry" onChange={setQuery} onSave={() => void run(search)} label="Search" />
     {results.map((result) => <View key={`${result.id}@${result.version}`} style={styles.row}><View style={styles.rowCopy}><Text style={styles.rowTitle}>{result.name}</Text><Text numberOfLines={2} style={styles.rowDetail}>{result.description}</Text><Text numberOfLines={1} style={styles.rowDetail}>{result.id}@{result.version}</Text></View><Action label={result.installable ? 'Configure' : 'Unsupported'} onPress={() => configure(result)} /></View>)}
-    <View style={styles.form}><TextInput accessibilityLabel="MCP server name" value={name} onChangeText={setName} placeholder="Server name" placeholderTextColor={colors.muted} style={styles.input} /><View style={styles.tabs}><Choice label="Command" selected={transport === 'stdio'} onPress={() => setTransport('stdio')} /><Choice label="SSE" selected={transport === 'sse'} onPress={() => setTransport('sse')} /></View><TextInput accessibilityLabel="MCP endpoint" value={endpoint} onChangeText={setEndpoint} autoCapitalize="none" autoCorrect={false} placeholder={transport === 'stdio' ? 'Command path' : 'https://…'} placeholderTextColor={colors.muted} style={styles.input} />{transport === 'stdio' ? <TextInput accessibilityLabel="MCP arguments" value={args.join('\n')} onChangeText={(value) => setArgs(value.split(/\r?\n/).filter(Boolean))} multiline placeholder="One argument per line" placeholderTextColor={colors.muted} style={[styles.input, styles.textarea]} /> : null}<Action label="Add MCP server" onPress={() => void run(add)} /></View>
-    {catalog.mcpServers.map((server) => <ResourceRow key={server.id} name={server.name} detail={server.transport === 'stdio' ? server.command || '' : server.url || ''} enabled={server.defaultEnabled} onToggle={(enabled) => void run(async () => { await setMobileResourceDefault(context.serviceUrl, context.backendId, 'mcp', server.id, enabled); await context.reload() })} onRemove={() => confirmRemove(server.name, async () => { await removeMobileAgentResource(context.serviceUrl, context.backendId, 'mcp', server.id); await context.reload() })} />)}
+    <View style={styles.form}><TextInput accessibilityLabel="MCP server name" value={name} onChangeText={setName} placeholder="Server name" placeholderTextColor={colors.muted} style={styles.input} /><View style={styles.tabs}><Choice label="Command" selected={transport === 'stdio'} onPress={() => setTransport('stdio')} /><Choice label="HTTP" selected={transport === 'http'} onPress={() => setTransport('http')} /><Choice label="Legacy SSE" selected={transport === 'sse'} onPress={() => setTransport('sse')} /></View><TextInput accessibilityLabel="MCP endpoint" value={endpoint} onChangeText={setEndpoint} autoCapitalize="none" autoCorrect={false} placeholder={transport === 'stdio' ? 'Command path' : 'https://example.com/mcp'} placeholderTextColor={colors.muted} style={styles.input} />{transport === 'stdio' ? <TextInput accessibilityLabel="MCP arguments" value={args.join('\n')} onChangeText={(value) => setArgs(value.split(/\r?\n/).filter(Boolean))} multiline placeholder="One argument per line" placeholderTextColor={colors.muted} style={[styles.input, styles.textarea]} /> : null}<Action label="Add MCP server" onPress={() => void run(add)} /></View>
+    {catalog.mcpServers.map((server) => <View key={server.id} style={styles.row}><Pressable style={styles.rowCopy} onPress={() => void inspect(server.id)}><Text style={styles.rowTitle}>{server.name}</Text><Text numberOfLines={2} style={styles.rowDetail}>{server.transport === 'stdio' ? server.command || '' : server.url || ''}</Text><Text style={styles.inspectHint}>Inspect tools and apps</Text></Pressable><Switch accessibilityLabel={`Enable ${server.name} by default`} value={server.defaultEnabled} onValueChange={(enabled) => void run(async () => { await setMobileResourceDefault(context.serviceUrl, context.backendId, 'mcp', server.id, enabled); await context.reload() })} trackColor={{ true: colors.accentSoft }} thumbColor={server.defaultEnabled ? colors.accent : colors.muted} /><Action destructive label="Remove" onPress={() => confirmRemove(server.name, async () => { await removeMobileAgentResource(context.serviceUrl, context.backendId, 'mcp', server.id); await context.reload() })} /></View>)}
+    {explorer.serverId ? <View style={styles.form}><Text style={styles.formTitle}>Available tools and apps</Text>{explorer.loading ? <ActivityIndicator color={colors.accent} /> : null}{explorer.error ? <Text style={styles.error}>{explorer.error}</Text> : null}{explorer.tools.map((tool) => <View key={tool.name} style={styles.toolRow}><View style={styles.rowCopy}><Text style={styles.rowTitle}>{tool.title || tool.name}</Text>{tool.description ? <Text numberOfLines={2} style={styles.rowDetail}>{tool.description}</Text> : null}</View>{tool.appResourceUri ? <Action label="Open App" onPress={() => void openApp(tool)} /> : null}</View>)}{!explorer.loading && !explorer.tools.length && !explorer.error ? <Empty text="This server exposes no tools." /> : null}{explorer.app ? <MobileMcpApp app={explorer.app} callTool={(toolName, toolArgs, signal) => callMobileMcpTool(context.serviceUrl, context.backendId, explorer.serverId, toolName, toolArgs, signal)} /> : null}</View> : null}
     {!catalog.mcpServers.length ? <Empty text="No MCP servers configured." /> : null}</>
 }
 

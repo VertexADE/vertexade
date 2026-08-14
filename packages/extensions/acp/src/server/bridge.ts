@@ -39,9 +39,9 @@ function executable(command: string) {
 export function acpMcpServers(value: unknown): McpServer[] {
   if (!Array.isArray(value)) return []
   return (value as AgentMcpServer[]).map((server) =>
-    server.transport === 'sse'
+    server.transport !== 'stdio'
       ? {
-          type: 'sse' as const,
+          type: server.transport,
           name: server.name,
           url: server.url,
           headers: Object.entries(server.headers || {}).map(([name, value]) => ({ name, value })),

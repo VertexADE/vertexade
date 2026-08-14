@@ -83,7 +83,7 @@ const mcpValues = configuredMcpValues()
 const configuredMcpServers = Object.fromEntries(
   mcpValues.map((server) => [
     server.name,
-    server.transport === 'sse'
+    server.transport !== 'stdio'
       ? { url: server.url, http_headers: server.headers || {} }
       : { command: server.command, args: server.args || [], env: server.env || {} },
   ]),

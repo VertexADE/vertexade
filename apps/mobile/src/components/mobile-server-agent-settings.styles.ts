@@ -24,6 +24,8 @@ export const mobileServerSettingsStyles = StyleSheet.create({
   rowCopy: { flex: 1, gap: 3 },
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
   rowDetail: { color: colors.muted, fontSize: 11, lineHeight: 15 },
+  inspectHint: { color: colors.accent, fontSize: 11, fontWeight: '600' },
+  toolRow: { alignItems: 'center', borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: spacing.sm, minHeight: 50, paddingVertical: spacing.sm },
   action: { alignItems: 'center', borderCurve: 'continuous', borderRadius: radii.md, justifyContent: 'center', minHeight: 36, paddingHorizontal: spacing.sm },
   actionPrimary: { backgroundColor: colors.accent },
   actionText: { color: colors.accent, fontSize: 13, fontWeight: '600' },

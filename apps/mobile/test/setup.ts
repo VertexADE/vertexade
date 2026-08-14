@@ -40,3 +40,14 @@ jest.mock('react-native-diffs', () => {
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native')
   return { DiffsView: ReactNative.View }
 })
+
+jest.mock('react-native-webview', () => {
+  const React = jest.requireActual<typeof import('react')>('react')
+  const ReactNative = jest.requireActual<typeof import('react-native')>('react-native')
+  return {
+    __esModule: true,
+    default: React.forwardRef((props: Record<string, unknown>, ref: React.ForwardedRef<unknown>) =>
+      React.createElement(ReactNative.View, { ...props, ref }),
+    ),
+  }
+})

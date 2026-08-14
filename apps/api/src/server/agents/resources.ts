@@ -81,7 +81,7 @@ function normalizeSkill(value: unknown): AgentSkill {
 
 function normalizeMcpServer(value: unknown): AgentMcpServer {
   const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-  const transport = input.transport === 'sse' ? 'sse' : 'stdio'
+  const transport = input.transport === 'http' || input.transport === 'sse' ? input.transport : 'stdio'
   const name = text(input.name, 200, 'MCP server name')
   const id = optionalText(input.id, 100, 'MCP server ID') || `mcp-${randomUUID()}`
   if (transport === 'stdio') {
@@ -95,14 +95,14 @@ function normalizeMcpServer(value: unknown): AgentMcpServer {
       defaultEnabled: input.defaultEnabled === true,
     }
   }
-  const url = text(input.url, 2_000, 'MCP SSE URL')
+  const url = text(input.url, 2_000, 'MCP HTTP URL')
   let parsed: URL
   try {
     parsed = new URL(url)
   } catch {
-    throw new Error('MCP SSE URL must be a valid URL')
+    throw new Error('MCP HTTP URL must be a valid URL')
   }
-  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('MCP SSE URL must use HTTP or HTTPS')
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('MCP HTTP URL must use HTTP or HTTPS')
   return {
     id,
     name,
@@ -244,6 +244,12 @@ export class AgentResourceService {
 
   profiles() {
     return this.read().profiles
+  }
+
+  mcpServer(id: string) {
+    const server = this.read().mcpServers.find((candidate) => candidate.id === id)
+    if (!server) throw new Error('MCP server not found')
+    return server
   }
 
   profileForAgent(agentId: string | null | undefined) {

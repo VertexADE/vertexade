@@ -40,7 +40,7 @@ export function openCodeMcpServers(values: AgentMcpServer[]) {
   return Object.fromEntries(
     values.map((server) => [
       server.name,
-      server.transport === 'sse'
+      server.transport !== 'stdio'
         ? { type: 'remote', url: server.url, enabled: true, headers: server.headers || {} }
         : {
             type: 'local',

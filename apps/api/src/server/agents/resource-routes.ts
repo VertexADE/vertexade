@@ -1,6 +1,7 @@
 import type { AgentResourceService } from './resources.ts'
 import { HttpError, readJsonObject } from '@vertexade/platform-server/http'
 import { searchMcpRegistry } from './mcp-registry.ts'
+import { McpGatewayPool, toolAppResourceUri } from './mcp-gateway.ts'
 
 function response(status: number, value: unknown) {
   return Response.json(value, { status })
@@ -14,23 +15,25 @@ function kind(value: string) {
 }
 
 export function createAgentResourceRoutes(service: AgentResourceService, profilesChanged: () => void = () => {}) {
+  const gateways = new McpGatewayPool()
   return async (request: Request) => {
     try {
-      return await dispatch(request, service, profilesChanged)
+      return await dispatch(request, service, profilesChanged, gateways)
     } catch (error) {
       return response(error instanceof HttpError ? error.status : 400, { error: message(error) })
     }
   }
 }
 
-async function dispatch(request: Request, service: AgentResourceService, profilesChanged: () => void) {
+async function dispatch(request: Request, service: AgentResourceService, profilesChanged: () => void, gateways: McpGatewayPool) {
   const url = new URL(request.url)
   const routes = [
-    () => exactRoute(request, url, service, profilesChanged),
+    () => exactRoute(request, url, service, profilesChanged, gateways),
     () => defaultRoute(request, url, service),
-    () => removalRoute(request, url, service),
+    () => removalRoute(request, url, service, gateways),
     () => profileRemovalRoute(request, url, service, profilesChanged),
     () => workSelectionRoute(request, url, service),
+    () => mcpGatewayRoute(request, url, service, gateways),
   ]
   for (const route of routes) {
     const result = await route()
@@ -39,7 +42,69 @@ async function dispatch(request: Request, service: AgentResourceService, profile
   return null
 }
 
-async function exactRoute(request: Request, url: URL, service: AgentResourceService, profilesChanged: () => void) {
+async function mcpGatewayRoute(request: Request, url: URL, service: AgentResourceService, gateways: McpGatewayPool) {
+  const taskMatch = url.pathname.match(/^\/api\/agent-resources\/mcp\/([^/]+)\/tasks\/([^/]+)(?:\/(update|cancel))?$/)
+  if (taskMatch) return taskGatewayRoute(request, service, gateways, taskMatch)
+  const match = url.pathname.match(/^\/api\/agent-resources\/mcp\/([^/]+)\/(tools|apps)(?:\/([^/]+))?$/)
+  if (!match) return null
+  return toolGatewayRoute(request, service, gateways, match)
+}
+
+async function taskGatewayRoute(request: Request, service: AgentResourceService, gateways: McpGatewayPool, match: RegExpMatchArray) {
+  const connection = await gateways.connection(service.mcpServer(decodeURIComponent(match[1]!)))
+  const taskId = decodeURIComponent(match[2]!)
+  if (request.method === 'GET' && !match[3]) return response(200, await connection.task(taskId))
+  if (request.method === 'POST' && match[3] === 'update') {
+    const input = await readJsonObject(request)
+    return response(200, await connection.updateTask(taskId, recordArguments(input.inputResponses)))
+  }
+  if (request.method === 'POST' && match[3] === 'cancel') return response(200, await connection.cancelTask(taskId))
+  return null
+}
+
+async function toolGatewayRoute(request: Request, service: AgentResourceService, gateways: McpGatewayPool, match: RegExpMatchArray) {
+  const server = service.mcpServer(decodeURIComponent(match[1]!))
+  const connection = await gateways.connection(server)
+  const tools = await connection.tools()
+  if (request.method === 'GET' && match[2] === 'tools' && !match[3])
+    return response(200, {
+      protocol: connection.protocol,
+      tools: tools.tools.map((tool) => ({ ...tool, appResourceUri: toolAppResourceUri(tool) })),
+    })
+  const toolName = decodeURIComponent(match[3] || '')
+  const tool = tools.tools.find((candidate) => candidate.name === toolName)
+  if (!tool) return response(404, { error: 'MCP tool not found' })
+  if (request.method === 'GET' && match[2] === 'apps') {
+    const app = await connection.app(tool)
+    return app ? response(200, app) : response(404, { error: 'MCP tool does not provide an App' })
+  }
+  if (request.method === 'POST' && match[2] === 'tools') {
+    const input = await readJsonObject(request)
+    return response(
+      200,
+      await connection.callTool(toolName, recordArguments(input.arguments), tool, {
+        signal: request.signal,
+        ...(input.inputResponses === undefined ? {} : { inputResponses: recordArguments(input.inputResponses) }),
+        ...(typeof input.requestState === 'string' ? { requestState: input.requestState } : {}),
+      }),
+    )
+  }
+  return null
+}
+
+function recordArguments(value: unknown) {
+  if (value === undefined) return {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('MCP tool arguments must be an object')
+  return value as Record<string, unknown>
+}
+
+async function exactRoute(
+  request: Request,
+  url: URL,
+  service: AgentResourceService,
+  profilesChanged: () => void,
+  gateways: McpGatewayPool,
+) {
   const routes: Record<string, () => unknown | Promise<unknown>> = {
     'GET /api/agent-resources': () => service.catalog(),
     'GET /api/agent-resources/selection': () => service.selection(Number(url.searchParams.get('work_item_id') || 0) || null),
@@ -50,7 +115,11 @@ async function exactRoute(request: Request, url: URL, service: AgentResourceServ
       results: await searchMcpRegistry(url.searchParams.get('query') || ''),
     }),
     'POST /api/agent-resources/skills': async () => service.addSkill(await readJsonObject(request)),
-    'POST /api/agent-resources/mcp': async () => service.upsertMcpServer(await readJsonObject(request)),
+    'POST /api/agent-resources/mcp': async () => {
+      const server = service.upsertMcpServer(await readJsonObject(request))
+      gateways.invalidate(server.id)
+      return server
+    },
     'POST /api/agent-resources/profiles': async () => {
       const profile = service.upsertProfile(await readJsonObject(request))
       profilesChanged()
@@ -74,10 +143,13 @@ async function defaultRoute(request: Request, url: URL, service: AgentResourceSe
   return request.method === 'POST' && defaultMatch ? updateDefault(request, defaultMatch, service) : null
 }
 
-function removalRoute(request: Request, url: URL, service: AgentResourceService) {
+function removalRoute(request: Request, url: URL, service: AgentResourceService, gateways: McpGatewayPool) {
   const resourceMatch = url.pathname.match(/^\/api\/agent-resources\/(skill|mcp)\/([^/]+)$/)
   if (request.method !== 'DELETE' || !resourceMatch) return null
-  service.remove(kind(resourceMatch[1]!), decodeURIComponent(resourceMatch[2]!))
+  const resourceKind = kind(resourceMatch[1]!)
+  const id = decodeURIComponent(resourceMatch[2]!)
+  service.remove(resourceKind, id)
+  if (resourceKind === 'mcp') gateways.invalidate(id)
   return response(200, { removed: true })
 }
 
