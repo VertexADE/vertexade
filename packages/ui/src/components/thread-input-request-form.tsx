@@ -8,6 +8,7 @@ import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { age } from '@vertexade/ui/lib/dashboard-api'
 import type { InputQuestion, JobLog } from '@vertexade/ui/lib/dashboard-types'
+import { cn } from '@vertexade/ui/lib/utils'
 
 type Answers = Record<string, string>
 
@@ -22,6 +23,7 @@ export function ThreadInputRequestForm({
   setSelections,
   onSubmit,
   onCancel,
+  className,
 }: {
   job: JobLog
   questions: InputQuestion[]
@@ -33,11 +35,15 @@ export function ThreadInputRequestForm({
   setSelections: Dispatch<SetStateAction<Record<string, string[]>>>
   onSubmit(event: FormEvent<HTMLFormElement>): void
   onCancel?(): void
+  className?: string
 }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-3 mt-3 max-h-[40dvh] shrink-0 space-y-3 overflow-y-auto rounded-lg border border-amber-500/50 bg-amber-500/5 p-3 sm:mx-4"
+      className={cn(
+        'mx-3 mt-3 max-h-[40dvh] shrink-0 space-y-3 overflow-y-auto rounded-lg border border-amber-500/50 bg-amber-500/5 p-3 sm:mx-4',
+        className,
+      )}
     >
       <div className="flex justify-between gap-3">
         <strong className="font-mono text-xs text-amber-400">{questions[0]?.formTitle || `${job.agent_name} needs your input`}</strong>

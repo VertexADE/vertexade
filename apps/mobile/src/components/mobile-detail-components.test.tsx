@@ -315,6 +315,32 @@ describe('mobile full detail views', () => {
     })
   })
 
+  test('opens an agent-requested form above the thread regardless of transcript scroll position', async () => {
+    jest.mocked(loadMobileThreadDetails).mockResolvedValue({
+      ...threadDetails,
+      inputQuestions: [
+        {
+          id: 'direction',
+          header: '',
+          question: 'Which direction should we take?',
+          description: '',
+          type: 'select',
+          required: true,
+          multiline: false,
+          secret: false,
+          options: [{ label: 'Smallest slice', value: 'small', description: 'Ship the essential flow.' }],
+          formTitle: 'Choose a direction',
+          formDescription: 'Answer to continue.',
+        },
+      ],
+    })
+
+    render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByTestId('thread-input-native-modal')).toBeOnTheScreen()
+    expect(screen.getByText('Which direction should we take?')).toBeOnTheScreen()
+  })
+
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {
     render(
       <MobilePullRequestDetail

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Text, View } from 'react-native'
+import { Modal, ScrollView, Text, View } from 'react-native'
 import { updateAgentTurnLiveActivity } from '@/agent-turn-live-activity-controller'
 import type { MobileThreadDetails } from '@/mobile-detail-service'
 import { mobileThreadTabs, type MobileThreadTab } from '@/mobile-thread-presentation'
@@ -11,6 +11,8 @@ import { MobileThreadTabContent } from './mobile-thread-content'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { MobileDetailShell } from './mobile-detail-shell'
 import { MobileGlass } from './mobile-glass'
+import { MobileModalSafeArea } from './mobile-modal-safe-area'
+import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileThreadController } from './use-mobile-thread-controller'
 import { useSessionCompletionHaptic } from './use-session-completion-haptic'
 
@@ -54,7 +56,8 @@ export function MobileThreadDetail(props: MobileThreadDetailProps) {
     })
   }, [detail?.agentName, detail?.id, detail?.inputQuestions.length, detail?.latestActivity, detail?.status, detail?.taskTitle])
   return (
-    <MobileDetailShell<MobileThreadTab>
+    <>
+      <MobileDetailShell<MobileThreadTab>
       eyebrow={`${props.thread.backendName.toUpperCase()} · AGENT RUN`}
       title={detail?.taskTitle || props.thread.taskTitle || `Thread ${props.thread.id}`}
       subtitle={detail?.fullName || `${props.thread.status} · ${props.thread.fullName}`}
@@ -87,7 +90,43 @@ export function MobileThreadDetail(props: MobileThreadDetailProps) {
     >
       <ThreadDetailAlerts notice={controller.notice} error={controller.error} />
       {detail ? <ThreadBody detail={detail} controller={controller} threadKey={`${props.thread.backendId}:${props.thread.id}`} /> : null}
-    </MobileDetailShell>
+      </MobileDetailShell>
+      {detail ? <ThreadInputRequestModal detail={detail} controller={controller} /> : null}
+    </>
+  )
+}
+
+function ThreadInputRequestModal({ detail, controller }: { detail: MobileThreadDetails; controller: MobileThreadController }) {
+  const questions = detail.inputQuestions
+  if (!questions.length) return null
+  return (
+    <Modal
+      allowSwipeDismissal
+      animationType="slide"
+      presentationStyle="formSheet"
+      testID="thread-input-native-modal"
+      visible
+      onRequestClose={controller.actions.cancelForm}
+    >
+      <MobileModalSafeArea style={styles.modal}>
+        <MobileSheetHeader
+          title={questions[0]?.formTitle || 'Agent needs input'}
+          subtitle={questions[0]?.formDescription || 'Answer to continue the waiting agent turn.'}
+          trailingLabel="Cancel"
+          onTrailing={controller.actions.cancelForm}
+        />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <MobileThreadInputRequest
+            questions={questions}
+            answers={controller.answers}
+            busy={controller.busy}
+            onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
+            onSubmit={controller.actions.submitAnswers}
+            onCancel={questions.some((question) => question.formTitle) ? controller.actions.cancelForm : undefined}
+          />
+        </ScrollView>
+      </MobileModalSafeArea>
+    </Modal>
   )
 }
 
@@ -100,14 +139,6 @@ function ThreadBody({ detail, controller, threadKey }: { detail: MobileThreadDet
   return (
     <>
       <SessionCompletionFeedback threadKey={threadKey} events={detail.events} />
-      <MobileThreadInputRequest
-        questions={detail.inputQuestions}
-        answers={controller.answers}
-        busy={controller.busy}
-        onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
-        onSubmit={controller.actions.submitAnswers}
-        onCancel={detail.inputQuestions.some((question) => question.formTitle) ? controller.actions.cancelForm : undefined}
-      />
       <MobileThreadTabContent
         tab={controller.tab}
         detail={detail}
