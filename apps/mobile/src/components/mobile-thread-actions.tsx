@@ -14,6 +14,7 @@ import { MobileAgentOptions } from './mobile-agent-options'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { MobileModalSafeArea } from './mobile-modal-safe-area'
 import { MobileSheetHeader } from './mobile-sheet-header'
+import { MobileSingleSelect } from './mobile-single-select'
 import { MobileSymbol } from './mobile-symbol'
 
 type ActionView = 'menu' | 'fork' | 'transfer'
@@ -480,18 +481,13 @@ function submitTransfer(destination: number | null, title: string, instruction: 
 }
 
 function ChoiceGroup({ label, values, value, onChange }: { label: string; values: string[]; value: string; onChange(value: string): void }) {
-  return (
-    <View style={styles.formGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <View style={styles.actions}>
-        {values.map((option) => (
-          <Pressable accessibilityRole="radio" accessibilityState={{ selected: option === value }} key={option} onPress={() => onChange(option)} style={[styles.secondaryButton, option === value && styles.optionSelected]}>
-            <Text style={styles.secondaryButtonText}>{option}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  )
+  return <MobileSingleSelect
+    label={label}
+    options={values.map((option) => ({ id: option, label: option.replace(/^./, (character) => character.toUpperCase()) }))}
+    value={value}
+    testID={`thread-action-${label.toLowerCase().replaceAll(' ', '-')}-select`}
+    onChange={onChange}
+  />
 }
 
 function primaryAction(detail: MobileThreadDetails): 'interrupt' | 'retry' | 're-review' | null {

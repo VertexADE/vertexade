@@ -7,7 +7,9 @@ import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { DetailSection, useDetailLoadEarlier } from './mobile-detail-shell'
 import { MobileMarkdown } from './mobile-markdown'
+import { MobileFileChanges } from './mobile-file-changes'
 import { MobileSymbol } from './mobile-symbol'
+import { displayMobileFilePath } from './mobile-file-path'
 
 const INITIAL_MESSAGE_COUNT = 60
 const MESSAGE_PAGE_SIZE = 40
@@ -39,7 +41,7 @@ export function MobileThreadActivity({
         {window.sessions.length ? (
           <View testID="thread-markdown-transcript">
             {window.sessions.map((session) => (
-              <WorkSession key={session.key} session={session} />
+              <WorkSession key={session.key} session={session} worktreePath={detail.worktreePath} />
             ))}
           </View>
         ) : (
@@ -87,6 +89,7 @@ type ThreadMessage = {
   files: MobileDiffFile[]
   additions: number
   deletions: number
+  patch: string
 }
 
 function mobileThreadWorkSessions(detail: MobileThreadDetails): Array<ThreadWorkSession<ThreadMessage>> {
@@ -121,6 +124,7 @@ function initialPrompt(detail: MobileThreadDetails): ThreadMessage[] {
           files: [],
           additions: 0,
           deletions: 0,
+          patch: '',
         },
       ]
     : []
@@ -151,6 +155,7 @@ function threadMessage(event: MobileThreadDetails['events'][number], agentName: 
     files: event.files || [],
     additions: event.additions || 0,
     deletions: event.deletions || 0,
+    patch: event.patch || '',
   }
 }
 
@@ -175,10 +180,11 @@ function completionMessage(event: MobileThreadDetails['events'][number]): Thread
     files: [],
     additions: 0,
     deletions: 0,
+    patch: '',
   }
 }
 
-function WorkSession({ session }: { session: ThreadWorkSession<ThreadMessage> }) {
+function WorkSession({ session, worktreePath }: { session: ThreadWorkSession<ThreadMessage>; worktreePath: string }) {
   const [expanded, setExpanded] = useState(!session.complete)
   return (
     <View style={styles.workSessionFlow}>
@@ -198,12 +204,12 @@ function WorkSession({ session }: { session: ThreadWorkSession<ThreadMessage> })
         <SessionActivity expanded={expanded} messages={session.activity} />
       </View>
       <SessionMessage message={session.finalMessage} emptyText="No final response." />
-      <TurnChanges message={session.changes} />
+      <TurnChanges message={session.changes} worktreePath={worktreePath} />
     </View>
   )
 }
 
-function TurnChanges({ message }: { message?: ThreadMessage }) {
+function TurnChanges({ message, worktreePath }: { message?: ThreadMessage; worktreePath?: string }) {
   const [expanded, setExpanded] = useState(false)
   if (!message?.files.length) return null
   return (
@@ -222,15 +228,23 @@ function TurnChanges({ message }: { message?: ThreadMessage }) {
       </Pressable>
       {expanded ? (
         <View style={styles.turnChangesFiles}>
-          <Text style={styles.turnChangesSummary}>{message.text}</Text>
-          {message.files.map((file) => (
-            <View key={`${file.status}:${file.path}`} style={styles.turnChangesFile}>
-              <MobileSymbol name="doc.text" fallback="·" color={colors.muted} size={12} />
-              <Text numberOfLines={2} style={styles.turnChangesPath}>{file.path}</Text>
-              <Text style={styles.turnChangesAdditions}>+{file.additions}</Text>
-              <Text style={styles.turnChangesDeletions}>−{file.deletions}</Text>
-            </View>
-          ))}
+          {message.text ? <Text style={styles.turnChangesSummary}>{message.text}</Text> : null}
+          {message.patch ? (
+            <MobileFileChanges
+              additions={message.additions}
+              deletions={message.deletions}
+              files={message.files}
+              patch={message.patch}
+              worktreePath={worktreePath}
+            />
+          ) : message.files.map((file) => (
+              <View key={`${file.status}:${file.path}`} style={styles.turnChangesFile}>
+                <MobileSymbol name="doc.text" fallback="·" color={colors.muted} size={12} />
+                <Text numberOfLines={2} style={styles.turnChangesPath}>{displayMobileFilePath(file.path, worktreePath)}</Text>
+                <Text style={styles.turnChangesAdditions}>+{file.additions}</Text>
+                <Text style={styles.turnChangesDeletions}>−{file.deletions}</Text>
+              </View>
+            ))}
         </View>
       ) : null}
     </View>
@@ -475,8 +489,8 @@ function QueueMoveButton({ direction, disabled, onPress }: { direction: 'up' | '
 function QueueSteerButton({ visible, busy, id, onSteer }: { visible: boolean; busy: boolean; id: number; onSteer(id: number): void }) {
   if (!visible) return null
   return (
-    <Pressable accessibilityRole="button" disabled={busy} onPress={() => onSteer(id)} style={[styles.primaryButton, busy && styles.disabled]}>
-      <Text style={styles.primaryButtonText}>Use to steer now</Text>
+    <Pressable accessibilityLabel="Steer with queued message now" accessibilityRole="button" disabled={busy} onPress={() => onSteer(id)} style={[styles.primaryButton, busy && styles.disabled]}>
+      <Text style={styles.primaryButtonText}>Steer now</Text>
     </Pressable>
   )
 }

@@ -249,7 +249,7 @@ function SuggestionEditor({
 function ThreadChanges({ detail }: { detail: MobileThreadDetails }) {
   return (
     <DetailSection title="Changes" meta={`${detail.files.length} files`}>
-        <MobileFileChanges additions={detail.additions} deletions={detail.deletions} files={detail.files} patch={detail.diff} />
+        <MobileFileChanges additions={detail.additions} deletions={detail.deletions} files={detail.files} patch={detail.diff} worktreePath={detail.worktreePath} />
         {detail.diffError ? <Text style={styles.error}>{detail.diffError}</Text> : null}
     </DetailSection>
   )

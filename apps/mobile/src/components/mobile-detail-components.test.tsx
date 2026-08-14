@@ -343,9 +343,9 @@ describe('mobile full detail views', () => {
 
     expect(await screen.findByText('Match the important web UI information.')).toBeOnTheScreen()
     fireEvent.press(screen.getByLabelText('Open threads'))
-    fireEvent.press(screen.getByTestId('detail-thread-fixture-7'))
     expect(onOpenThread).toHaveBeenCalledWith(thread)
-    fireEvent.press(screen.getByTestId('detail-tab-overview'))
+    fireEvent.press(screen.getByTestId('overview-thread-fixture-7'))
+    expect(onOpenThread).toHaveBeenCalledTimes(2)
     fireEvent.press(screen.getByLabelText('Open events'))
     expect(screen.getByText('Thread started')).toBeOnTheScreen()
     fireEvent.press(screen.getByTestId('detail-tab-overview'))
@@ -380,6 +380,19 @@ describe('mobile full detail views', () => {
         ...threadDetails.events,
         { id: 'event-2', kind: 'userMessage', title: 'User message', text: '', time: '2026-08-11T10:01:00Z', status: '', event: 'user_message' },
         {
+          id: 'event-diff',
+          kind: 'changes',
+          title: 'Files changed',
+          text: '1 file · +1 −0',
+          time: '2026-08-11T10:01:30Z',
+          status: 'completed',
+          event: 'diff_updated',
+          files: [{ path: '/tmp/vertexade-mobile/src/turn.ts', additions: 1, deletions: 0, status: 'modified', binary: false }],
+          additions: 1,
+          deletions: 0,
+          patch: 'diff --git a/src/turn.ts b/src/turn.ts\n+exact turn patch',
+        },
+        {
           id: 'event-3',
           kind: 'system',
           title: 'Turn completed',
@@ -413,6 +426,9 @@ describe('mobile full detail views', () => {
     expect(screen.queryByText(/Steer accepted/)).not.toBeOnTheScreen()
     expect(screen.getByText('Read mobile source')).toBeOnTheScreen()
     expect(screen.queryByText(/Verbose tool output/)).not.toBeOnTheScreen()
+    fireEvent.press(screen.getByText('1 changed file'))
+    expect(screen.getByText(/exact turn patch/)).toBeOnTheScreen()
+    expect(screen.getByText('src/turn.ts')).toBeOnTheScreen()
     fireEvent.changeText(screen.getByLabelText('Thread message'), 'Continue with tests')
     fireEvent.press(screen.getByLabelText('Queue next turn'))
     await waitFor(() =>
@@ -624,7 +640,7 @@ describe('mobile full detail views', () => {
     render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByText('Prioritize the failing test')).toBeOnTheScreen()
-    fireEvent.press(screen.getByText('Use to steer now'))
+    fireEvent.press(screen.getByLabelText('Steer with queued message now'))
     await waitFor(() => expect(steerMobileQueuedMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 4))
     fireEvent.press(screen.getByText('Remove'))
     await waitFor(() => expect(cancelMobileQueuedMessage).toHaveBeenCalledWith('http://fixture:4173', thread, 4))
@@ -712,26 +728,27 @@ describe('mobile full detail views', () => {
     await waitFor(() => expect(screen.getByLabelText('Thread message').props.value).toBe('Voice draft complete'))
   })
 
-  test('cleans up text from the composer controls', async () => {
+  test('hides voice input while the user is typing and omits manual cleanup', async () => {
     render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.changeText(await screen.findByLabelText('Thread message'), 'Um, please please update src/app.ts.')
-    fireEvent.press(screen.getByLabelText('Clean up message'))
+    expect(await screen.findByLabelText('Start voice input')).toBeOnTheScreen()
+    expect(screen.queryByLabelText('Clean up message')).not.toBeOnTheScreen()
+    fireEvent.changeText(screen.getByLabelText('Thread message'), 'Update src/app.ts.')
 
-    await waitFor(() => expect(screen.getByLabelText('Thread message').props.value).toBe('please update src/app.ts.'))
+    expect(screen.queryByLabelText('Start voice input')).not.toBeOnTheScreen()
   })
 
   test('shows composer tools and the active execution configuration below the input', async () => {
     render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByTestId('thread-composer-controls')).toBeOnTheScreen()
+    expect(screen.queryByLabelText('Steer current turn')).not.toBeOnTheScreen()
     expect(screen.getByLabelText('Attach images')).toBeOnTheScreen()
     expect(screen.getByLabelText('Start voice input')).toBeOnTheScreen()
-    expect(screen.getByLabelText('Clean up message')).toBeOnTheScreen()
+    expect(screen.queryByLabelText('Clean up message')).not.toBeOnTheScreen()
     expect(screen.getByLabelText('Execution settings')).toBeOnTheScreen()
-    expect(screen.getByLabelText('Machine Fixture')).toBeOnTheScreen()
     expect(screen.getByText('gpt-5.6')).toBeOnTheScreen()
-    expect(screen.getByText('high · codex · Subagents off')).toBeOnTheScreen()
+    expect(screen.getByText('Fixture · high · codex · Subagents off')).toBeOnTheScreen()
   })
 
   test('renders review summary, findings, and editable suggestions before posting', async () => {

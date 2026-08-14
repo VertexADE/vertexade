@@ -526,26 +526,6 @@ export const mobileDetailStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
   },
-  composerContextRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  composerMachineGlass: {
-    borderCurve: 'continuous',
-    borderRadius: radii.lg,
-    maxWidth: 132,
-    minHeight: 44,
-    overflow: 'hidden',
-  },
-  composerMachine: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-  },
-  composerMachineText: { color: colors.muted, flexShrink: 1, fontSize: 11, fontWeight: '600' },
   composerInputGlass: {
     borderCurve: 'continuous',
     borderRadius: 22,

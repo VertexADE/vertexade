@@ -146,6 +146,7 @@ describe('agent timeline log parsing', () => {
       kind: 'changes',
       text: '1 file · +1 −1',
       data: {
+        diff: expect.stringContaining('diff --git a/src/old.ts b/src/new.ts'),
         diff_summary: {
           additions: 1,
           deletions: 1,

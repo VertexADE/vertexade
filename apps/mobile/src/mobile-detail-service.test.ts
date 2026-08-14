@@ -169,7 +169,17 @@ describe('mobile detail service', () => {
         status: 'running',
         thread_id: 'provider-thread-7',
         can_steer: true,
-        events: [{ id: 'event-1', kind: 'assistant', title: 'Working', text: 'Implementing details' }],
+        events: [{
+          id: 'event-1',
+          kind: 'changes',
+          title: 'Files changed',
+          text: '1 file · +1 −0',
+          data: {
+            event: 'diff_updated',
+            diff: 'diff --git a/fallback.ts b/fallback.ts\n+tracked turn patch',
+            diff_summary: { additions: 1, deletions: 0, files: [{ path: 'fallback.ts', additions: 1, deletions: 0 }] },
+          },
+        }],
         queued_follow_ups: [{ id: 2, prompt: 'Add tests', queued_at: '2026-08-11T10:00:00Z' }],
         input_questions: JSON.stringify([{ id: 'scope', header: 'Scope', question: 'Which scope?', options: [{ label: 'Full', description: 'Everything' }] }]),
         diff_summary: { additions: 2, deletions: 1, files: [{ path: 'fallback.ts', additions: 2, deletions: 1 }] },
@@ -180,7 +190,11 @@ describe('mobile detail service', () => {
     await expect(loadMobileThreadDetails('http://fixture:4173', thread)).resolves.toMatchObject({
       threadId: 'provider-thread-7',
       canSteer: true,
-      events: [{ title: 'Working', text: 'Implementing details' }],
+      events: [{
+        title: 'Files changed',
+        patch: 'diff --git a/fallback.ts b/fallback.ts\n+tracked turn patch',
+        files: [{ path: 'fallback.ts' }],
+      }],
       queuedFollowUps: [{ prompt: 'Add tests' }],
       inputQuestions: [{ id: 'scope', options: [{ label: 'Full' }] }],
       files: [{ path: 'fallback.ts' }],

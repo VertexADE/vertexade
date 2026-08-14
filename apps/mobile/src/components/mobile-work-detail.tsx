@@ -130,19 +130,21 @@ function WorkTabContent({
   if (tab === 'threads') return <WorkThreads detail={detail} onOpenThread={onOpenThread} onStartThread={onStartThread} />
   if (tab === 'activity') return <WorkActivity detail={detail} />
   if (tab === 'links') return <WorkLinks detail={detail} onError={onError} />
-  return <WorkOverview detail={detail} saving={saving} onMove={onMove} onStartThread={onStartThread} onTab={onTab} />
+  return <WorkOverview detail={detail} saving={saving} onMove={onMove} onOpenThread={onOpenThread} onStartThread={onStartThread} onTab={onTab} />
 }
 
 function WorkOverview({
   detail,
   saving,
   onMove,
+  onOpenThread,
   onStartThread,
   onTab,
 }: {
   detail: MobileWorkItemDetails
   saving: boolean
   onMove(state: MobileWorkState): void
+  onOpenThread(thread: MobileThread): void
   onStartThread(): void
   onTab(tab: WorkDetailTab): void
 }) {
@@ -151,7 +153,11 @@ function WorkOverview({
       <DetailSection title="Outcome">
         <MobileMarkdown content={detail.description} emptyText="No description has been added." />
         <View style={styles.metrics}>
-          <DetailMetric label="THREADS" value={detail.threads.length} onPress={() => onTab('threads')} />
+          <DetailMetric
+            label="THREADS"
+            value={detail.threads.length}
+            onPress={() => detail.threads.length === 1 ? onOpenThread(detail.threads[0]!) : onTab('threads')}
+          />
           <DetailMetric label="LINKS" value={detail.resources.length} onPress={() => onTab('links')} />
           <DetailMetric label="EVENTS" value={detail.events.length} onPress={() => onTab('activity')} />
         </View>
@@ -161,6 +167,26 @@ function WorkOverview({
         </Text>
         {detail.attention ? <Text style={styles.error}>{detail.attention}</Text> : null}
       </DetailSection>
+      {detail.threads.length ? (
+        <DetailSection title="Agent threads" meta={`${detail.threads.length}`}>
+          {detail.threads.slice(0, 3).map((thread, index) => (
+            <DetailRow
+              testID={`overview-thread-${thread.backendId}-${thread.id}`}
+              key={`${thread.backendId}:${thread.id}`}
+              first={index === 0}
+              title={thread.taskTitle || thread.fullName}
+              text={thread.latestActivity}
+              meta={`${thread.agentName} · ${thread.status} · ${formatDate(thread.activityAt)}`}
+              onPress={() => onOpenThread(thread)}
+            />
+          ))}
+          {detail.threads.length > 3 ? (
+            <Pressable accessibilityRole="button" onPress={() => onTab('threads')} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>View all {detail.threads.length} threads</Text>
+            </Pressable>
+          ) : null}
+        </DetailSection>
+      ) : null}
       <DetailSection title="Lifecycle" meta={saving ? 'Saving…' : undefined}>
         <MobileSingleSelect
           enabled={!saving}

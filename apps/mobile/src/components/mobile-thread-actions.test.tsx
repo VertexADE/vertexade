@@ -88,7 +88,7 @@ describe('MobileThreadRunActions', () => {
 
     fireEvent.press(screen.getByLabelText('Thread actions'))
     fireEvent.press(screen.getByText('Fork into a new worktree'))
-    fireEvent.press(screen.getByText('fix'))
+    fireEvent(screen.getByTestId('thread-action-branch-type-select'), 'valueChange', 'fix')
     fireEvent.changeText(screen.getByLabelText('Fork title'), 'Fix mobile thread')
     fireEvent.changeText(screen.getByLabelText('Fork instruction'), 'Finish the workflow')
     fireEvent.press(screen.getByText('Fork and start'))

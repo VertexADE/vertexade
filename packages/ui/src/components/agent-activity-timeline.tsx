@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { DiffReview } from '@vertexade/ui/components/diff-review'
 import type { FileReference } from '@vertexade/ui/components/markdown-content'
 import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-content'
 import type { AgentAccent } from '@vertexade/ui/components/agent-identity'
@@ -27,7 +28,7 @@ import { buildAgentTimeline, timelineSummary, type TimelineEvent } from '@vertex
 import { buildThreadWorkSessions, type ThreadWorkSession } from '@vertexade/ui/lib/thread-work-sessions'
 import { agentIsWorking, agentThreadLabel, type AgentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import { dateValue } from '@vertexade/ui/lib/dashboard-api'
-import type { LogEvent } from '@vertexade/ui/lib/dashboard-types'
+import type { DiffFile, LogEvent } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
 function timeLabel(value: string | null) {
@@ -279,18 +280,29 @@ function CopyAction({ event }: { event: TimelineEvent }) {
   )
 }
 
-type DiffFile = {
-  path: string
-  additions?: number
-  deletions?: number
-  status?: string
-  binary?: boolean
-}
-
 function diffFiles(event: TimelineEvent) {
   const summary = event.data?.diff_summary
   if (!summary || typeof summary !== 'object' || !('files' in summary) || !Array.isArray(summary.files)) return []
-  return summary.files as DiffFile[]
+  return summary.files.flatMap((value): DiffFile[] => {
+    if (!value || typeof value !== 'object' || !('path' in value) || typeof value.path !== 'string') return []
+    const status =
+      'status' in value && ['added', 'deleted', 'renamed'].includes(String(value.status))
+        ? (value.status as DiffFile['status'])
+        : 'modified'
+    return [
+      {
+        path: value.path,
+        additions: 'additions' in value ? Number(value.additions || 0) : 0,
+        deletions: 'deletions' in value ? Number(value.deletions || 0) : 0,
+        status,
+        binary: 'binary' in value && value.binary === true,
+      },
+    ]
+  })
+}
+
+function diffPatch(event: TimelineEvent) {
+  return typeof event.data?.diff === 'string' ? event.data.diff : ''
 }
 
 function fileStatus(file: DiffFile) {
@@ -302,9 +314,10 @@ function fileStatus(file: DiffFile) {
 
 function ChangesEvent({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: (reference: FileReference) => void }) {
   const files = diffFiles(event)
+  const patch = diffPatch(event)
   if (!files.length) return <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{event.text}</p>
   return (
-    <details className="group/details mt-1 w-full max-w-xl overflow-hidden rounded-md border bg-background/60">
+    <details className="group/details mt-1 w-full max-w-full overflow-hidden rounded-md border bg-background/60">
       <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/30">
         <FileCode2 className="size-3.5 shrink-0 text-blue-500" />
         <strong>
@@ -318,35 +331,43 @@ function ChangesEvent({ event, onOpenFile }: { event: TimelineEvent; onOpenFile:
       {event.text ? (
         <p className="whitespace-pre-wrap break-words border-t px-2.5 py-2 text-xs text-muted-foreground">{event.text}</p>
       ) : null}
-      <ul className="max-h-72 divide-y overflow-auto">
-        {files.map((file) => {
-          const status = fileStatus(file)
-          return (
-            <li key={`${file.status}-${file.path}`} className="min-w-0 text-xs">
-              <button
-                type="button"
-                disabled={file.binary || file.status === 'deleted'}
-                onClick={() => onOpenFile({ path: file.path, line: 1 })}
-                className="flex min-h-9 w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-muted/45 focus-visible:bg-muted/45 focus-visible:outline-none disabled:cursor-default disabled:hover:bg-transparent"
-                title={file.binary ? 'Binary files cannot be previewed' : file.status === 'deleted' ? 'Deleted file' : `Open ${file.path}`}
-              >
-                <status.Icon className={cn('size-3.5 shrink-0', status.tone)} aria-label={status.label} />
-                <span className="min-w-0 flex-1 truncate font-mono text-foreground">{file.path}</span>
-                {file.binary ? (
-                  <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                    Binary
-                  </Badge>
-                ) : (
-                  <span className="flex shrink-0 gap-1.5 font-mono">
-                    <span className="text-emerald-500">+{file.additions || 0}</span>
-                    <span className="text-red-500">−{file.deletions || 0}</span>
-                  </span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      {patch ? (
+        <div className="min-w-0 border-t p-2">
+          <DiffReview patch={patch} files={files} />
+        </div>
+      ) : (
+        <ul className="max-h-72 divide-y overflow-auto">
+          {files.map((file) => {
+            const status = fileStatus(file)
+            return (
+              <li key={`${file.status}-${file.path}`} className="min-w-0 text-xs">
+                <button
+                  type="button"
+                  disabled={file.binary || file.status === 'deleted'}
+                  onClick={() => onOpenFile({ path: file.path, line: 1 })}
+                  className="flex min-h-9 w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-muted/45 focus-visible:bg-muted/45 focus-visible:outline-none disabled:cursor-default disabled:hover:bg-transparent"
+                  title={
+                    file.binary ? 'Binary files cannot be previewed' : file.status === 'deleted' ? 'Deleted file' : `Open ${file.path}`
+                  }
+                >
+                  <status.Icon className={cn('size-3.5 shrink-0', status.tone)} aria-label={status.label} />
+                  <span className="min-w-0 flex-1 truncate font-mono text-foreground">{file.path}</span>
+                  {file.binary ? (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      Binary
+                    </Badge>
+                  ) : (
+                    <span className="flex shrink-0 gap-1.5 font-mono">
+                      <span className="text-emerald-500">+{file.additions || 0}</span>
+                      <span className="text-red-500">−{file.deletions || 0}</span>
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </details>
   )
 }

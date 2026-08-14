@@ -23,6 +23,7 @@ import { MobileGlass } from './mobile-glass'
 import { MobileSymbol } from './mobile-symbol'
 import { MobileSearchField } from './mobile-search-field'
 import { MobileServerAgentSettings } from './mobile-server-agent-settings'
+import { MobileSingleSelect } from './mobile-single-select'
 import { MobileThreadDetail } from './mobile-thread-detail'
 import { MobileWorkspaceCreateModal, type MobileCreateMode } from './mobile-workspace-create-modal'
 import {
@@ -515,14 +516,13 @@ function MoreContent({ connections, pairedServers, onAddServer, onRenameServer }
 }
 
 function PreferenceChoices<T extends string>({ label, options, value, onChange }: { label: string; options: Array<[T, string]>; value: T; onChange(value: T): void }) {
-  return <View style={styles.option}>
-    <Text style={styles.optionText}>{label}</Text>
-    <View style={styles.cardActions}>
-      {options.map(([id, name]) => <Pressable key={id} accessibilityRole="radio" accessibilityState={{ checked: id === value }} onPress={() => onChange(id)} style={[styles.secondaryButton, id === value && styles.primaryButton]}>
-        <Text style={id === value ? styles.primaryButtonText : styles.secondaryButtonText}>{name}</Text>
-      </Pressable>)}
-    </View>
-  </View>
+  return <MobileSingleSelect
+    label={label}
+    options={options.map(([id, name]) => ({ id, label: name }))}
+    value={value}
+    testID={`preference-${label.toLowerCase().replaceAll(' ', '-')}-select`}
+    onChange={onChange}
+  />
 }
 
 function ConnectionNameEditor({ session, status, onSave, onManage }: { session: MobileSession; status: string; onSave(serviceUrl: string, name: string): Promise<void>; onManage?: () => void }) {

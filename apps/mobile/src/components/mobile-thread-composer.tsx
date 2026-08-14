@@ -72,41 +72,10 @@ export function MobileThreadComposer({
             />
           </TextInputWrapper>
         </MobileGlass>
-        {active && detail.canSteer ? (
-          <MobileGlass interactive style={styles.composerControlGlass}>
-            <Pressable
-              accessibilityLabel="Steer current turn"
-              accessibilityRole="button"
-              disabled={unavailable}
-              onPress={() => onSend('steer')}
-              style={[styles.composerIconButton, unavailable && styles.disabled]}
-            >
-              <MobileSymbol name="arrow.turn.up.right" fallback="↗" color={colors.accent} size={18} />
-            </Pressable>
-          </MobileGlass>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={active ? 'Queue next turn' : 'Send follow-up'}
-          disabled={unavailable}
-          onPress={() => onSend(primaryDelivery)}
-          style={[styles.composerSendButton, unavailable && styles.disabled]}
-        >
-          <MobileSymbol name="arrow.up" fallback="↑" color={colors.ink} size={18} />
-        </Pressable>
       </View>
       <View testID="thread-composer-controls" style={styles.composerControlsRow}>
         <MobileAttachButton controller={attachments} />
-        <VoiceButton voice={voice} />
-        {voicePreferences.cleanupMode !== 'off' ? <TranscriptScrubButton disabled={!value.trim() || voice.active} scrubber={scrubber} value={value} /> : null}
-      </View>
-      <View testID="thread-composer-context" style={styles.composerContextRow}>
-        <MobileGlass style={styles.composerMachineGlass}>
-          <View accessibilityLabel={`Machine ${detail.backendName || 'Local'}`} style={styles.composerMachine}>
-            <MobileSymbol name="desktopcomputer" fallback="▣" color={colors.muted} size={15} />
-            <Text numberOfLines={1} style={styles.composerMachineText}>{detail.backendName || 'Local'}</Text>
-          </View>
-        </MobileGlass>
+        {!value.trim() || voice.active ? <VoiceButton voice={voice} /> : null}
         <MobileGlass interactive style={styles.composerConfigGlass}>
           <Pressable
             testID="thread-settings"
@@ -121,9 +90,18 @@ export function MobileThreadComposer({
               <Text numberOfLines={1} style={styles.composerConfigTitle}>{options.model || detail.model || 'Default model'}</Text>
               <Text numberOfLines={1} style={styles.composerConfigMeta}>{agentConfigLabel(options, detail)}</Text>
             </View>
-            <MobileSymbol name="chevron.right" fallback="›" color={colors.muted} size={13} />
+            <MobileSymbol name="chevron.down" fallback="⌄" color={colors.muted} size={13} />
           </Pressable>
         </MobileGlass>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={active ? 'Queue next turn' : 'Send follow-up'}
+          disabled={unavailable}
+          onPress={() => onSend(primaryDelivery)}
+          style={[styles.composerSendButton, unavailable && styles.disabled]}
+        >
+          <MobileSymbol name="arrow.up" fallback="↑" color={colors.ink} size={18} />
+        </Pressable>
       </View>
       <AgentSettingsModal
         open={settingsOpen}
@@ -137,30 +115,9 @@ export function MobileThreadComposer({
   )
 }
 
-type TranscriptScrubber = ReturnType<typeof useMobileTranscriptScrubber>
-
-function TranscriptScrubButton({ disabled, scrubber, value }: { disabled: boolean; scrubber: TranscriptScrubber; value: string }) {
-  return (
-    <MobileGlass interactive style={styles.composerControlGlass}>
-      <Pressable
-        accessibilityLabel="Clean up message"
-        accessibilityRole="button"
-        disabled={disabled || scrubber.scrubbing}
-        onPress={() => void scrubber.scrub(value)}
-        style={({ pressed }) => [styles.composerIconButton, (disabled || scrubber.scrubbing) && styles.disabled, pressed && styles.pressed]}
-      >
-        {scrubber.scrubbing ? (
-          <ActivityIndicator color={colors.accent} size="small" />
-        ) : (
-          <MobileSymbol name="wand.and.sparkles" fallback="✦" color={colors.accent} size={18} />
-        )}
-      </Pressable>
-    </MobileGlass>
-  )
-}
-
 function agentConfigLabel(options: MobileAgentLaunchOptions, detail: MobileThreadDetails) {
   return [
+    detail.backendName || 'Local',
     options.reasoningEffort || detail.reasoningEffort || 'Default reasoning',
     options.agentId || detail.agentId || 'Default agent',
     options.allowSubagents ? 'Subagents on' : 'Subagents off',

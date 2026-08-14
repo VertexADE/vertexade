@@ -39,3 +39,22 @@ test('splits, switches, and collapses file patches lazily', () => {
   fireEvent.press(screen.getByTestId('toggle-selected-file-diff'))
   expect(screen.queryByText(/\+second/)).not.toBeOnTheScreen()
 })
+
+test('renders changed files relative to the worktree', () => {
+  render(<MobileFileChanges
+    additions={1}
+    deletions={0}
+    files={[{
+      path: '/Users/dominicvonk/.vertex-ade/work-items/W-0012/vertexade/src/one.ts',
+      additions: 1,
+      deletions: 0,
+      status: 'modified',
+      binary: false,
+    }]}
+    patch=""
+    worktreePath="/Users/dominicvonk/.vertex-ade/work-items/W-0012"
+  />)
+
+  expect(screen.getByText('vertexade/src/one.ts')).toBeOnTheScreen()
+  expect(screen.queryByText('/Users/dominicvonk/.vertex-ade/work-items/W-0012/vertexade/src/one.ts')).not.toBeOnTheScreen()
+})

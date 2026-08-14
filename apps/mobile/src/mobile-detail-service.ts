@@ -104,6 +104,7 @@ export type MobileThreadEvent = {
   files?: MobileDiffFile[]
   additions?: number
   deletions?: number
+  patch?: string
 }
 export type MobileQueuedFollowUp = {
   id: number
@@ -678,6 +679,7 @@ function threadEvent(record: Record<string, unknown>, index: number): MobileThre
     files: recordArray(summary.files).map(diffFile),
     additions: nonNegativeInteger(summary.additions),
     deletions: nonNegativeInteger(summary.deletions),
+    patch: stringValue(data.diff, 200_000),
   }
 }
 
