@@ -169,7 +169,7 @@ export function useNewWorkDialog({
     return addRepositoryInput({ repository })
   }
 
-  async function addLocalFolder(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' | 'move' }) {
+  async function addLocalFolder(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' }) {
     return addRepositoryInput(input)
   }
 
@@ -182,6 +182,7 @@ export function useNewWorkDialog({
     await queryClient.invalidateQueries({ queryKey: ['platform'] })
     onCreated()
     toast.success(`Added ${result.repo.full_name}`)
+    return result.repo.id
   }
 
   async function finishCreatedItem(

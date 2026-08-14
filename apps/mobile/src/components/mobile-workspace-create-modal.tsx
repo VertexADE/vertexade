@@ -36,6 +36,8 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
   const copy = modeCopy[props.mode]
   const [contextOpen, setContextOpen] = useState(props.mode !== 'work')
   const [optionsOpen, setOptionsOpen] = useState(false)
+  const [step, setStep] = useState(0)
+  const [quick, setQuick] = useState(true)
   return (
     <Modal
       allowSwipeDismissal
@@ -49,6 +51,8 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
       <MobileModalSafeArea testID="workspace-create-modal" style={styles.modal}>
         <CreationHeader mode={props.mode} busy={creation.busy} copy={copy} onClose={props.onClose} />
         <ScrollView contentContainerStyle={styles.modalContent} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled">
+          <OptionGroup options={[{ id: 'guided', label: 'Guided' }, { id: 'quick', label: 'Quick start' }]} selectedId={quick ? 'quick' : 'guided'} testIdPrefix="create-mode" onSelect={(id) => setQuick(id === 'quick')} />
+          {!quick ? <OptionGroup options={['Intent', 'Context', 'Agent'].map((label, index) => ({ id: String(index), label }))} selectedId={String(step)} testIdPrefix="create-step" onSelect={(id) => Number(id) < step && setStep(Number(id))} /> : null}
           {props.backends.length > 1 ? <DisclosureSection
             icon="network"
             title="Server"
@@ -58,16 +62,16 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
               options={props.backends.map((backend) => ({
                 id: `${backend.serviceUrl || ''}::${backend.id}`,
                 label: backend.label,
-                meta: 'Owns this work and its agent sessions',
+                meta: backend.connected === false ? 'Offline' : 'Owns the filesystem, agents, extensions, and threads',
               }))}
               selectedId={creation.backendId}
               testIdPrefix="create-server"
               onSelect={creation.chooseBackend}
             />
           </DisclosureSection> : null}
-          <CreationTarget mode={props.mode} creation={creation} />
-          <RepositoryTarget mode={props.mode} creation={creation} serviceUrl={props.serviceUrl} />
-          <DisclosureSection
+          {step === 0 || quick ? <CreationTarget mode={props.mode} creation={creation} /> : null}
+          {step === 1 || quick ? <RepositoryTarget mode={props.mode} creation={creation} serviceUrl={props.serviceUrl} single={quick} /> : null}
+          {step === 1 || quick ? <DisclosureSection
             collapsible
             icon="doc.text"
             open={contextOpen}
@@ -76,13 +80,13 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
             onToggle={() => setContextOpen((value) => !value)}
           >
             <PromptInput mode={props.mode} value={creation.prompt} onChange={creation.setPrompt} />
-          </DisclosureSection>
-          <DisclosureSection
+          </DisclosureSection> : null}
+          {step === 2 || quick ? <DisclosureSection
             collapsible
             icon="slider.horizontal.3"
-            open={optionsOpen}
+            open={quick || optionsOpen}
             title="More options"
-            summary="Model, reasoning, agent resources, and delivery"
+            summary="Agent configuration · model, reasoning, resources, and delivery"
             onToggle={() => setOptionsOpen((value) => !value)}
           >
             {props.mode === 'work' ? <StartAgentSwitch value={creation.startAgent} onChange={creation.setStartAgent} /> : null}
@@ -110,7 +114,7 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
                 onChange={creation.setCreatePullRequest}
               />
             ) : null}
-          </DisclosureSection>
+          </DisclosureSection> : null}
           {creation.error ? (
             <Text accessibilityRole="alert" style={styles.error}>
               {creation.error}
@@ -119,7 +123,9 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
         </ScrollView>
         <View style={styles.modalFooter}>
           <Text numberOfLines={1} style={styles.modalFooterSummary}>{creationSummary(props.mode, creation)}</Text>
-          <Pressable
+          <View style={styles.actions}>
+          {!quick && step > 0 ? <Pressable accessibilityRole="button" testID="create-back" onPress={() => setStep((value) => value - 1)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Back</Text></Pressable> : null}
+          {!quick && step < 2 ? <Pressable accessibilityRole="button" testID="create-continue" accessibilityState={{ disabled: step === 0 && !creation.title.trim() }} disabled={step === 0 && !creation.title.trim()} onPress={() => setStep((value) => value + 1)} style={[styles.modalPrimary, step === 0 && !creation.title.trim() && styles.disabled]}><Text style={styles.createButtonText}>Continue</Text></Pressable> : <Pressable
           testID="create-submit"
           accessibilityRole="button"
           accessibilityState={{ busy: creation.busy, disabled: creation.busy || !creation.valid }}
@@ -132,7 +138,8 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
           ) : (
             <Text style={styles.createButtonText}>{copy.action}</Text>
           )}
-          </Pressable>
+          </Pressable>}
+          </View>
         </View>
       </MobileModalSafeArea>
     </Modal>
@@ -160,15 +167,15 @@ function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: 
   if (mode !== 'thread') {
     return (
       <View style={styles.creationSection}>
-        <Text style={styles.creationStep}>1 · OUTCOME</Text>
         <Text style={styles.inputLabel}>{mode === 'pullRequest' ? 'What should the pull request deliver?' : 'What should be different when this is done?'}</Text>
         <TextInput
           testID="create-title"
           accessibilityLabel={mode === 'pullRequest' ? 'Outcome and pull request title' : 'Work title'}
           maxLength={200}
+          multiline
           placeholder="Describe the outcome in one sentence"
           placeholderTextColor={colors.muted}
-          style={styles.search}
+          style={[styles.search, styles.textArea]}
           value={creation.title}
           onChangeText={creation.setTitle}
         />
@@ -194,18 +201,17 @@ function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: 
   )
 }
 
-function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMode; creation: CreationModel; serviceUrl: string }) {
+function RepositoryTarget({ mode, creation, serviceUrl, single = false }: { mode: MobileCreateMode; creation: CreationModel; serviceUrl: string; single?: boolean }) {
   const repositories = mode === 'pullRequest'
     ? creation.repositories.filter((repository) => repository.sourceKind === 'git')
     : creation.repositories
   return (
     <View style={styles.creationSection}>
-      <Text style={styles.creationStep}>{mode === 'thread' ? '1' : '2'} · WORKSPACE</Text>
       <OptionGroup
       label={mode === 'pullRequest' ? 'Git repository' : 'Workspace'}
       hint={mode === 'pullRequest'
-        ? 'Choose up to 8 Git repositories. One agent works from their combined Work-item folder.'
-        : 'Choose up to 8 project sources, or use an isolated general workspace.'}
+        ? single ? 'Choose one Git repository.' : 'Choose up to 8 Git repositories. One agent works from their combined Work-item folder.'
+        : single ? 'Choose one project source or General workspace.' : 'Choose up to 8 project sources, or use an isolated general workspace.'}
       empty="No compatible Git repositories are available on this server. Add or sync one in VertexADE web first."
       options={[
         ...(mode === 'pullRequest'
@@ -219,7 +225,7 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
       ]}
       selectedIds={creation.selectedRepositories.length ? creation.selectedRepositories.map((repository) => String(repository.id)) : mode !== 'pullRequest' ? ['general'] : []}
       testIdPrefix="create-repository"
-      onSelect={(id) => id === 'general' ? creation.clearRepositories() : creation.toggleRepository(Number(id))}
+      onSelect={(id) => id === 'general' ? creation.clearRepositories() : single ? creation.selectSingleRepository(Number(id)) : creation.toggleRepository(Number(id))}
       />
       {creation.selectedBackend ? (
         <>
@@ -227,13 +233,19 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
             serviceUrl={serviceUrl}
             backend={creation.selectedBackend}
             added={creation.repositories.map((repository) => repository.fullName)}
-            onSelect={(repository) => creation.addRepository(repository.id)}
+            onSelect={async (repository) => {
+              const added = await creation.addRepository(repository.id)
+              if (single) creation.selectSingleRepository(added.id)
+            }}
           />
           {mode !== 'pullRequest' ? (
             <MobileLocalFolderPicker
               serviceUrl={creation.selectedBackend.serviceUrl || serviceUrl}
               backendId={creation.selectedBackend.id}
-              onAdd={creation.addLocalFolder}
+              onAdd={async (input) => {
+                const added = await creation.addLocalFolder(input)
+                if (single) creation.selectSingleRepository(added.id)
+              }}
             />
           ) : null}
         </>
@@ -245,13 +257,13 @@ function RepositoryTarget({ mode, creation, serviceUrl }: { mode: MobileCreateMo
 function MobileLocalFolderPicker({ serviceUrl, backendId, onAdd }: {
   serviceUrl: string
   backendId: string
-  onAdd(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' | 'move' }): Promise<void>
+  onAdd(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' }): Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [listing, setListing] = useState<MobileDirectoryListing | null>(null)
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
-  const [strategy, setStrategy] = useState<'direct' | 'copy' | 'move'>('direct')
+  const [strategy, setStrategy] = useState<'direct' | 'copy'>('direct')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -319,9 +331,8 @@ function MobileLocalFolderPicker({ serviceUrl, backendId, onAdd }: {
     <OptionGroup
       label="Workspace behavior"
       options={[
-        { id: 'direct', label: 'Direct', meta: 'Live folder linked into Work' },
-        { id: 'copy', label: 'Copy', meta: 'Isolated copy; apply changes back' },
-        { id: 'move', label: 'Move', meta: 'Isolated copy; move changes on apply' },
+        { id: 'direct', label: 'Direct · live', meta: 'Edits immediately change the original folder' },
+        { id: 'copy', label: 'Copy · approve and paste back', meta: 'Review changes first, then paste approved changes into the original folder' },
       ]}
       selectedId={strategy}
       testIdPrefix="create-local-folder-strategy"
@@ -448,8 +459,9 @@ function OptionGroup({ label, hint, empty, options, selectedId, selectedIds, tes
 
 function repositoryDescription(repository: CreationModel['repositories'][number]) {
   if (repository.sourceKind === 'directory') {
-    if (repository.workspaceStrategy === 'move') return 'Local directory · move changes on apply'
-    if (repository.workspaceStrategy === 'copy') return 'Local directory · isolated copy'
+    if (repository.workspaceStrategy === 'move') return 'Local directory · isolated, replace on apply'
+    if (repository.workspaceStrategy === 'copy') return 'Local directory · isolated, merge on apply'
+    if (repository.workspaceStrategy === 'direct') return 'Local directory · live edits'
     return 'Local directory · work directly'
   }
   return repository.workspaceStrategy === 'direct' ? 'Git repository · work directly' : 'Git repository · isolated worktree'

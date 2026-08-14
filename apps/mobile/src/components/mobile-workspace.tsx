@@ -433,13 +433,12 @@ function ThreadCard({ item, onOpen, onError }: {
   return <CardShell openTestID={`open-thread-${item.backendId}-${item.id}`} cardTestID={`thread-${item.backendId}-${item.id}`} onOpen={onOpen}>
     <View style={styles.cardHeader}>
       <View style={styles.cardCopy}>
-        <Text style={styles.cardEyebrow}>{item.backendName.toUpperCase()} · {item.fullName}</Text>
         <Text numberOfLines={2} style={styles.cardTitle}>{title}</Text>
       </View>
       <View style={styles.cardAccessory}><Text style={[styles.badge, item.status === 'failed' && styles.badgeDanger]}>{item.status}</Text><CardChevron /></View>
     </View>
     {item.latestActivity && item.latestActivity !== title ? <Text numberOfLines={3} style={styles.cardText}>{item.latestActivity}</Text> : null}
-    <Text numberOfLines={1} style={styles.metadata}>{item.agentName}{item.branchName ? ` · ${item.branchName}` : ''}{item.activityAt ? ` · ${relativeDate(item.activityAt)}` : ''}</Text>
+    <Text numberOfLines={1} style={styles.metadata}>{item.fullName} · {item.backendName} · {item.agentName}{item.branchName ? ` · ${item.branchName}` : ''}{item.activityAt ? ` · ${relativeDate(item.activityAt)}` : ''}</Text>
     {item.pullRequestUrl ? <CardAction role="link" label={`Open PR #${item.pullRequestNumber}`} onPress={() => void openExternalUrl(item.pullRequestUrl, onError)} /> : null}
   </CardShell>
 }

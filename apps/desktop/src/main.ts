@@ -3,10 +3,15 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
-import { DESKTOP_DIALOG_CHANNELS, DESKTOP_ONBOARDING_CHANNELS } from '@vertexade/platform-contracts'
+import {
+  DESKTOP_DIALOG_CHANNELS,
+  DESKTOP_ONBOARDING_CHANNELS,
+  DESKTOP_UPDATE_CHANNELS,
+  type DesktopUpdateStatus,
+} from '@vertexade/platform-contracts'
 import { desktopRuntimeModeEnvironment, desktopServiceEnvironment } from './desktop-environment.ts'
 import { DesktopOnboardingStateStore, desktopStartupPath } from './desktop-onboarding-state.ts'
-import { canStartDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
+import { canStartDesktopUpdater, checkDesktopUpdater, startDesktopUpdater } from './desktop-updater.ts'
 import updaterPackage from 'electron-updater'
 import { externalNavigationDecision } from './external-navigation.ts'
 import { desktopPermissionAllowed } from './desktop-permissions.ts'
@@ -19,6 +24,31 @@ let desktopWindow: BrowserWindow | null = null
 let windowStartup: Promise<void> | null = null
 let stopUpdater: (() => void) | null = null
 let onboardingStateStore: DesktopOnboardingStateStore | null = null
+let desktopUpdaterEnabled = false
+let downloadedUpdateVersion: string | null = null
+let desktopUpdateStatus: DesktopUpdateStatus | null = null
+
+function currentDesktopUpdateStatus(): DesktopUpdateStatus {
+  return (
+    desktopUpdateStatus || {
+      supported: desktopUpdaterEnabled,
+      currentVersion: app.getVersion(),
+      state: 'idle',
+      availableVersion: null,
+      message: desktopUpdaterEnabled ? null : 'Updates are available in signed packaged builds.',
+    }
+  )
+}
+
+async function checkDesktopUpdate(): Promise<DesktopUpdateStatus> {
+  if (!desktopUpdaterEnabled) return currentDesktopUpdateStatus()
+  desktopUpdateStatus = { ...currentDesktopUpdateStatus(), state: 'checking', message: null }
+  desktopUpdateStatus = {
+    ...desktopUpdateStatus,
+    ...(await checkDesktopUpdater(autoUpdater, { currentVersion: app.getVersion(), downloadedVersion: downloadedUpdateVersion })),
+  }
+  return desktopUpdateStatus
+}
 
 function resourcePath(...parts: string[]) {
   return join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'dist'), ...parts)
@@ -106,6 +136,8 @@ async function createDesktopWindow() {
     API_HOST: desktopApiListener.host,
     API_PORT: String(desktopApiListener.port),
     VERTEXADE_BUNDLED_RUNTIME: '1',
+    VERTEXADE_INSTALLATION: 'source',
+    VERTEXADE_VERSION: app.getVersion(),
     VERTEXADE_API_LISTENER_SOURCE: listeners.source,
     VERTEXADE_SUBAGENT_MCP_SCRIPT: resourcePath('subagent-mcp.mjs'),
     VERTEXADE_WEB_CURRENT_HOST: listeners.web.host,
@@ -207,6 +239,19 @@ function registerDesktopIpc(): void {
     assertTrustedDesktopRenderer(event)
     return requireOnboardingStateStore().complete()
   })
+  ipcMain.handle(DESKTOP_UPDATE_CHANNELS.status, (event) => {
+    assertTrustedDesktopRenderer(event)
+    return currentDesktopUpdateStatus()
+  })
+  ipcMain.handle(DESKTOP_UPDATE_CHANNELS.check, async (event) => {
+    assertTrustedDesktopRenderer(event)
+    return checkDesktopUpdate()
+  })
+  ipcMain.handle(DESKTOP_UPDATE_CHANNELS.install, (event) => {
+    assertTrustedDesktopRenderer(event)
+    if (!downloadedUpdateVersion) throw new Error('No downloaded update is ready to install')
+    autoUpdater.quitAndInstall(false, true)
+  })
 }
 
 function ensureDesktopWindow(): Promise<void> {
@@ -249,7 +294,7 @@ void app
     })
     registerDesktopIpc()
     await ensureDesktopWindow()
-    const updaterEnabled = canStartDesktopUpdater({
+    desktopUpdaterEnabled = canStartDesktopUpdater({
       isPackaged: app.isPackaged,
       platform: process.platform,
       updatesDisabled: process.env.VERTEXADE_DISABLE_AUTO_UPDATE === '1',
@@ -262,10 +307,20 @@ void app
         }
       },
     })
-    if (!updaterEnabled) return
+    if (!desktopUpdaterEnabled) return
     stopUpdater = startDesktopUpdater({
       updater: autoUpdater,
       logError: (error) => console.error('Desktop update failed', error),
+      onDownloaded: ({ version }) => {
+        downloadedUpdateVersion = version
+        desktopUpdateStatus = {
+          supported: true,
+          currentVersion: app.getVersion(),
+          state: 'ready',
+          availableVersion: version,
+          message: 'Update downloaded and ready to install.',
+        }
+      },
       confirmInstall: async ({ version }) => {
         const prompt: MessageBoxOptions = {
           type: 'info',
@@ -287,6 +342,9 @@ app.on('will-quit', () => {
   ipcMain.removeHandler(DESKTOP_DIALOG_CHANNELS.chooseDirectory)
   ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.status)
   ipcMain.removeHandler(DESKTOP_ONBOARDING_CHANNELS.complete)
+  ipcMain.removeHandler(DESKTOP_UPDATE_CHANNELS.status)
+  ipcMain.removeHandler(DESKTOP_UPDATE_CHANNELS.check)
+  ipcMain.removeHandler(DESKTOP_UPDATE_CHANNELS.install)
   stopUpdater?.()
   stopUpdater = null
 })

@@ -3,7 +3,7 @@ type UpdateInfo = { version: string }
 export type DesktopUpdater = {
   autoDownload: boolean
   autoInstallOnAppQuit: boolean
-  checkForUpdates(): Promise<unknown>
+  checkForUpdates(): Promise<{ updateInfo?: UpdateInfo } | null | undefined>
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void
   on(event: 'update-downloaded', listener: (info: UpdateInfo) => void): unknown
   on(event: 'error', listener: (error: Error) => void): unknown
@@ -13,8 +13,35 @@ export type DesktopUpdaterOptions = {
   updater: DesktopUpdater
   confirmInstall(info: UpdateInfo): Promise<boolean>
   logError(error: unknown): void
+  onDownloaded?(info: UpdateInfo): void
   initialDelayMs?: number
   intervalMs?: number
+}
+
+export type DesktopUpdateCheckState = {
+  currentVersion: string
+  downloadedVersion: string | null
+}
+
+export async function checkDesktopUpdater(updater: DesktopUpdater, state: DesktopUpdateCheckState) {
+  try {
+    const result = await updater.checkForUpdates()
+    const availableVersion = result?.updateInfo?.version ?? null
+    let updateState: 'current' | 'downloading' | 'ready' = 'current'
+    if (availableVersion && availableVersion !== state.currentVersion) updateState = 'downloading'
+    if (state.downloadedVersion) updateState = 'ready'
+    return {
+      state: updateState,
+      availableVersion: state.downloadedVersion ?? availableVersion,
+      message: state.downloadedVersion ? 'Update downloaded and ready to install.' : null,
+    }
+  } catch (error) {
+    return {
+      state: 'error' as const,
+      availableVersion: null,
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
 }
 
 export function canStartDesktopUpdater(options: {
@@ -34,6 +61,7 @@ export function startDesktopUpdater(options: DesktopUpdaterOptions) {
   updater.autoInstallOnAppQuit = true
   updater.on('error', options.logError)
   updater.on('update-downloaded', (info) => {
+    options.onDownloaded?.(info)
     if (installPromptOpen) return
     installPromptOpen = true
     void options

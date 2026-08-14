@@ -1,7 +1,7 @@
 import { createWriteStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { eq, getTableColumns } from 'drizzle-orm'
-import { jobs } from '../database/schema/tables.ts'
+import { jobs, repositories } from '../database/schema/tables.ts'
 import { jobRecord } from '../database/contract-records.ts'
 import { isCodeReviewKind } from '../reviews.ts'
 import { jobSessionCwd } from '../work/workspace-layout.ts'
@@ -48,6 +48,12 @@ async function restartStoredRun(job, runtimeAgent) {
   const memoryLaunch = job.work_item_id
     ? await workMemory.launchContext(job.work_item_id, job.prompt)
     : { prompt: job.prompt, writableRoots: [] }
+  const repository = db
+    .select({ path: repositories.localPath, strategy: repositories.workspaceStrategy })
+    .from(repositories)
+    .where(eq(repositories.id, job.repo_id))
+    .get()
+  const writableRoots = repository?.strategy === 'direct' ? [...memoryLaunch.writableRoots, repository.path] : memoryLaunch.writableRoots
   const log = createWriteStream(job.log_path, { flags: 'a' })
   log.write(`${JSON.stringify({ time: new Date().toISOString(), event: 'retry_started', prompt: memoryLaunch.prompt })}\n`)
   const child = spawnAgentThread(
@@ -60,7 +66,7 @@ async function restartStoredRun(job, runtimeAgent) {
       ephemeral: Boolean(job.ephemeral),
       model: job.agent_model,
       reasoningEffort: job.agent_reasoning_effort,
-      writableRoots: memoryLaunch.writableRoots,
+      writableRoots,
     },
     { cwd: sessionCwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'] },
     runtimeAgent,

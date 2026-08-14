@@ -171,7 +171,13 @@ export async function followUpJob(
     : { prompt: configuredPrompt, writableRoots: [] }
   const launch = await resolveAgentLaunch(job.work_item_id, memoryLaunch.prompt, runtimeAgent.id)
   const resourcePrompt = launch.prompt
-  const sharedWritableRoots = [...new Set([...memoryLaunch.writableRoots, ...writableRoots])]
+  const repository = db
+    .select({ path: repositories.localPath, strategy: repositories.workspaceStrategy })
+    .from(repositories)
+    .where(eq(repositories.id, job.repo_id))
+    .get()
+  const directRoots = repository?.strategy === 'direct' ? [repository.path] : []
+  const sharedWritableRoots = [...new Set([...memoryLaunch.writableRoots, ...writableRoots, ...directRoots])]
   db.update(jobs)
     .set({
       agentModel: sql`coalesce(${model || null}, ${jobs.agentModel})`,

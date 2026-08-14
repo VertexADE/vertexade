@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
-import { canStartDesktopUpdater, startDesktopUpdater, type DesktopUpdater } from './desktop-updater.ts'
+import { canStartDesktopUpdater, checkDesktopUpdater, startDesktopUpdater, type DesktopUpdater } from './desktop-updater.ts'
 
 function fakeUpdater() {
   const listeners = new Map<string, (value: never) => void>()
@@ -30,12 +30,14 @@ describe('desktop updater', () => {
     vi.useFakeTimers()
     const { updater, listeners } = fakeUpdater()
     const confirmInstall = vi.fn(async () => true)
-    const stop = startDesktopUpdater({ updater, confirmInstall, logError: vi.fn(), initialDelayMs: 1 })
+    const onDownloaded = vi.fn()
+    const stop = startDesktopUpdater({ updater, confirmInstall, onDownloaded, logError: vi.fn(), initialDelayMs: 1 })
 
     await vi.advanceTimersByTimeAsync(1)
     expect(updater.checkForUpdates).toHaveBeenCalledOnce()
     listeners.get('update-downloaded')?.({ version: '0.0.12' } as never)
     await vi.waitFor(() => expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true))
+    expect(onDownloaded).toHaveBeenCalledWith({ version: '0.0.12' })
     expect(updater.autoDownload).toBe(true)
     expect(updater.autoInstallOnAppQuit).toBe(true)
     stop()
@@ -49,5 +51,17 @@ describe('desktop updater', () => {
     await Promise.resolve()
     expect(updater.quitAndInstall).not.toHaveBeenCalled()
     stop()
+  })
+
+  it('reports manual update checks without installing automatically', async () => {
+    const { updater } = fakeUpdater()
+    vi.mocked(updater.checkForUpdates).mockResolvedValue({ updateInfo: { version: '0.0.34' } })
+
+    await expect(checkDesktopUpdater(updater, { currentVersion: '0.0.33', downloadedVersion: null })).resolves.toEqual({
+      state: 'downloading',
+      availableVersion: '0.0.34',
+      message: null,
+    })
+    expect(updater.quitAndInstall).not.toHaveBeenCalled()
   })
 })

@@ -259,7 +259,7 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
       )
       .join('\n')}`
     const workspaceInstruction =
-      'Start from the Work item workspace. One agent owns this complete Work item and may inspect and edit every listed workspace. Keep repository-specific changes separate.'
+      'The Work item workspace is the canonical working directory and diff scope. Start there and keep using its listed repository paths, including Direct links. One agent owns this complete Work item and may inspect and edit every listed workspace. Direct links resolve outside the managed folder by design; their exact source targets are trusted writable roots for this run only. Keep repository-specific changes separate.'
     const context = `\n\nTask: ${title}\nRepositories: ${selectedRepositories.map((repository) => repository.full_name).join(', ')}\n${workspaceDescription}${sourceContext}\n${workspaceInstruction}${supportsPullRequests ? ' Git worktrees are linked to their original checkouts through shared Git metadata.' : ''}${publishInstruction}\n\n${continuationInstruction}`
     const externalSource = launchOptions.workSource
       ? `${launchOptions.workSource.provider || 'external'} ${launchOptions.workSource.kind || 'work item'}`
@@ -342,7 +342,10 @@ export async function launchRepositoryTask(repo, title, prompt, createPr, branch
         prompt: finalPrompt,
         ...agentLaunchOptions,
         ephemeral,
-        writableRoots: memoryLaunch.writableRoots,
+        writableRoots: [
+          ...memoryLaunch.writableRoots,
+          ...workspaces.filter((entry) => entry.repository.workspace_strategy === 'direct').map((entry) => entry.repository.local_path),
+        ],
         mcpServers: launch.mcpServers,
       },
     })

@@ -40,7 +40,7 @@ export type MobileDirectoryListing = {
 export type AddMobileLocalFolderInput = {
   localPath: string
   name?: string
-  workspaceStrategy: 'direct' | 'copy' | 'move'
+  workspaceStrategy: 'direct' | 'copy'
 }
 
 export type MobileAgentResourceSelection = { skills: string[]; mcpServers: string[] }

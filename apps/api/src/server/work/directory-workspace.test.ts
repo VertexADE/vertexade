@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vite-plus/test'
-import { applyDirectoryWorkspace, previewDirectoryApply } from './directory-workspace.ts'
+import { applyDirectoryWorkspace, previewDirectoryApply, previewDirectoryChanges } from './directory-workspace.ts'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'vertexade-directory-workspace-'))
@@ -36,6 +36,17 @@ describe('directory workspace apply', () => {
     await writeFile(join(workspace, 'value.txt'), 'workspace changed')
 
     await expect(applyDirectoryWorkspace(source, workspace, 'copy')).rejects.toThrow('source directory changed')
+  })
+
+  it('compares a direct directory with its launch snapshot', async () => {
+    const { source, workspace } = await fixture()
+    await writeFile(join(source, 'value.txt'), 'after')
+    await writeFile(join(source, 'new.txt'), 'new')
+
+    await expect(previewDirectoryChanges(`${workspace}.baseline`, source)).resolves.toEqual({
+      changed: ['new.txt', 'value.txt'],
+      deleted: [],
+    })
   })
 
   it('replaces the source only after staging move-mode output', async () => {

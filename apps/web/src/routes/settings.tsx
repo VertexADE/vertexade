@@ -60,6 +60,7 @@ import { EvidencePolicySettings } from '../components/settings/evidence-policy-s
 import { DesktopOnboardingSettings } from '../components/onboarding/desktop-onboarding-settings'
 import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
 import { BrowserPairingSettings } from '../components/settings/browser-pairing-settings'
+import { SoftwareUpdateSettings } from '../components/settings/software-update-settings'
 
 type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'appearance'
 const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'appearance'])
@@ -272,6 +273,15 @@ function SettingsOverview({ workspace, onNavigate }: { workspace: WorkspaceSetti
             onOpen={() => onNavigate('agents')}
           />
         </div>
+      </SettingsGroup>
+      <SettingsSectionDivider />
+      <SettingsGroup
+        id="overview-updates"
+        title="Software updates"
+        description="Update the signed desktop app or view safe, installation-specific server upgrade instructions."
+        icon={RefreshCw}
+      >
+        <SoftwareUpdateSettings />
       </SettingsGroup>
       <SettingsSectionDivider />
       <SettingsGroup

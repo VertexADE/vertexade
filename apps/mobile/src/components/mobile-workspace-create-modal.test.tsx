@@ -235,9 +235,12 @@ describe('MobileWorkspaceCreateModal', () => {
     const onCompleted = jest.fn().mockResolvedValue(undefined)
     render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
 
+    fireEvent.press(screen.getByTestId('create-mode-guided'))
     fireEvent.changeText(screen.getByLabelText('Work title'), 'Shared delivery')
+    fireEvent.press(screen.getByTestId('create-continue'))
     fireEvent.press(screen.getByTestId('create-repository-1'))
     fireEvent.press(screen.getByTestId('create-repository-4'))
+    fireEvent.press(screen.getByTestId('create-continue'))
     fireEvent.press(screen.getByTestId('create-submit'))
 
     await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', {

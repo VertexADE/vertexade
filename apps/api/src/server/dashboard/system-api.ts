@@ -665,20 +665,26 @@ export async function handleSystemApi(request: Request, url: URL): Promise<Respo
         git = resolve(root.trim()) === resolve(localPath)
       } catch {}
       const requested = String(input.workspace_strategy || '').trim()
-      const allowed = git ? ['worktree', 'direct'] : ['direct', 'copy', 'move']
+      const allowed = git ? ['worktree', 'direct'] : ['direct', 'copy']
       const workspaceStrategy = requested || (git ? 'worktree' : 'direct')
       if (!allowed.includes(workspaceStrategy)) {
         return json(400, {
-          error: git ? 'Git directories support worktree or direct mode' : 'Plain directories support direct, copy, or move mode',
+          error: git ? 'Git directories support worktree or direct mode' : 'Plain directories support direct or copy mode',
         })
       }
       const existing = db.select().from(repositories).where(eq(repositories.localPath, localPath)).get()
-      if (existing)
+      if (existing) {
+        if (existing.workspaceStrategy !== workspaceStrategy) {
+          db.update(repositories).set({ workspaceStrategy }).where(eq(repositories.id, existing.id)).run()
+          notifyClients('repository')
+        }
+        const stored = db.select().from(repositories).where(eq(repositories.id, existing.id)).get()!
         return json(200, {
-          repo: repositoryRecord(existing),
+          repo: repositoryRecord(stored),
           open_prs: 0,
           agent_bootstrapped: false,
         })
+      }
       const label =
         String(input.name || basename(localPath))
           .trim()

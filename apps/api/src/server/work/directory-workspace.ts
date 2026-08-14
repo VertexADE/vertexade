@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 
 type Entry = { kind: 'file' | 'directory'; hash?: string }
 export type DirectoryApplyPreview = { strategy: 'copy' | 'move'; changed: string[]; deleted: string[]; conflicts: string[] }
+export type DirectoryChangePreview = Pick<DirectoryApplyPreview, 'changed' | 'deleted'>
 
 async function inventory(root: string, current = root, result = new Map<string, Entry>()) {
   for (const name of await readdir(current)) {
@@ -41,6 +42,13 @@ export async function previewDirectoryApply(source: string, workspace: string, s
   const deleted = changed.filter((path) => !currentWorkspace.has(path))
   const conflicts = changed.filter((path) => !same(baseline.get(path), currentSource.get(path))).sort()
   return { strategy, changed, deleted, conflicts }
+}
+
+export async function previewDirectoryChanges(baselinePath: string, currentPath: string): Promise<DirectoryChangePreview> {
+  const [baseline, current] = await Promise.all([inventory(baselinePath), inventory(currentPath)])
+  const paths = new Set([...baseline.keys(), ...current.keys()])
+  const changed = [...paths].filter((path) => !same(baseline.get(path), current.get(path))).sort()
+  return { changed, deleted: changed.filter((path) => !current.has(path)) }
 }
 
 async function applyCopy(source: string, workspace: string, preview: DirectoryApplyPreview) {

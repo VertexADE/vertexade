@@ -152,6 +152,10 @@ export async function allocateAgentWorktree(
       await symlink(repository.local_path, layout.worktree, 'dir')
     }
     const sourceKind = repository.source_kind || 'git'
+    if (sourceKind !== 'git') {
+      await rm(`${layout.worktree}.baseline`, { recursive: true, force: true })
+      await cp(repository.local_path, `${layout.worktree}.baseline`, { recursive: true, errorOnExist: true, force: false })
+    }
     const workspace: AgentWorkspaceContext =
       sourceKind === 'git'
         ? { path: layout.worktree, sourceKind: 'git', strategy: 'direct' }

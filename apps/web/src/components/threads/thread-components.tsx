@@ -335,7 +335,6 @@ export function ThreadRailItem({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
               <strong className="min-w-0 flex-1 truncate text-xs">{threadTitle(job)}</strong>
-              <BackendBadge source={job} />
               <ThreadStateLabel state={state} queued={priority === 'queued'} />
             </span>
             <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -343,6 +342,7 @@ export function ThreadRailItem({
               <span title={job.full_name} className="max-w-28 truncate font-medium text-foreground/70">
                 {job.full_name.split('/').at(-1)}
               </span>
+              <BackendBadge source={job} />
               <span className="min-w-0 flex-1 truncate font-mono">{job.branch_name || `run #${displayBackendId(job, job.id)}`}</span>
             </span>
           </span>
@@ -464,13 +464,15 @@ export function ThreadRow({
                 <strong className="line-clamp-2 text-sm leading-5 sm:truncate">{title}</strong>
                 <ThreadStateLabel state={state} queued={priority === 'queued'} />
               </span>
-              <span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">
-                {job.branch_name ? `${job.full_name} · ${job.branch_name}` : `${job.full_name} · run #${displayBackendId(job, job.id)}`}
+              <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate font-mono text-[11px] text-muted-foreground">
+                <span className="truncate">
+                  {job.branch_name ? `${job.full_name} · ${job.branch_name}` : `${job.full_name} · run #${displayBackendId(job, job.id)}`}
+                </span>
+                <BackendBadge source={job} />
               </span>
             </button>
             <div className="mt-1 hidden flex-wrap items-center gap-1.5 sm:flex">
               <span className="text-[11px] font-medium">{job.agent_name}</span>
-              <BackendBadge source={job} />
               <AgentContextBadges model={job.agent_model} reasoningEffort={job.agent_reasoning_effort} />
             </div>
           </div>

@@ -12,7 +12,7 @@ import {
   Settings2,
   Sparkles,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
 import { AgentResourcePicker, emptyAgentResourceSelection } from '@vertexade/ui/components/agent-resource-picker'
@@ -26,6 +26,7 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Input } from '@vertexade/ui/components/ui/input'
+import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { Label } from '@vertexade/ui/components/ui/label'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Popover, PopoverContent, PopoverTrigger } from '@vertexade/ui/components/ui/popover'
@@ -48,6 +49,14 @@ export function NewWorkDialog({
   onCreated: () => void
   initialStartThread?: boolean
 }) {
+  const [step, setStep] = useState(0)
+  const [quick, setQuick] = useState(false)
+  useEffect(() => {
+    if (open) {
+      setStep(0)
+      setQuick(false)
+    }
+  }, [open])
   // fallow-ignore-next-line code-duplication -- the hook's named return contract is intentionally destructured at its single consumer.
   const {
     title,
@@ -101,210 +110,255 @@ export function NewWorkDialog({
         <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <DialogHeader className="border-b px-5 py-4">
             <DialogTitle>Create Work</DialogTitle>
-            <DialogDescription>Define the outcome first. Everything else can be adjusted later.</DialogDescription>
+            <DialogDescription>Describe the outcome, choose a workspace, and start.</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             <FieldGroup>
-              <Field aria-labelledby="work-outcome">
-                <Label id="work-outcome" htmlFor="work-title" className="text-sm font-semibold">
-                  <span className="mr-2 text-[10px] font-semibold tracking-[.12em] text-primary">1 · OUTCOME</span>
-                  What should be different when this is done?
-                </Label>
-                <Input
-                  id="work-title"
-                  autoFocus
-                  maxLength={200}
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="text-base"
-                  placeholder="What should be different when this is done?"
-                />
-                <FieldDescription>One sentence is enough. The rest is optional.</FieldDescription>
-              </Field>
-
               {backends.length > 1 && (
-                <Field className="rounded-lg border bg-muted/[.06] p-2.5" aria-label="Target server">
+                <Field className="rounded-xl border border-primary/25 bg-primary/[.04] p-3" aria-label="Target server">
                   <FieldLabel htmlFor="work-backend">Server</FieldLabel>
                   <Select value={backendId} onValueChange={setBackendId}>
-                    <SelectTrigger id="work-backend" className="w-full">
+                    <SelectTrigger id="work-backend" className="w-full bg-background">
                       <SelectValue placeholder="Choose a server" />
                     </SelectTrigger>
                     <SelectContent>
                       {backends.map((backend) => (
-                        <SelectItem key={backend.id} value={backend.id}>
+                        <SelectItem key={backend.id} value={backend.id} disabled={!backend.connected}>
                           {backend.label}
                           {backend.connected ? '' : ' · offline'}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <FieldDescription>The Work item, its threads, plugins, and future actions stay owned by this server.</FieldDescription>
+                  <FieldDescription>Owns this Work item, its filesystem, agents, extensions, and every resulting thread.</FieldDescription>
                 </Field>
               )}
-
-              <section
-                className="grid gap-2 rounded-lg border bg-muted/[.06] p-2.5 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center"
-                aria-labelledby="work-start-mode"
-              >
-                <div className="min-w-0">
-                  <Label id="work-start-mode" className="text-xs font-semibold">
-                    <span className="mr-2 text-[10px] tracking-[.12em] text-primary">2 · LAUNCH</span>
-                    Choose when to start
-                  </Label>
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                    {startThread ? 'Create the outcome and start its agent.' : 'Save the outcome without starting an agent.'}
-                  </p>
-                </div>
-                <SegmentedControl className="grid w-full grid-cols-2" aria-label="Work start mode">
-                  <SegmentedControlItem type="button" active={startThread} className="justify-center" onClick={() => setStartThread(true)}>
-                    <Bot />
-                    Start now
-                  </SegmentedControlItem>
-                  <SegmentedControlItem
+              <nav className="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1" aria-label="Create Work progress">
+                {['Intent', 'Context', 'Agent'].map((label, index) => (
+                  <button
+                    key={label}
                     type="button"
-                    active={!startThread}
-                    className="justify-center"
-                    onClick={() => setStartThread(false)}
+                    className={
+                      index === step
+                        ? 'rounded-md bg-background px-2 py-1.5 text-xs font-medium shadow-sm'
+                        : 'px-2 py-1.5 text-xs text-muted-foreground'
+                    }
+                    onClick={() => index < step && setStep(index)}
                   >
-                    <Clock3 />
-                    Plan first
-                  </SegmentedControlItem>
-                </SegmentedControl>
-              </section>
+                    {index + 1}. {label}
+                  </button>
+                ))}
+              </nav>
+              <Button type="button" variant={quick ? 'default' : 'outline'} size="sm" onClick={() => setQuick((value) => !value)}>
+                {quick ? 'Use guided steps' : 'Quick start'}
+              </Button>
+              <Field aria-labelledby="work-outcome" className={step === 0 || quick ? '' : 'hidden'}>
+                <Label id="work-outcome" htmlFor="work-title" className="text-sm font-semibold">
+                  What should be different when this is done?
+                </Label>
+                <Textarea
+                  id="work-title"
+                  autoFocus
+                  maxLength={200}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="min-h-32 resize-none text-base leading-relaxed"
+                  placeholder="Describe the intended outcome and what should be different when the work is complete…"
+                />
+                <FieldDescription>One sentence is enough. The rest is optional.</FieldDescription>
+              </Field>
 
-              {startThread && (
-                <Field aria-label="Agent workspace">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="flex items-center gap-1.5 text-xs font-semibold">
-                      <GitBranch className="size-3.5 text-primary" />{' '}
-                      <span className="text-[10px] tracking-[.12em] text-primary">3 · WORKSPACE</span>
-                    </h3>
-                    <span className="text-[11px] text-muted-foreground">Recent workspace suggested</span>
-                  </div>
-                  <RepositoryChooser
-                    repositories={targetRepositories}
-                    selected={repositories}
-                    backendId={backendId}
-                    onChange={setRepositories}
-                    onAdd={addRepository}
-                    onAddLocal={addLocalFolder}
-                    backendName={backends.find((backend) => backend.id === backendId)?.label || 'server'}
-                  />
-                </Field>
-              )}
+              <div className={step === 1 || quick ? 'contents' : 'hidden'}>
+                {startThread && (
+                  <Field aria-label="Agent workspace">
+                    <RepositoryChooser
+                      repositories={targetRepositories}
+                      selected={repositories}
+                      backendId={backendId}
+                      onChange={(ids) => setRepositories(quick ? ids.slice(-1) : ids)}
+                      onAdd={async (repository) => {
+                        const id = await addRepository(repository)
+                        if (quick) setRepositories([id])
+                      }}
+                      onAddLocal={async (input) => {
+                        const id = await addLocalFolder(input)
+                        if (quick) setRepositories([id])
+                      }}
+                      backendName={backends.find((backend) => backend.id === backendId)?.label || 'server'}
+                    />
+                  </Field>
+                )}
 
-              <details className="group rounded-xl border bg-muted/[.08]">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
+                <details open className={quick ? 'hidden' : 'group rounded-xl border bg-muted/[.08]'}>
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
                     <FileText className="size-4 text-muted-foreground" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block text-xs">Context and screenshots</strong>
-                    <small className="block truncate text-[11px] text-muted-foreground">
-                      {description.trim() ? 'Context added' : 'Optional · acceptance criteria, constraints, references'}
-                    </small>
-                  </span>
-                  <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="space-y-3 border-t p-3">
-                  <PromptImageTextarea
-                    value={description}
-                    onValueChange={setDescription}
-                    onUploadingChange={setUploadingImages}
-                    className="min-h-28"
-                    placeholder="What good looks like, why it matters, constraints, or pasted screenshots…"
-                  />
-                  {description.trim() && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={busy || generatingTitle || uploadingImages}
-                      onClick={() => void generateTitle()}
-                    >
-                      {generatingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}Suggest a concise outcome
-                    </Button>
-                  )}
-                </div>
-              </details>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-xs">Supporting context</strong>
+                      <small className="text-[11px] text-muted-foreground">
+                        Constraints, acceptance criteria, references, and screenshots
+                      </small>
+                    </span>
+                  </summary>
+                  <div className="space-y-3 border-t p-3">
+                    <PromptImageTextarea
+                      value={description}
+                      onValueChange={setDescription}
+                      onUploadingChange={setUploadingImages}
+                      className="min-h-28"
+                      placeholder="What good looks like, constraints, or pasted screenshots…"
+                    />
+                  </div>
+                </details>
+              </div>
 
-              <details className="group rounded-xl border bg-muted/[.08]">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
-                    <Settings2 className="size-4 text-muted-foreground" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block text-xs">More options</strong>
-                    <small className="block text-[11px] text-muted-foreground">Agent, delivery, type, priority, and references</small>
-                  </span>
-                  <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="space-y-4 border-t p-3">
-                  {startThread && (
-                    <section className="space-y-4 rounded-lg border bg-background/50 p-3" aria-label="Agent and delivery setup">
-                      <AgentOptionsPicker backendId={backendId} />
-                      <AgentResourcePicker
-                        backendId={backendId}
-                        value={resourceSelection || emptyAgentResourceSelection}
-                        onChange={setResourceSelection}
-                      />
-                      <Label
-                        data-disabled={!supportsPullRequests || undefined}
-                        className="flex items-start gap-3 rounded-lg border p-3 data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-60"
+              <div className={step === 2 || quick ? 'contents' : 'hidden'}>
+                <section
+                  className="grid gap-2 rounded-lg border bg-muted/[.06] p-2.5 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center"
+                  aria-labelledby="work-start-mode"
+                >
+                  <div className="min-w-0">
+                    <Label id="work-start-mode" className="text-xs font-semibold">
+                      Choose when to start
+                    </Label>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {startThread ? 'Create the outcome and start its agent.' : 'Save the outcome without starting an agent.'}
+                    </p>
+                  </div>
+                  <SegmentedControl className="grid w-full grid-cols-2" aria-label="Work start mode">
+                    <SegmentedControlItem
+                      type="button"
+                      active={startThread}
+                      className="justify-center"
+                      onClick={() => setStartThread(true)}
+                    >
+                      <Bot />
+                      Start now
+                    </SegmentedControlItem>
+                    <SegmentedControlItem
+                      type="button"
+                      active={!startThread}
+                      className="justify-center"
+                      onClick={() => setStartThread(false)}
+                    >
+                      <Clock3 />
+                      Plan first
+                    </SegmentedControlItem>
+                  </SegmentedControl>
+                </section>
+
+                <details className="hidden">
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
+                      <FileText className="size-4 text-muted-foreground" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-xs">Context and screenshots</strong>
+                      <small className="block truncate text-[11px] text-muted-foreground">
+                        {description.trim() ? 'Context added' : 'Optional · acceptance criteria, constraints, references'}
+                      </small>
+                    </span>
+                    <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-3 border-t p-3">
+                    <PromptImageTextarea
+                      value={description}
+                      onValueChange={setDescription}
+                      onUploadingChange={setUploadingImages}
+                      className="min-h-28"
+                      placeholder="What good looks like, why it matters, constraints, or pasted screenshots…"
+                    />
+                    {description.trim() && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy || generatingTitle || uploadingImages}
+                        onClick={() => void generateTitle()}
                       >
-                        <Checkbox
-                          className="mt-0.5"
-                          checked={supportsPullRequests && createPr}
-                          disabled={!supportsPullRequests}
-                          onCheckedChange={(value) => setCreatePr(Boolean(value))}
+                        {generatingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}Suggest a concise outcome
+                      </Button>
+                    )}
+                  </div>
+                </details>
+
+                <details open className="group rounded-xl border bg-muted/[.08]">
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
+                      <Settings2 className="size-4 text-muted-foreground" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-xs">Agent configuration</strong>
+                      <small className="block text-[11px] text-muted-foreground">Model, reasoning, extensions, and delivery</small>
+                    </span>
+                    <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-4 border-t p-3">
+                    {startThread && (
+                      <section className="space-y-4 rounded-lg border bg-background/50 p-3" aria-label="Agent and delivery setup">
+                        <AgentOptionsPicker backendId={backendId} />
+                        <AgentResourcePicker
+                          backendId={backendId}
+                          value={resourceSelection || emptyAgentResourceSelection}
+                          onChange={setResourceSelection}
                         />
-                        <span>
-                          <strong className="block text-xs">Create draft pull requests</strong>
-                          <small className="text-[11px] text-muted-foreground">
-                            {supportsPullRequests
-                              ? 'Link each Git repository’s delivery back to this Work item.'
-                              : 'Available when every selected source is a Git repository.'}
-                          </small>
-                        </span>
+                        <Label
+                          data-disabled={!supportsPullRequests || undefined}
+                          className="flex items-start gap-3 rounded-lg border p-3 data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-60"
+                        >
+                          <Checkbox
+                            className="mt-0.5"
+                            checked={supportsPullRequests && createPr}
+                            disabled={!supportsPullRequests}
+                            onCheckedChange={(value) => setCreatePr(Boolean(value))}
+                          />
+                          <span>
+                            <strong className="block text-xs">Create draft pull requests</strong>
+                            <small className="text-[11px] text-muted-foreground">
+                              {supportsPullRequests
+                                ? 'Link each Git repository’s delivery back to this Work item.'
+                                : 'Available when every selected source is a Git repository.'}
+                            </small>
+                          </span>
+                        </Label>
+                      </section>
+                    )}
+                    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                      <Label className="flex-col items-stretch gap-1.5">
+                        Type
+                        <Select value={kind} onValueChange={(value) => setKind(value as WorkItem['kind'])}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="implementation">Implementation</SelectItem>
+                            <SelectItem value="investigation">Investigation</SelectItem>
+                            <SelectItem value="operational">Operational</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </Label>
-                    </section>
-                  )}
-                  <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                    <Label className="flex-col items-stretch gap-1.5">
-                      Type
-                      <Select value={kind} onValueChange={(value) => setKind(value as WorkItem['kind'])}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="implementation">Implementation</SelectItem>
-                          <SelectItem value="investigation">Investigation</SelectItem>
-                          <SelectItem value="operational">Operational</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="flex-col items-stretch gap-1.5">
-                      Priority
-                      <Select value={priority} onValueChange={(value) => setPriority(value as WorkItem['priority'])}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="urgent">Urgent</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Label>
+                      <Label className="flex-col items-stretch gap-1.5">
+                        Priority
+                        <Select value={priority} onValueChange={(value) => setPriority(value as WorkItem['priority'])}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="urgent">Urgent</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                    </div>
+                    <div>
+                      <h3 className="mb-2 text-xs font-medium">Source context</h3>
+                      <WorkReferencePicker backendId={backendId} selected={references} onChange={setReferences} />
+                    </div>
+                    <SequentialWorkOption checked={splitWorkItem} onCheckedChange={setSplitWorkItem} />
                   </div>
-                  <div>
-                    <h3 className="mb-2 text-xs font-medium">Source context</h3>
-                    <WorkReferencePicker backendId={backendId} selected={references} onChange={setReferences} />
-                  </div>
-                  <SequentialWorkOption checked={splitWorkItem} onCheckedChange={setSplitWorkItem} />
-                </div>
-              </details>
+                </details>
+              </div>
             </FieldGroup>
           </div>
           <DialogFooter className="border-t bg-muted/[.04] px-5 py-3 sm:items-center sm:justify-between">
@@ -313,16 +367,27 @@ export function NewWorkDialog({
               <Button type="button" variant="outline" className="hidden sm:inline-flex" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button disabled={busy || generatingTitle || uploadingImages || (!title.trim() && !description.trim())}>
-                {busy || uploadingImages ? <Loader2 className="animate-spin" /> : startThread ? <Bot /> : <Plus />}
-                {uploadingImages
-                  ? 'Adding images…'
-                  : busy && !title.trim()
-                    ? 'Creating outcome…'
-                    : startThread
-                      ? `Start work${repositories.length > 1 ? ` in ${repositories.length} repositories` : ''}`
-                      : 'Create work'}
-              </Button>
+              {!quick && step > 0 && (
+                <Button type="button" variant="outline" onClick={() => setStep((value) => value - 1)}>
+                  Back
+                </Button>
+              )}
+              {!quick && step < 2 ? (
+                <Button type="button" disabled={step === 0 && !title.trim()} onClick={() => setStep((value) => value + 1)}>
+                  Continue
+                </Button>
+              ) : (
+                <Button disabled={busy || generatingTitle || uploadingImages || (!title.trim() && !description.trim())}>
+                  {busy || uploadingImages ? <Loader2 className="animate-spin" /> : startThread ? <Bot /> : <Plus />}
+                  {uploadingImages
+                    ? 'Adding images…'
+                    : busy && !title.trim()
+                      ? 'Creating outcome…'
+                      : startThread
+                        ? `Start work${repositories.length > 1 ? ` in ${repositories.length} repositories` : ''}`
+                        : 'Create work'}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </form>
@@ -345,13 +410,13 @@ function RepositoryChooser({
   backendId: string
   onChange(ids: number[]): void
   onAdd(repository: string): Promise<void>
-  onAddLocal(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' | 'move' }): Promise<void>
+  onAddLocal(input: { local_path: string; name?: string; workspace_strategy: 'direct' | 'copy' }): Promise<void>
   backendName: string
 }) {
   const [browserOpen, setBrowserOpen] = useState(false)
   const [localPath, setLocalPath] = useState('')
   const [localName, setLocalName] = useState('')
-  const [localStrategy, setLocalStrategy] = useState<'direct' | 'copy' | 'move'>('direct')
+  const [localStrategy, setLocalStrategy] = useState<'direct' | 'copy'>('direct')
   const [addingLocal, setAddingLocal] = useState(false)
   const selectedRepositories = repositories.filter((repository) => selected.includes(repository.id))
   const names = selectedRepositories.map((repository) => repository.full_name)
@@ -377,18 +442,9 @@ function RepositoryChooser({
       </SegmentedControl>
       {generalWorkspace ? (
         <>
-          <div className="flex items-start gap-3 rounded-lg border bg-muted/[.08] p-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
-              <Layers3 className="size-4 text-muted-foreground" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <strong className="block text-xs">Managed, repository-free workspace</strong>
-              <small className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
-                Best for research, writing, planning, and other work that does not belong to a project. It can still be forked later.
-              </small>
-            </span>
-            <Badge variant="secondary">Isolated</Badge>
-          </div>
+          <FieldDescription>
+            Use an empty managed folder for research, writing, planning, or other project-independent work.
+          </FieldDescription>
           <RepositorySearchPicker
             backendId={backendId}
             added={repositories.map((repository) => repository.full_name)}
@@ -419,9 +475,8 @@ function RepositoryChooser({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="direct">Direct</SelectItem>
-                  <SelectItem value="copy">Copy</SelectItem>
-                  <SelectItem value="move">Move</SelectItem>
+                  <SelectItem value="direct">Direct · live</SelectItem>
+                  <SelectItem value="copy">Copy · merge back</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -449,6 +504,7 @@ function RepositoryChooser({
                 {addingLocal ? <Loader2 className="animate-spin" /> : <Plus />} Add
               </Button>
             </div>
+            <FieldDescription className="sm:col-span-full">{localWorkspaceStrategyDescription(localStrategy)}</FieldDescription>
           </div>
           <ServerDirectoryBrowserDialog
             open={browserOpen}
@@ -508,8 +564,14 @@ function workspaceBehavior(
   strategy: WorkBoardData['repositories'][number]['workspace_strategy'],
 ) {
   if (sourceKind === 'directory') {
-    if (strategy === 'move') return 'move on apply'
-    return strategy || 'direct'
+    if (strategy === 'move') return 'isolated · replace on apply'
+    if (strategy === 'copy') return 'isolated · merge on apply'
+    return 'direct · live edits'
   }
   return strategy === 'direct' ? 'direct' : 'worktree'
+}
+
+function localWorkspaceStrategyDescription(strategy: 'direct' | 'copy') {
+  if (strategy === 'direct') return 'The Work folder links to the original directory. Agent edits are immediately visible there.'
+  return 'Work happens in an isolated copy. Apply previews and pastes approved changed and deleted files back after a conflict check.'
 }

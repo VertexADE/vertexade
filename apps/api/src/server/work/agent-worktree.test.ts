@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vite-plus/test'
@@ -7,7 +7,7 @@ import { allocateAgentWorktree } from './agent-worktree.ts'
 describe('agent worktree allocation', () => {
   it('links a direct local directory into the combined Work-item folder without invoking Git', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-direct-'))
-    const workItemWorkspaceRoot = join(root, 'work-items')
+    const workItemWorkspaceRoot = await mkdtemp(join(tmpdir(), 'vertexade-direct-work-items-'))
     const prepare = vi.fn()
     const run = vi.fn()
     const result = await allocateAgentWorktree(
@@ -25,6 +25,7 @@ describe('agent worktree allocation', () => {
       baseGitDir: null,
     })
     await expect(realpath(result.worktree)).resolves.toBe(await realpath(root))
+    await expect(stat(`${result.worktree}.baseline`).then((entry) => entry.isDirectory())).resolves.toBe(true)
     expect(run).not.toHaveBeenCalled()
     expect(prepare).toHaveBeenCalledWith(
       expect.anything(),
@@ -35,6 +36,7 @@ describe('agent worktree allocation', () => {
 
   it('links a general workspace without treating it as a Git repository', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vertexade-workspace-'))
+    const workItemWorkspaceRoot = await mkdtemp(join(tmpdir(), 'vertexade-workspace-items-'))
     const run = vi.fn()
     const prepare = vi.fn()
     const result = await allocateAgentWorktree(
@@ -43,7 +45,7 @@ describe('agent worktree allocation', () => {
       '',
       null,
       { mode: 'combined', workItemKey: 'W-0002' },
-      { run, prepare, cleanup: vi.fn(), workItemWorkspaceRoot: join(root, 'work-items') },
+      { run, prepare, cleanup: vi.fn(), workItemWorkspaceRoot },
     )
 
     expect(result).toMatchObject({ baseGitDir: null, headSha: null, workspaceStrategy: 'direct' })

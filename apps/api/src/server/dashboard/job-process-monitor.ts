@@ -57,7 +57,7 @@ import { jobSessionCwd, parseWorkItemWorkspaceMode, relativeWorktreePath, workIt
 import { createCoreRoutes } from '../core-routes.ts'
 import { worktreeCodeReviewPrompt } from '../work/prompts.ts'
 import { populateWorktreeSnapshot } from '../work/worktree-snapshot.ts'
-import { previewDirectoryApply } from '../work/directory-workspace.ts'
+import { previewDirectoryApply, previewDirectoryChanges } from '../work/directory-workspace.ts'
 import { WorktreePreviewRuntime, normalizePreviewSettings } from '../previews/runtime.ts'
 import { WorktreePreviewGateway } from '../previews/gateway.ts'
 import { openDashboardDatabase } from '../database/dashboard-database.ts'
@@ -148,6 +148,14 @@ export function createJobProcessMonitor({
   postAutomaticReviewToGitHub: (jobId: number) => Promise<any>
   persistDetectedThreadContext: (jobId: number, event: any) => void
 }) {
+  function storeDirectoryDiff(jobId: number, preview: { changed: string[]; deleted: string[] }) {
+    db.update(jobs)
+      .set({ diffFiles: JSON.stringify(preview.changed), diffAdditions: 0, diffDeletions: preview.deleted.length })
+      .where(eq(jobs.id, jobId))
+      .run()
+    notifyClients('diff', jobId)
+  }
+
   function updateActivity(jobId: number, latestActivity: string) {
     db.update(jobs)
       .set({ latestActivity, activityAt: sql`CURRENT_TIMESTAMP` })
@@ -416,18 +424,17 @@ export function createJobProcessMonitor({
           .where(eq(jobs.id, jobId))
           .get()
         const job = storedJob ? jobRecord(storedJob) : null
-        if (storedJob?.sourceKind === 'directory' && ['copy', 'move'].includes(storedJob.workspaceStrategy)) {
+        if (storedJob?.sourceKind !== 'git' && storedJob?.workspaceStrategy === 'direct') {
+          const preview = await previewDirectoryChanges(`${storedJob.worktreePath}.baseline`, storedJob.worktreePath)
+          storeDirectoryDiff(jobId, preview)
+        } else if (storedJob?.sourceKind !== 'git' && storedJob && ['copy', 'move'].includes(storedJob.workspaceStrategy)) {
           const preview = await previewDirectoryApply(
             storedJob.sourcePath,
             storedJob.worktreePath,
             storedJob.workspaceStrategy as 'copy' | 'move',
           )
-          db.update(jobs)
-            .set({ diffFiles: JSON.stringify(preview.changed), diffAdditions: 0, diffDeletions: preview.deleted.length })
-            .where(eq(jobs.id, jobId))
-            .run()
-          notifyClients('diff', jobId)
-        } else if (storedJob?.sourceKind !== 'directory') {
+          storeDirectoryDiff(jobId, preview)
+        } else if (storedJob?.sourceKind === 'git') {
           const diff = await run('git', ['-C', job.worktree_path, 'diff', '--no-ext-diff', '--binary', job.head_sha, '--'])
           if (diff.trim()) storeJobDiff(jobId, diff)
         }

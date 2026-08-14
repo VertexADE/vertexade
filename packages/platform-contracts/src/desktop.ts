@@ -9,6 +9,20 @@ export const DESKTOP_DIALOG_CHANNELS = {
   chooseDirectory: 'desktop:dialog:choose-directory',
 } as const
 
+export const DESKTOP_UPDATE_CHANNELS = {
+  status: 'desktop:update:status',
+  check: 'desktop:update:check',
+  install: 'desktop:update:install',
+} as const
+
+export type DesktopUpdateStatus = {
+  supported: boolean
+  currentVersion: string
+  state: 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error'
+  availableVersion: string | null
+  message: string | null
+}
+
 export type DesktopOnboardingState = {
   currentVersion: number
   completedVersion: number | null
@@ -24,5 +38,10 @@ export type VertexADEDesktopBridge = {
   }
   readonly dialog: {
     chooseDirectory(): Promise<string | null>
+  }
+  readonly updates: {
+    status(): Promise<DesktopUpdateStatus>
+    check(): Promise<DesktopUpdateStatus>
+    install(): Promise<void>
   }
 }

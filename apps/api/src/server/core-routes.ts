@@ -13,6 +13,7 @@ import { operationalHealth } from './operational-health.ts'
 import { liveness, readiness } from './service-health.ts'
 import { createSetupStatus, inspectSetupTools, type ToolSpec } from './setup-status.ts'
 import type { SystemConfiguration } from './settings/system-configuration.ts'
+import { serverUpdateInfo } from './software-update.ts'
 
 type JsonResponse = (status: number, value: unknown) => Response
 type ReadBody = (request: Request, maxBytes?: number) => Promise<any>
@@ -221,6 +222,9 @@ export function createCoreRoutes(dependencies: CoreRouteDependencies) {
     if (previewSettingsResponse) return previewSettingsResponse
     if (request.method === 'GET' && url.pathname === '/api/setup/status') {
       return dependencies.json(200, await setupStatus(dependencies))
+    }
+    if (request.method === 'GET' && url.pathname === '/api/software-update') {
+      return dependencies.json(200, serverUpdateInfo())
     }
     return null
   }

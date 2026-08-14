@@ -42,6 +42,17 @@ describe('core API routes', () => {
     expect(await routes(new Request('http://localhost/api/other'), new URL('http://localhost/api/other'))).toBeNull()
   })
 
+  it('exposes read-only update guidance without accepting mutations', async () => {
+    const routes = createCoreRoutes(dependencies())
+    const url = new URL('http://localhost/api/software-update')
+    const read = await routes(new Request(url), url)
+
+    expect(await read?.json()).toEqual(
+      expect.objectContaining({ installation: 'source', command: expect.stringContaining('git pull --ff-only') }),
+    )
+    expect(await routes(new Request(url, { method: 'POST' }), url)).toBeNull()
+  })
+
   it('owns system configuration reads and writes', async () => {
     const notify = vi.fn()
     const systemConfiguration = {

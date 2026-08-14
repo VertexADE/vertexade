@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../dist', import.meta.url))
+const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const vertexHome = process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, 'vertex-ade') : join(homedir(), '.vertex-ade')
 const dataDirectory = resolve(process.env.VERTEXADE_DATA_DIR || vertexHome)
 const runtimeConfigurationPath = resolve(process.env.VERTEXADE_SERVER_CONFIG_PATH || join(dataDirectory, 'server-runtime.json'))
@@ -29,6 +30,8 @@ const children = [
       VERTEXADE_WEB_LISTENER_SOURCE: web.source,
       VERTEXADE_SERVER_CONFIG_PATH: runtimeConfigurationPath,
       VERTEXADE_DATA_DIR: dataDirectory,
+      VERTEXADE_INSTALLATION: process.env.VERTEXADE_INSTALLATION || 'npm',
+      VERTEXADE_VERSION: process.env.VERTEXADE_VERSION || String(packageMetadata.version || 'unknown'),
       VERTEXADE_WORKTREE_ROOT: process.env.VERTEXADE_WORKTREE_ROOT || join(vertexHome, 'worktrees'),
     },
     stdio: 'inherit',
@@ -39,6 +42,8 @@ const children = [
       HOST: web.host,
       PORT: webPort,
       VERTEXADE_API_URL: process.env.VERTEXADE_API_URL || `http://${internalHost(api.host)}:${apiPort}`,
+      VERTEXADE_INSTALLATION: process.env.VERTEXADE_INSTALLATION || 'npm',
+      VERTEXADE_VERSION: process.env.VERTEXADE_VERSION || String(packageMetadata.version || 'unknown'),
     },
     stdio: 'inherit',
   }),

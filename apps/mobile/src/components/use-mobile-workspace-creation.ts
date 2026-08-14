@@ -100,6 +100,7 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
       const added = await addMobileRepository(selectedBackend.serviceUrl || options.serviceUrl, selectedBackend, repository)
       setAddedRepositories((current) => [...current.filter((candidate) => candidate.id !== added.id), added])
       update({ repositoryIds: [...new Set([...state.repositoryIds, added.id])] })
+      return added
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Repository could not be added'
       update({ error: message })
@@ -107,13 +108,14 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     }
   }
 
-  async function addLocalFolder(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' | 'move' }) {
+  async function addLocalFolder(input: { localPath: string; name?: string; workspaceStrategy: 'direct' | 'copy' }) {
     if (!selectedBackend) throw new Error('Choose a server')
     update({ error: '' })
     try {
       const added = await addMobileLocalFolder(selectedBackend.serviceUrl || options.serviceUrl, selectedBackend, input)
       setAddedRepositories((current) => [...current.filter((candidate) => candidate.id !== added.id), added])
       update({ repositoryIds: [...new Set([...state.repositoryIds, added.id])] })
+      return added
     } catch (reason) {
       update({ error: reason instanceof Error ? reason.message : 'Local folder could not be added' })
       throw reason
@@ -137,6 +139,10 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
         : [...state.repositoryIds, repositoryId].slice(0, 8)
       const selected = repositories.filter((repository) => repositoryIds.includes(repository.id))
       update({ repositoryIds, ...(!selected.length || selected.some((repository) => repository.sourceKind !== 'git') ? { createPullRequest: false } : {}) })
+    },
+    selectSingleRepository: (repositoryId: number) => {
+      const repository = repositories.find((candidate) => candidate.id === repositoryId)
+      update({ repositoryIds: [repositoryId], ...(repository?.sourceKind !== 'git' ? { createPullRequest: false } : {}) })
     },
     clearRepositories: () => update({ repositoryIds: [], createPullRequest: false }),
     setCreatePullRequest: (createPullRequest: boolean) => update({ createPullRequest }),
