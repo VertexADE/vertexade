@@ -5,6 +5,7 @@ import { completedMonitoredTurn, steerActiveTurn } from './turn-control.ts'
 import { createInterface } from 'node:readline'
 import WebSocket, { type RawData } from 'ws'
 import { codexActionEvent } from './timeline.ts'
+import { resumedThreadNeedsMcpMigration } from './mcp-thread.ts'
 
 type JsonRecord = Record<string, unknown>
 type RpcMessage = {
@@ -32,6 +33,7 @@ type ThreadResponse = {
 }
 type TurnResponse = { turn: { id: string } }
 type TurnSteerResponse = { turnId: string }
+type McpServerStatusResponse = { data?: Array<{ name?: string; tools?: Record<string, unknown> }> }
 type PendingRequest = {
   resolveRequest(value: unknown): void
   rejectRequest(reason?: unknown): void
@@ -59,7 +61,7 @@ const model = option('model')
 const reasoningEffort = option('reasoning-effort')
 const serviceTier = option('service-tier')
 const dryRun = process.argv.includes('--dry-run')
-const resumeSetupMethods = ['thread/resume', 'config/mcpServer/reload'] as const
+const resumeSetupMethods = ['thread/resume', 'mcpServerStatus/list', 'thread/fork'] as const
 const reviewMode = process.argv.includes('--review-mode')
 const fullAccess = process.argv.includes('--full-access')
 const readOnly = process.argv.includes('--read-only')
@@ -67,24 +69,26 @@ const ephemeral = process.argv.includes('--ephemeral')
 const allowSubagents = process.argv.includes('--allow-subagents')
 const writableRoots = options('writable-root').map((path) => resolve(path))
 
-function mcpConfig() {
+function configuredMcpValues() {
   let values: any[] = []
   try {
     values = JSON.parse(process.env.VERTEXADE_MCP_SERVERS || '[]')
   } catch {
     throw new Error('Invalid Codex MCP configuration')
   }
-  return Object.fromEntries(
-    values.map((server) => [
-      server.name,
-      server.transport === 'sse'
-        ? { url: server.url, http_headers: server.headers || {} }
-        : { command: server.command, args: server.args || [], env: server.env || {} },
-    ]),
-  )
+  return values
 }
 
-const configuredMcpServers = mcpConfig()
+const mcpValues = configuredMcpValues()
+const configuredMcpServers = Object.fromEntries(
+  mcpValues.map((server) => [
+    server.name,
+    server.transport === 'sse'
+      ? { url: server.url, http_headers: server.headers || {} }
+      : { command: server.command, args: server.args || [], env: server.env || {} },
+  ]),
+)
+const requiredBuiltInMcpServer = mcpValues.find((server) => server.id === 'vertexade:subagents')?.name || null
 const threadConfig = {
   mcp_servers: configuredMcpServers,
   features: { multi_agent: allowSubagents },
@@ -377,14 +381,37 @@ async function main() {
       excludeTurns: true,
       config: threadConfig,
     })
-    await request(resumeSetupMethods[1], {})
-    emit('thread_roots_updated', {
-      thread_id: resumeId,
-      cwd,
-      base,
-      ...threadResponseDetails(resumed),
+    const status = await request<McpServerStatusResponse>(resumeSetupMethods[1], {
+      threadId: resumeId,
+      detail: 'toolsAndAuthOnly',
     })
-    threadId = resumeId
+    if (resumedThreadNeedsMcpMigration(requiredBuiltInMcpServer, status.data || [])) {
+      const migrated = await request<ThreadResponse>(resumeSetupMethods[2], {
+        threadId: resumeId,
+        cwd,
+        runtimeWorkspaceRoots: roots,
+        threadSource: 'vertexade',
+        excludeTurns: true,
+        config: threadConfig,
+      })
+      threadId = migrated.thread.id
+      emit('thread_forked', {
+        thread_id: threadId,
+        source_thread_id: resumeId,
+        reason: 'mcp_tools_migrated',
+        cwd,
+        base,
+        ...threadResponseDetails(migrated),
+      })
+    } else {
+      emit('thread_roots_updated', {
+        thread_id: resumeId,
+        cwd,
+        base,
+        ...threadResponseDetails(resumed),
+      })
+      threadId = resumeId
+    }
   } else {
     const started = await request<ThreadResponse>('thread/start', threadParams)
     threadId = started.thread.id

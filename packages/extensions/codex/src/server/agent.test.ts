@@ -90,7 +90,7 @@ describe('Codex agent', () => {
     })
   })
 
-  it('reloads MCP servers after resuming an existing thread', () => {
+  it('checks resumed threads and migrates them when their MCP tool snapshot is stale', () => {
     const launch = createCodexAgent({ run: vi.fn() }).launch({
       cwd: '/work',
       base: '/repo',
@@ -104,7 +104,7 @@ describe('Codex agent', () => {
     expect(result.status).toBe(0)
     expect(JSON.parse(result.stdout)).toMatchObject({
       resumeId: 'existing-thread',
-      resumeSetupMethods: ['thread/resume', 'config/mcpServer/reload'],
+      resumeSetupMethods: ['thread/resume', 'mcpServerStatus/list', 'thread/fork'],
     })
   })
 

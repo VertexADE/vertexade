@@ -194,7 +194,7 @@ export function createJobProcessMonitor({
         if (event.event === 'thread_forked')
           db.update(jobs)
             .set({
-              threadId: sql`coalesce(${jobs.threadId}, ${event.thread_id})`,
+              threadId: event.thread_id,
               latestActivity: `${runtimeAgent.name} thread forked`,
               activityAt: sql`CURRENT_TIMESTAMP`,
             })
