@@ -54,7 +54,9 @@ import { AdvancedRecipeOptions } from './automation-recipe-advanced-options'
 import { RecipeSteps } from './automation-recipe-steps'
 import { AutomationScheduleEditor, scheduleCadence } from './automation-schedule-editor'
 import { AgentOptionsPicker } from '@vertexade/ui/components/agent-options-picker'
+import { AgentResourcePicker, emptyAgentResourceSelection } from '@vertexade/ui/components/agent-resource-picker'
 import type { AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
+import { fullAutomationFlow } from './automation-flow-presets'
 
 export function RecipeEditor(props: {
   editingId: number | null
@@ -68,6 +70,7 @@ export function RecipeEditor(props: {
   conditionFields: ConditionField[]
   threadAction: AutomationThreadAction
   agentOptions: AgentLaunchOptions
+  resourceSelection: { skills: string[]; mcpServers: string[] } | null
   promptSteps: DraftPrompt[]
   boundActions: DraftBoundAction[]
   schedule: AutomationSchedule | null
@@ -83,6 +86,7 @@ export function RecipeEditor(props: {
   onConditionsChange(value: DraftCondition[]): void
   onThreadActionChange(value: AutomationThreadAction): void
   onAgentOptionsChange(value: AgentLaunchOptions): void
+  onResourceSelectionChange(value: { skills: string[]; mcpServers: string[] }): void
   onPromptStepsChange(value: DraftPrompt[]): void
   onBoundActionsChange(value: DraftBoundAction[]): void
   onScheduleChange(value: AutomationSchedule): void
@@ -135,7 +139,8 @@ export function RecipeEditor(props: {
               Choose the provider, model, and reasoning level for this automation's thread.
             </p>
           </div>
-          <AgentOptionsPicker value={props.agentOptions} onChange={props.onAgentOptionsChange} showSubagents={false} />
+          <AgentOptionsPicker value={props.agentOptions} onChange={props.onAgentOptionsChange} />
+          <AgentResourcePicker value={props.resourceSelection || emptyAgentResourceSelection} onChange={props.onResourceSelectionChange} />
         </section>
       )}
       <AdvancedRecipeOptions actionCount={props.boundActions.length} checkCount={props.steps.length}>
@@ -436,6 +441,13 @@ export function PromptPhases({
     onChange(prompts.map((phase, position) => (position === index ? { ...phase, ...value } : phase)))
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2">
+        <span className="text-xs text-muted-foreground">Need an end-to-end starting point?</span>
+        <Button type="button" size="xs" variant="outline" onClick={() => onChange(fullAutomationFlow(action))}>
+          <Sparkles />
+          {action === 'review' ? 'Build review flow' : 'Build full delivery flow'}
+        </Button>
+      </div>
       {prompts.map((phase, index) => (
         <div key={index} className="space-y-2 rounded-md border bg-background/80 p-2">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">

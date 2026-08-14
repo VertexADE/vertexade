@@ -56,7 +56,9 @@ export function AutomationScheduleEditor({
     <section className="space-y-3 rounded-lg border border-violet-500/20 bg-violet-500/[.035] p-3">
       <div>
         <strong className="text-xs">2. Timing and scope</strong>
-        <p className="text-xs text-muted-foreground">Choose when this automation runs and whether its repositories share one Work item.</p>
+        <p className="text-xs text-muted-foreground">
+          Choose when this automation runs and which projects or local folders share its Work item.
+        </p>
       </div>
       <Label className="flex-col items-stretch gap-1">
         <span className="text-xs text-muted-foreground">Execution</span>
@@ -125,7 +127,7 @@ export function AutomationScheduleEditor({
       <RepositoryMultiSelect
         repositories={repositories}
         selected={value.repositoryIds}
-        emptySelectionLabel="choose at least one"
+        emptySelectionLabel="General workspace (no project)"
         maximum={null}
         onChange={(repositoryIds) => update({ repositoryIds })}
       />

@@ -48,6 +48,8 @@ export function useAutomationActions({
           model: draft.model || null,
           reasoningEffort: draft.reasoningEffort || null,
           serviceTier: draft.serviceTier || null,
+          allowSubagents: draft.allowSubagents,
+          resourceSelection: draft.resourceSelection,
           promptSteps: draft.promptSteps,
           boundActions: serializedBoundActions(draft.boundActions),
           steps: serializedSteps(draft.steps),

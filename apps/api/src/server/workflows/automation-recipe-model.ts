@@ -14,6 +14,7 @@ import type {
   TriggerEvent,
 } from '@vertexade/platform-contracts'
 import { normalizeAutomationConditions, normalizeConditionMode } from './automation-conditions.ts'
+import type { AutomationThreadLaunchOptions } from './automation-thread-launcher.ts'
 
 export type RecipeInput = {
   name?: unknown
@@ -27,6 +28,8 @@ export type RecipeInput = {
   model?: unknown
   reasoningEffort?: unknown
   serviceTier?: unknown
+  allowSubagents?: unknown
+  resourceSelection?: unknown
   promptSteps?: unknown
   boundActions?: unknown
   steps?: unknown
@@ -45,6 +48,8 @@ export type NormalizedRecipeInput = {
   model: string | null
   reasoningEffort: string | null
   serviceTier: string | null
+  allowSubagents: boolean
+  resourceSelection: { skills: string[]; mcpServers: string[] } | null
   promptSteps: AutomationPromptStep[]
   boundActions: AutomationBoundAction[]
   steps: AutomationStep[]
@@ -80,6 +85,15 @@ function threadAction(value: unknown): AutomationThreadAction {
   const action = String(value || 'none') as AutomationThreadAction
   if (!['none', 'work', 'review', 'improve'].includes(action)) throw new Error('Choose a valid automation thread action')
   return action
+}
+
+function resourceSelection(value: unknown): NormalizedRecipeInput['resourceSelection'] {
+  if (value === undefined || value === null) return null
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Agent resources must be a selection object')
+  const input = value as Record<string, unknown>
+  const ids = (candidate: unknown) =>
+    [...new Set((Array.isArray(candidate) ? candidate : []).map((item) => String(item).trim()).filter(Boolean))].slice(0, 100)
+  return { skills: ids(input.skills), mcpServers: ids(input.mcpServers) }
 }
 
 function promptSteps(value: unknown, maximum: number): AutomationPromptStep[] {
@@ -149,6 +163,8 @@ export function normalizeRecipeInput(input: RecipeInput, maximumSteps: number): 
     model: String(input.model || '').trim() || null,
     reasoningEffort: String(input.reasoningEffort || '').trim() || null,
     serviceTier: input.agentId === 'codex' && input.serviceTier === 'priority' ? 'priority' : null,
+    allowSubagents: Boolean(input.allowSubagents),
+    resourceSelection: resourceSelection(input.resourceSelection),
     promptSteps: prompts,
     boundActions: boundActions(input.boundActions, maximumSteps),
     steps: steps(input.steps, maximumSteps),
@@ -164,6 +180,17 @@ export function validateRecipeInput(value: NormalizedRecipeInput) {
   if (!value.promptSteps.length) throw new Error('Thread automations require at least one prompt phase')
   if (value.threadAction === 'improve' && value.promptSteps.length !== 1)
     throw new Error('Improve automations require exactly one review brief')
+}
+
+export function recipeThreadLaunchOptions(recipe: AutomationRecipe): AutomationThreadLaunchOptions {
+  return {
+    agentId: recipe.agentId,
+    model: recipe.model,
+    reasoningEffort: recipe.reasoningEffort,
+    serviceTier: recipe.serviceTier,
+    allowSubagents: recipe.allowSubagents,
+    resourceSelection: recipe.resourceSelection,
+  }
 }
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -211,6 +238,8 @@ export function recipeFromRow(row: Record<string, unknown>, schedule?: Record<st
     model: row.model == null ? null : String(row.model),
     reasoningEffort: row.reasoningEffort == null ? null : String(row.reasoningEffort),
     serviceTier: row.serviceTier == null ? null : String(row.serviceTier),
+    allowSubagents: Boolean(row.allowSubagents),
+    resourceSelection: parseJson(row.resourceSelection, null),
     promptSteps: storedPrompts,
     boundActions: parseJson(row.boundActions, []),
     schedule: scheduleFromRow(schedule),

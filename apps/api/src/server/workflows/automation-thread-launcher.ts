@@ -7,7 +7,7 @@ import { generalWorkspaceRepository } from '../work/general-workspace.ts'
 
 type Repository = { id: number; full_name: string; clone_url: string; local_path: string }
 type PullRequest = Record<string, unknown> & { repo_id: number; number: number; title: string }
-type WorkTarget = { repository: Repository; repositories?: Repository[]; title: string; workItemId: number | null }
+export type WorkTarget = { repository: Repository; repositories?: Repository[]; title: string; workItemId: number | null }
 export type AutomationThreadLaunchResult = { jobId: number } | { skippedReason: string }
 
 export type AutomationThreadLaunchOptions = {
@@ -20,6 +20,7 @@ export type AutomationThreadLaunchOptions = {
   workKind?: 'implementation' | 'pr_review' | 'investigation' | 'operational'
   source?: Record<string, unknown>
   repositoryIds?: number[]
+  resourceSelection?: { skills: string[]; mcpServers: string[] } | null
 }
 
 export type AutomationThreadLaunchDependencies = {

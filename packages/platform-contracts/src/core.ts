@@ -380,6 +380,8 @@ export type AutomationRecipe = {
   model: string | null
   reasoningEffort: string | null
   serviceTier: string | null
+  allowSubagents: boolean
+  resourceSelection: { skills: string[]; mcpServers: string[] } | null
   promptSteps: AutomationPromptStep[]
   boundActions: AutomationBoundAction[]
   schedule: AutomationSchedule | null

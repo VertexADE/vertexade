@@ -461,8 +461,9 @@ function AutomationViewContent({
           model: draft.model,
           reasoningEffort: draft.reasoningEffort,
           serviceTier: draft.serviceTier,
-          allowSubagents: false,
+          allowSubagents: draft.allowSubagents,
         }}
+        resourceSelection={draft.resourceSelection}
         promptSteps={draft.promptSteps}
         boundActions={draft.boundActions}
         schedule={draft.schedule}
@@ -484,8 +485,10 @@ function AutomationViewContent({
             model: value.model,
             reasoningEffort: value.reasoningEffort,
             serviceTier: value.serviceTier || '',
+            allowSubagents: value.allowSubagents,
           }))
         }
+        onResourceSelectionChange={(value) => setDraft((current) => ({ ...current, resourceSelection: value }))}
         onPromptStepsChange={(value) => setDraft((current) => ({ ...current, promptSteps: value }))}
         onBoundActionsChange={(value) => setDraft((current) => ({ ...current, boundActions: value }))}
         onScheduleChange={(value) => setDraft((current) => ({ ...current, schedule: value }))}

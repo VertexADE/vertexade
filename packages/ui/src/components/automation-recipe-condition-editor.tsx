@@ -93,6 +93,8 @@ export type RecipeDraft = {
   model: string
   reasoningEffort: string
   serviceTier: string
+  allowSubagents: boolean
+  resourceSelection: { skills: string[]; mcpServers: string[] } | null
   promptSteps: DraftPrompt[]
   boundActions: DraftBoundAction[]
   schedule: AutomationSchedule | null
@@ -181,6 +183,8 @@ export const emptyDraft = (): RecipeDraft => ({
   model: '',
   reasoningEffort: '',
   serviceTier: '',
+  allowSubagents: false,
+  resourceSelection: null,
   promptSteps: [],
   boundActions: [],
   schedule: null,

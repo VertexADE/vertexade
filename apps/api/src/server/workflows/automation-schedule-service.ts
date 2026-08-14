@@ -3,6 +3,7 @@ import { CronExpressionParser } from 'cron-parser'
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { automationRecipes, automationSchedules, repositories } from '../database/schema/tables.ts'
+import { generalWorkspaceRepository } from '../work/general-workspace.ts'
 
 const simpleSchedules = { hourly: '0 * * * *', daily: '0 9 * * *', weekly: '0 9 * * 1' } as const
 const branchTypes = new Set(['feature', 'fix', 'chore', 'refactor', 'test', 'docs'])
@@ -25,7 +26,6 @@ export function normalizeAutomationSchedule(value: unknown, database: DrizzleDas
     .toLowerCase()
   const scheduleMode = input.scheduleMode === 'cron' ? 'cron' : 'simple'
   const simpleSchedule = String(input.simpleSchedule || 'daily') as keyof typeof simpleSchedules
-  if (!repositoryIds.length) throw new Error('Choose at least one repository')
   if (repositoryIds.length > 8) throw new Error('Choose no more than 8 repositories')
   if (!branchTypes.has(branchType)) throw new Error('Choose a valid branch type')
   if (scheduleMode === 'simple' && !Object.hasOwn(simpleSchedules, simpleSchedule)) throw new Error('Choose hourly, daily, or weekly')
@@ -98,8 +98,10 @@ export class AutomationScheduleService {
     let started = 0
     try {
       const repositoryIds = schedule.executionMode === 'unified' ? schedule.repositoryIds.slice(0, 1) : schedule.repositoryIds
-      for (const repositoryId of repositoryIds) {
-        const repository = database.select().from(repositories).where(eq(repositories.id, repositoryId)).get()
+      const targets = repositoryIds.length ? repositoryIds : [null]
+      for (const repositoryId of targets) {
+        const targetId = repositoryId ?? generalWorkspaceRepository(database).id
+        const repository = database.select().from(repositories).where(eq(repositories.id, targetId)).get()
         if (!repository) {
           errors.push(`Repository ${repositoryId} was not found`)
           continue

@@ -64,6 +64,7 @@ describe('dashboard database migrations', () => {
       { version: 44, name: 'agent-run-context-summary' },
       { version: 45, name: 'local-directory-workspaces' },
       { version: 46, name: 'automation-schedule-execution-mode' },
+      { version: 47, name: 'automation-agent-resources' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',

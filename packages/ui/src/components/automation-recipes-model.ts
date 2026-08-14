@@ -130,6 +130,8 @@ export function automationDraftFromRecipe(recipe: AutomationRecipe): RecipeDraft
     model: recipe.model || '',
     reasoningEffort: recipe.reasoningEffort || '',
     serviceTier: recipe.serviceTier || '',
+    allowSubagents: recipe.allowSubagents,
+    resourceSelection: recipe.resourceSelection,
     promptSteps: recipe.promptSteps.map((phase) => ({ ...phase })),
     boundActions: recipe.boundActions.map(draftBoundAction),
     schedule: recipe.schedule,

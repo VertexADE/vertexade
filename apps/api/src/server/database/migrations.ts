@@ -7,6 +7,7 @@ import { developmentIntelligenceMigration } from './development-intelligence-mig
 import { orderedFollowUpMigration } from './ordered-follow-up-migration.ts'
 import { runContextMigration } from './run-context-migration.ts'
 import { localDirectoryMigration } from './local-directory-migration.ts'
+import { automationAgentResourcesMigration } from './automation-agent-resources-migration.ts'
 import { addColumn, columns, tableExists } from './migration-utils.ts'
 import type { Migration } from './migration.ts'
 
@@ -759,6 +760,7 @@ const migrations: Migration[] = [
       database.exec("ALTER TABLE automation_schedules ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'independent'")
     },
   },
+  automationAgentResourcesMigration,
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

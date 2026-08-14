@@ -93,6 +93,7 @@ import { createAutomationRoutes } from './server/workflows/automation-routes.ts'
 import { CoreAutomationTriggers } from './server/workflows/core-automation-triggers.ts'
 import { registerCoreAutomationActions } from './server/workflows/core-automation-actions.ts'
 import { createAutomationThreadLauncher } from './server/workflows/automation-thread-launcher.ts'
+import { createAutomationWorkPreparation } from './server/workflows/automation-work-preparation.ts'
 import { publishAgentControlEvent, sendAgentControlCommand } from './server/agents/live-control.ts'
 import { agentThreadContext, mergeAgentThreadContext } from './server/agents/thread-context.ts'
 import { AgentResourceService, applyCustomAgentPrompt, applySkillInstructions } from './server/agents/resources.ts'
@@ -390,23 +391,19 @@ const {
 })
 const workRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'workItem', options)
 const reviewRuntime = (options) => resolveThreadRuntime(appSettings, agentProvider, 'review', options)
+const prepareAutomationWork = createAutomationWorkPreparation(db, work, () => agentResources)
 const automationThreadLauncher = createAutomationThreadLauncher(db, {
   launchWork: (target, prompt, options) => {
-    const selectedRepositories = options.repositoryIds?.length
-      ? options.repositoryIds
-          .map((id) => db.select().from(repositories).where(eq(repositories.id, id)).get())
-          .filter(Boolean)
-          .map(repositoryRecord)
-      : undefined
+    const prepared = prepareAutomationWork(target, options)
     return launchRepositoryTask(target.repository, target.title, prompt, false, options.branchType || 'feature', null, {
-      workItemId: target.workItemId,
+      workItemId: prepared.workItemId,
       workKind: options.workKind || 'implementation',
       workSource: options.source,
       ...workRuntime(options),
       allowSubagents: options.allowSubagents,
       permissionMode: options.source ? 'full' : undefined,
       githubWrite: Boolean(options.source),
-      repositories: selectedRepositories || target.repositories,
+      repositories: prepared.repositories,
     })
   },
   launchPullRequestWork: (repository, pullRequest, prompt, options) =>

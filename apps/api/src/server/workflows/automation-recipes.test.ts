@@ -395,6 +395,8 @@ describe('automation recipes', () => {
       agentId: 'codex',
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
+      allowSubagents: true,
+      resourceSelection: { skills: ['review'], mcpServers: ['github'] },
       promptSteps: [{ name: 'Work', prompt: 'Implement the item and verify the result.' }],
       steps: [],
     })!
@@ -413,6 +415,8 @@ describe('automation recipes', () => {
         model: 'gpt-5.6-sol',
         reasoningEffort: 'high',
         serviceTier: null,
+        allowSubagents: true,
+        resourceSelection: { skills: ['review'], mcpServers: ['github'] },
       }),
     )
     expect(recipes.get(saved.id)).toMatchObject({
@@ -420,6 +424,8 @@ describe('automation recipes', () => {
       agentId: 'codex',
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
+      allowSubagents: true,
+      resourceSelection: { skills: ['review'], mcpServers: ['github'] },
       promptSteps: [{ name: 'Work', prompt: 'Implement the item and verify the result.' }],
       lastStatus: 'running',
     })
@@ -507,6 +513,39 @@ describe('automation recipes', () => {
       expect.objectContaining({
         data: expect.objectContaining({ launch: expect.objectContaining({ repositoryIds: [1, 2] }) }),
       }),
+      expect.any(Object),
+    )
+  })
+
+  it('launches scheduled non-project work in the general workspace', async () => {
+    const { registries, recipes, launchThread } = fixture()
+    registries.forModule('core').triggers.register({
+      id: 'core.scheduled',
+      name: 'Scheduled',
+      outputSchema: { type: 'object', properties: { entityType: { type: 'string', enum: ['repository'] } } },
+      subscribe: () => undefined,
+    })
+    const saved = recipes.save({
+      name: 'General operations brief',
+      triggerId: 'core.scheduled',
+      threadAction: 'work',
+      promptSteps: [{ name: 'Investigate', prompt: 'Review the operating context and report.' }],
+      steps: [],
+      schedule: {
+        repositoryIds: [],
+        executionMode: 'unified',
+        branchType: 'chore',
+        scheduleMode: 'simple',
+        simpleSchedule: 'daily',
+        timezone: 'UTC',
+      },
+    })!
+
+    await expect(recipes.run(saved.id)).resolves.toMatchObject({ started: 1, errors: [] })
+    expect(launchThread).toHaveBeenCalledWith(
+      'work',
+      expect.any(String),
+      expect.objectContaining({ subject: expect.stringMatching(/^repository:\d+$/) }),
       expect.any(Object),
     )
   })

@@ -32,6 +32,7 @@ import {
   normalizeRecipeInput,
   parseImprovementPlan,
   recipeFromRow,
+  recipeThreadLaunchOptions,
   supportsThreadTarget,
   type NormalizedRecipeInput,
   type RecipeInput,
@@ -490,12 +491,7 @@ export class AutomationRecipeService {
       current.threadAction === 'improve'
         ? this.improvementReviewPrompt(current, first, trigger)
         : this.phasePrompt(current, first, 0, trigger)
-    const launched = await this.launchThread(current.threadAction, firstPrompt, trigger, {
-      agentId: current.agentId,
-      model: current.model,
-      reasoningEffort: current.reasoningEffort,
-      serviceTier: current.serviceTier,
-    })
+    const launched = await this.launchThread(current.threadAction, firstPrompt, trigger, recipeThreadLaunchOptions(current))
     if ('skippedReason' in launched) {
       this.skipPromptFlow(runId, current, launched.skippedReason)
       return
@@ -790,6 +786,8 @@ Finish with a concise per-item outcome and the exact validation performed.`
       model: value.model,
       reasoningEffort: value.reasoningEffort,
       serviceTier: value.serviceTier,
+      allowSubagents: value.allowSubagents ? 1 : 0,
+      resourceSelection: value.resourceSelection,
       promptSteps: value.promptSteps,
       boundActions: value.boundActions,
       steps: value.steps,

@@ -522,6 +522,8 @@ export const automationRecipes = sqliteTable(
     model: text(),
     reasoningEffort: text('reasoning_effort'),
     serviceTier: text('service_tier'),
+    allowSubagents: integer('allow_subagents').default(0).notNull(),
+    resourceSelection: text('resource_selection', { mode: 'json' }).$type<{ skills: string[]; mcpServers: string[] } | null>(),
   },
   (table) => [index('automation_recipes_trigger').on(table.triggerId, table.enabled)],
 )
