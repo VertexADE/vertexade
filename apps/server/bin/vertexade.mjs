@@ -5,6 +5,7 @@ import { isIP } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { serverArtifacts } from './artifacts.mjs'
 
 const root = fileURLToPath(new URL('../dist', import.meta.url))
 const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
@@ -18,7 +19,7 @@ if (api.port === web.port) throw new Error('Web and API listeners must use diffe
 const apiPort = String(api.port)
 const webPort = String(web.port)
 const children = [
-  spawn(process.execPath, [join(root, 'api.mjs')], {
+  spawn(process.execPath, [join(root, serverArtifacts.api)], {
     env: {
       ...process.env,
       APP_ROOT: join(root, 'runtime'),
@@ -31,12 +32,13 @@ const children = [
       VERTEXADE_SERVER_CONFIG_PATH: runtimeConfigurationPath,
       VERTEXADE_DATA_DIR: dataDirectory,
       VERTEXADE_INSTALLATION: process.env.VERTEXADE_INSTALLATION || 'npm',
+      VERTEXADE_SUBAGENT_MCP_SCRIPT: process.env.VERTEXADE_SUBAGENT_MCP_SCRIPT || join(root, serverArtifacts.subagentMcp),
       VERTEXADE_VERSION: process.env.VERTEXADE_VERSION || String(packageMetadata.version || 'unknown'),
       VERTEXADE_WORKTREE_ROOT: process.env.VERTEXADE_WORKTREE_ROOT || join(vertexHome, 'worktrees'),
     },
     stdio: 'inherit',
   }),
-  spawn(process.execPath, [join(root, 'web/server/index.mjs')], {
+  spawn(process.execPath, [join(root, serverArtifacts.web, 'server/index.mjs')], {
     env: {
       ...process.env,
       HOST: web.host,
