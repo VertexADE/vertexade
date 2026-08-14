@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { updateAgentTurnLiveActivity } from '@/agent-turn-live-activity-controller'
 import type { MobileThreadDetails } from '@/mobile-detail-service'
 import { mobileThreadTabs, type MobileThreadTab } from '@/mobile-thread-presentation'
@@ -49,40 +49,7 @@ export function MobileThreadDetail(props: MobileThreadDetailProps) {
       title: detail.taskTitle || `Thread ${detail.id}`,
     })
   }, [detail?.agentName, detail?.id, detail?.inputQuestions.length, detail?.latestActivity, detail?.status, detail?.taskTitle])
-  if (detail?.inputQuestions.length) return <PendingInputThread props={props} detail={detail} controller={controller} />
   return <StandardThread props={props} detail={detail} controller={controller} />
-}
-
-function PendingInputThread({ props, detail, controller }: { props: MobileThreadDetailProps; detail: MobileThreadDetails; controller: MobileThreadController }) {
-  const questions = detail.inputQuestions
-  return (
-    <MobileDetailShell<MobileThreadTab>
-      eyebrow={`${props.thread.backendName.toUpperCase()} · AGENT RUN`}
-      title={questions[0]?.formTitle || 'Agent needs input'}
-      subtitle={questions[0]?.formDescription || 'Answer to continue the waiting agent turn.'}
-      compactHeader
-      tabs={[]}
-      activeTab="activity"
-      loading={controller.detail.loading}
-      error={controller.detail.error}
-      onTab={controller.setTab}
-      onBack={props.onBack}
-      onClose={props.onClose}
-      onDismiss={props.onDismiss}
-      visible={props.visible}
-      onRetry={() => void controller.detail.refresh()}
-      headerAction={<Pressable accessibilityRole="button" accessibilityLabel="Cancel form" onPress={controller.actions.cancelForm}><Text style={styles.close}>Cancel</Text></Pressable>}
-    >
-      <ThreadDetailAlerts notice={controller.notice} error={controller.error} />
-      <MobileThreadInputRequest
-        questions={questions}
-        answers={controller.answers}
-        busy={controller.busy}
-        onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
-        onSubmit={controller.actions.submitAnswers}
-      />
-    </MobileDetailShell>
-  )
 }
 
 function StandardThread({ props, detail, controller }: { props: MobileThreadDetailProps; detail: MobileThreadDetails | null; controller: MobileThreadController }) {
@@ -167,13 +134,25 @@ function ThreadBody({ detail, controller, threadKey }: { detail: MobileThreadDet
         onChangeSuggestion={(id, patch) => controller.setSuggestions((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))}
         onPostSuggestions={controller.actions.postSuggestions}
         activity={
-          <MobileThreadActivity
-            detail={detail}
-            queueBusyId={controller.queueBusyId}
-            onSteerQueued={(id) => controller.actions.queued(id, 'steer')}
-            onCancelQueued={(id) => controller.actions.queued(id, 'cancel')}
-            onReorderQueued={controller.actions.reorderQueued}
-          />
+          <>
+            <MobileThreadActivity
+              detail={detail}
+              queueBusyId={controller.queueBusyId}
+              onSteerQueued={(id) => controller.actions.queued(id, 'steer')}
+              onCancelQueued={(id) => controller.actions.queued(id, 'cancel')}
+              onReorderQueued={controller.actions.reorderQueued}
+            />
+            {detail.inputQuestions.length ? (
+              <MobileThreadInputRequest
+                questions={detail.inputQuestions}
+                answers={controller.answers}
+                busy={controller.busy}
+                onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
+                onSubmit={controller.actions.submitAnswers}
+                onCancel={controller.actions.cancelForm}
+              />
+            ) : null}
+          </>
         }
       />
     </>

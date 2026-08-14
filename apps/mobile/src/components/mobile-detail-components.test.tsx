@@ -315,7 +315,7 @@ describe('mobile full detail views', () => {
     })
   })
 
-  test('replaces the thread body with an agent-requested form without nesting native modals', async () => {
+  test('renders an agent-requested form inline after the chat without nesting native modals', async () => {
     jest.mocked(loadMobileThreadDetails).mockResolvedValue({
       ...threadDetails,
       inputQuestions: [
@@ -353,7 +353,8 @@ describe('mobile full detail views', () => {
     expect(await screen.findByText('Which direction should we take?')).toBeOnTheScreen()
     expect(screen.getAllByTestId('workspace-detail-native-modal')).toHaveLength(1)
     expect(screen.queryByTestId('thread-input-native-modal')).not.toBeOnTheScreen()
-    expect(screen.getByLabelText('Cancel form')).toBeOnTheScreen()
+    expect(screen.getByText(threadDetails.prompt)).toBeOnTheScreen()
+    expect(screen.getByText('Cancel')).toBeOnTheScreen()
     expect(screen.getByText('Include in the result')).toBeOnTheScreen()
     expect(screen.getAllByPlaceholderText('Enter your own answer')).toHaveLength(2)
     expect(screen.getByLabelText('Other answer for Which direction should we take?')).toBeOnTheScreen()
