@@ -315,7 +315,7 @@ describe('mobile full detail views', () => {
     })
   })
 
-  test('opens an agent-requested form above the thread regardless of transcript scroll position', async () => {
+  test('replaces the thread body with an agent-requested form without nesting native modals', async () => {
     jest.mocked(loadMobileThreadDetails).mockResolvedValue({
       ...threadDetails,
       inputQuestions: [
@@ -350,8 +350,10 @@ describe('mobile full detail views', () => {
 
     render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByTestId('thread-input-native-modal')).toBeOnTheScreen()
-    expect(screen.getByText('Which direction should we take?')).toBeOnTheScreen()
+    expect(await screen.findByText('Which direction should we take?')).toBeOnTheScreen()
+    expect(screen.getAllByTestId('workspace-detail-native-modal')).toHaveLength(1)
+    expect(screen.queryByTestId('thread-input-native-modal')).not.toBeOnTheScreen()
+    expect(screen.getByLabelText('Cancel form')).toBeOnTheScreen()
     expect(screen.getByText('Include in the result')).toBeOnTheScreen()
     expect(screen.getAllByPlaceholderText('Enter your own answer')).toHaveLength(2)
     expect(screen.getByLabelText('Other answer for Which direction should we take?')).toBeOnTheScreen()

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Modal, ScrollView, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { updateAgentTurnLiveActivity } from '@/agent-turn-live-activity-controller'
 import type { MobileThreadDetails } from '@/mobile-detail-service'
 import { mobileThreadTabs, type MobileThreadTab } from '@/mobile-thread-presentation'
@@ -11,8 +11,6 @@ import { MobileThreadTabContent } from './mobile-thread-content'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { MobileDetailShell } from './mobile-detail-shell'
 import { MobileGlass } from './mobile-glass'
-import { MobileModalSafeArea } from './mobile-modal-safe-area'
-import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileThreadController } from './use-mobile-thread-controller'
 import { useSessionCompletionHaptic } from './use-session-completion-haptic'
 
@@ -40,10 +38,6 @@ type MobileThreadController = ReturnType<typeof useMobileThreadController>
 export function MobileThreadDetail(props: MobileThreadDetailProps) {
   const controller = useMobileThreadController(props)
   const detail = controller.detail.value
-  const tabs = detail ? mobileThreadTabs(detail) : fallbackTabs
-  const activeTab = detail && tabs.some((candidate) => candidate.id === controller.tab) ? controller.tab : tabs[0].id
-  const sourceJobId = detail?.sourceJobId
-  const openParent = sourceJobId && props.onOpenThreadId ? () => props.onOpenThreadId?.(sourceJobId) : undefined
   useEffect(() => {
     if (!detail) return
     const state = ['completed', 'failed', 'cancelled'].includes(detail.status) ? 'complete' : detail.inputQuestions.length || detail.status === 'resumable' ? 'idle' : 'working'
@@ -55,12 +49,53 @@ export function MobileThreadDetail(props: MobileThreadDetailProps) {
       title: detail.taskTitle || `Thread ${detail.id}`,
     })
   }, [detail?.agentName, detail?.id, detail?.inputQuestions.length, detail?.latestActivity, detail?.status, detail?.taskTitle])
+  if (detail?.inputQuestions.length) return <PendingInputThread props={props} detail={detail} controller={controller} />
+  return <StandardThread props={props} detail={detail} controller={controller} />
+}
+
+function PendingInputThread({ props, detail, controller }: { props: MobileThreadDetailProps; detail: MobileThreadDetails; controller: MobileThreadController }) {
+  const questions = detail.inputQuestions
   return (
-    <>
-      <MobileDetailShell<MobileThreadTab>
+    <MobileDetailShell<MobileThreadTab>
       eyebrow={`${props.thread.backendName.toUpperCase()} · AGENT RUN`}
-      title={detail?.taskTitle || props.thread.taskTitle || `Thread ${props.thread.id}`}
-      subtitle={detail?.fullName || `${props.thread.status} · ${props.thread.fullName}`}
+      title={questions[0]?.formTitle || 'Agent needs input'}
+      subtitle={questions[0]?.formDescription || 'Answer to continue the waiting agent turn.'}
+      compactHeader
+      tabs={[]}
+      activeTab="activity"
+      loading={controller.detail.loading}
+      error={controller.detail.error}
+      onTab={controller.setTab}
+      onBack={props.onBack}
+      onClose={props.onClose}
+      onDismiss={props.onDismiss}
+      visible={props.visible}
+      onRetry={() => void controller.detail.refresh()}
+      headerAction={<Pressable accessibilityRole="button" accessibilityLabel="Cancel form" onPress={controller.actions.cancelForm}><Text style={styles.close}>Cancel</Text></Pressable>}
+    >
+      <ThreadDetailAlerts notice={controller.notice} error={controller.error} />
+      <MobileThreadInputRequest
+        questions={questions}
+        answers={controller.answers}
+        busy={controller.busy}
+        onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
+        onSubmit={controller.actions.submitAnswers}
+      />
+    </MobileDetailShell>
+  )
+}
+
+function StandardThread({ props, detail, controller }: { props: MobileThreadDetailProps; detail: MobileThreadDetails | null; controller: MobileThreadController }) {
+  const tabs = threadTabs(detail)
+  const activeTab = activeThreadTab(detail, tabs, controller.tab)
+  const headerAction = standardHeaderAction(props, detail, controller)
+  const footer = detail && <ThreadFooter serviceUrl={props.serviceUrl} detail={detail} controller={controller} />
+  const body = detail && <ThreadBody detail={detail} controller={controller} threadKey={`${props.thread.backendId}:${props.thread.id}`} />
+  return (
+    <MobileDetailShell<MobileThreadTab>
+      eyebrow={`${props.thread.backendName.toUpperCase()} · AGENT RUN`}
+      title={threadTitle(props.thread, detail)}
+      subtitle={threadSubtitle(props.thread, detail)}
       compactHeader
       initialScrollToEnd
       tabs={tabs}
@@ -73,65 +108,45 @@ export function MobileThreadDetail(props: MobileThreadDetailProps) {
       onDismiss={props.onDismiss}
       visible={props.visible}
       onRetry={() => void controller.detail.refresh()}
-      headerAction={
-        detail ? (
-          <ThreadHeaderActions
-            thread={props.thread}
-            detail={detail}
-            controller={controller}
-            serviceUrl={props.serviceUrl}
-            onOpenWork={props.onOpenWork}
-            onOpenParent={openParent}
-            onOpenPullRequest={pullRequestOpener(detail, props.onOpenPullRequest)}
-          />
-        ) : undefined
-      }
-      footer={detail ? <ThreadFooter serviceUrl={props.serviceUrl} detail={detail} controller={controller} /> : undefined}
+      headerAction={headerAction}
+      footer={footer}
     >
       <ThreadDetailAlerts notice={controller.notice} error={controller.error} />
-      {detail ? <ThreadBody detail={detail} controller={controller} threadKey={`${props.thread.backendId}:${props.thread.id}`} /> : null}
-      </MobileDetailShell>
-      {detail ? <ThreadInputRequestModal detail={detail} controller={controller} /> : null}
-    </>
+      {body}
+    </MobileDetailShell>
   )
 }
 
-function ThreadInputRequestModal({ detail, controller }: { detail: MobileThreadDetails; controller: MobileThreadController }) {
-  const questions = detail.inputQuestions
-  if (!questions.length) return null
+function threadTabs(detail: MobileThreadDetails | null) {
+  return detail ? mobileThreadTabs(detail) : fallbackTabs
+}
+
+function activeThreadTab(detail: MobileThreadDetails | null, tabs: ReturnType<typeof threadTabs>, selected: MobileThreadTab) {
+  return detail && tabs.some((candidate) => candidate.id === selected) ? selected : tabs[0].id
+}
+
+function threadTitle(thread: MobileThread, detail: MobileThreadDetails | null) {
+  return detail?.taskTitle || thread.taskTitle || `Thread ${thread.id}`
+}
+
+function threadSubtitle(thread: MobileThread, detail: MobileThreadDetails | null) {
+  return detail?.fullName || `${thread.status} · ${thread.fullName}`
+}
+
+function standardHeaderAction(props: MobileThreadDetailProps, detail: MobileThreadDetails | null, controller: MobileThreadController) {
+  if (!detail) return undefined
+  const sourceJobId = detail.sourceJobId
+  const openParent = sourceJobId && props.onOpenThreadId ? () => props.onOpenThreadId?.(sourceJobId) : undefined
   return (
-    <Modal
-      allowSwipeDismissal
-      animationType="slide"
-      presentationStyle="formSheet"
-      testID="thread-input-native-modal"
-      visible
-      onRequestClose={controller.actions.cancelForm}
-    >
-      <MobileModalSafeArea style={styles.modal}>
-        <MobileSheetHeader
-          title={questions[0]?.formTitle || 'Agent needs input'}
-          subtitle={questions[0]?.formDescription || 'Answer to continue the waiting agent turn.'}
-          trailingLabel="Cancel"
-          onTrailing={controller.actions.cancelForm}
-        />
-        <ScrollView
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={styles.content}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-        >
-          <MobileThreadInputRequest
-            questions={questions}
-            answers={controller.answers}
-            busy={controller.busy}
-            onAnswer={(id, answer) => controller.setAnswers((current) => ({ ...current, [id]: answer }))}
-            onSubmit={controller.actions.submitAnswers}
-            onCancel={questions.some((question) => question.formTitle) ? controller.actions.cancelForm : undefined}
-          />
-        </ScrollView>
-      </MobileModalSafeArea>
-    </Modal>
+    <ThreadHeaderActions
+      thread={props.thread}
+      detail={detail}
+      controller={controller}
+      serviceUrl={props.serviceUrl}
+      onOpenWork={props.onOpenWork}
+      onOpenParent={openParent}
+      onOpenPullRequest={pullRequestOpener(detail, props.onOpenPullRequest)}
+    />
   )
 }
 
