@@ -86,6 +86,7 @@ class HarnessError extends Error {
 const activeStatuses = ['starting', 'running']
 const terminalStatuses = ['completed', 'failed', 'cancelled', 'resumable']
 const toolServerName = 'vertexade-subagents'
+const toolServerId = 'vertexade:subagents'
 const maximumChildrenPerParent = 16
 const maximumActiveChildrenPerParent = 1
 const maximumActiveChildren = 12
@@ -214,7 +215,7 @@ export class SubagentHarness {
       .where(eq(jobs.id, jobId))
       .run()
     const builtIn: AgentMcpServer = {
-      id: 'vertexade:subagents',
+      id: toolServerId,
       name: toolServerName,
       transport: 'stdio',
       command: process.execPath,
@@ -224,12 +225,12 @@ export class SubagentHarness {
         VERTEXADE_SUBAGENT_TOKEN: token,
         VERTEXADE_SUBAGENTS_ENABLED: allowed ? '1' : '0',
       },
-      defaultEnabled: false,
+      defaultEnabled: true,
     }
     const configured = Array.isArray(launch.mcpServers) ? (launch.mcpServers as AgentMcpServer[]) : []
     return {
       ...launch,
-      mcpServers: [builtIn, ...configured.filter((server) => server.name !== toolServerName)],
+      mcpServers: [builtIn, ...configured.filter((server) => server.id !== toolServerId && server.name !== toolServerName)],
     }
   }
 

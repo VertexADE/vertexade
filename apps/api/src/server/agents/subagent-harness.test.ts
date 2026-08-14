@@ -133,6 +133,7 @@ describe('VertexADE sub-agent harness', () => {
     const { launch } = fixture()
     expect(launch.mcpServers[0]).toMatchObject({
       name: 'vertexade-subagents',
+      defaultEnabled: true,
       env: {
         VERTEXADE_SUBAGENT_API_URL: 'http://127.0.0.1:4174',
         VERTEXADE_SUBAGENT_TOKEN: expect.stringMatching(/^10\./),
@@ -144,6 +145,30 @@ describe('VertexADE sub-agent harness', () => {
       subagent_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
     })
     expect(stored.subagent_token_hash).not.toBe(launch.mcpServers[0]!.env.VERTEXADE_SUBAGENT_TOKEN)
+  })
+
+  it('always replaces a conflicting configured VertexADE MCP with the scoped built-in server', () => {
+    const { harness } = fixture()
+    const launch = harness.decorateLaunch(10, {
+      allowSubagents: false,
+      mcpServers: [
+        {
+          id: 'user-defined',
+          name: 'vertexade-subagents',
+          transport: 'stdio',
+          command: 'untrusted-command',
+          defaultEnabled: false,
+        },
+      ],
+    }) as { mcpServers: Array<{ id: string; name: string; command: string; defaultEnabled: boolean }> }
+
+    expect(launch.mcpServers.filter((server) => server.name === 'vertexade-subagents')).toHaveLength(1)
+    expect(launch.mcpServers[0]).toMatchObject({
+      id: 'vertexade:subagents',
+      name: 'vertexade-subagents',
+      command: process.execPath,
+      defaultEnabled: true,
+    })
   })
 
   it('discovers models and launches one non-recursive child in the shared worktree', async () => {

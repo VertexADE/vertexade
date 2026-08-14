@@ -13,6 +13,8 @@ type JsonRpcRequest = {
 
 const protocolVersion = '2025-06-18'
 const maximumResponseBytes = 250_000
+const formInstructions =
+  'The form tool is available in every collaboration mode, including Default mode. When you need structured user input, prefer form for questionnaires, multiple questions, choices, or checklists instead of writing a questionnaire in chat. Ask only for information that cannot be inferred safely, keep the form concise, and continue normally when the user cancels it or sends a chat message instead.'
 
 function environment() {
   const apiUrl = String(process.env.VERTEXADE_SUBAGENT_API_URL || '').replace(/\/$/, '')
@@ -60,7 +62,7 @@ export const subagentTools = [
     name: 'form',
     title: 'Ask the user with a form',
     description:
-      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. Use this only when work cannot continue without structured user input. The submitted values are returned as Markdown.',
+      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. This tool is available in every collaboration mode, including Default mode. Prefer it over a plain chat questionnaire whenever you need multiple questions, choices, checkboxes, or other structured user input that cannot be inferred safely. The submitted values are returned as Markdown.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -269,6 +271,7 @@ export async function handleSubagentMcpRequest(request: JsonRpcRequest) {
       protocolVersion: String(request.params?.protocolVersion || protocolVersion),
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'vertexade-subagents', version: '0.0.1' },
+      instructions: formInstructions,
     }
   if (request.method === 'ping') return {}
   if (request.method === 'tools/list') return { tools: availableTools() }

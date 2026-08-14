@@ -146,6 +146,7 @@ function MobileDetailContent({
         ref={scroll}
         testID="detail-scroll-view"
         contentContainerStyle={styles.content}
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={32}
         onContentSizeChange={() => { if (openingAtEnd.current) scroll.current?.scrollToEnd({ animated: false }) }}

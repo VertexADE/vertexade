@@ -11,6 +11,7 @@ type MobileGlassProps = Omit<ComponentProps<typeof View>, 'style'> & {
   children: ReactNode
   interactive?: boolean
   style?: StyleProp<ViewStyle>
+  tintColor?: string
   variant?: GlassStyle
 }
 
@@ -18,8 +19,8 @@ const nativeGlassAvailable = Platform.OS === 'ios'
   && isGlassEffectAPIAvailable()
   && isLiquidGlassAvailable()
 
-export function MobileGlass({ children, interactive = false, style, variant = 'regular', ...props }: MobileGlassProps) {
-  if (!nativeGlassAvailable) return <View {...props} style={[styles.fallback, style]}>{children}</View>
+export function MobileGlass({ children, interactive = false, style, tintColor, variant = 'regular', ...props }: MobileGlassProps) {
+  if (!nativeGlassAvailable) return <View {...props} style={[styles.fallback, tintColor ? { backgroundColor: tintColor } : null, style]}>{children}</View>
 
   return <GlassView
     {...props}
@@ -27,6 +28,7 @@ export function MobileGlass({ children, interactive = false, style, variant = 'r
     glassEffectStyle={variant}
     isInteractive={interactive}
     style={style}
+    tintColor={tintColor}
   >
     {children}
   </GlassView>

@@ -1590,6 +1590,51 @@ PODS:
   - react-native-fluidaudio (0.1.0):
     - FluidAudio (~> 0.7)
     - React-Core
+  - react-native-keyboard-controller (1.21.9):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - react-native-keyboard-controller/common (= 1.21.9)
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-keyboard-controller/common (1.21.9):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-safe-area-context (5.7.0):
     - hermes-engine
     - RCTRequired
@@ -2390,6 +2435,7 @@ DEPENDENCIES:
   - "React-microtasksnativemodule (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)"
   - "React-mutationobservernativemodule (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)"
   - "react-native-fluidaudio (from `../../../node_modules/.pnpm/@fluidinference+react-native-fluidaudio@0.1.0_patch_hash=a4fdd34331f7be62ed27a6349ec42b_316805a756fde6998823e6491c0e8b53/node_modules/@fluidinference/react-native-fluidaudio`)"
+  - "react-native-keyboard-controller (from `../../../node_modules/.pnpm/react-native-keyboard-controller@1.21.9_be569d899ae850b1336d97184ea71ed2/node_modules/react-native-keyboard-controller`)"
   - "react-native-safe-area-context (from `../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.2_@babel+core@7.29.7_supports-co_da8c9cca9f0e66bd94757cb60dc12b45/node_modules/react-native-safe-area-context`)"
   - "React-NativeModulesApple (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)"
   - "React-networking (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/networking`)"
@@ -2577,6 +2623,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_supports-color@10.2.2__@react-native+jest-preset_82202a3f68a5c5c79e9a1f37bb7baeca/node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
   react-native-fluidaudio:
     :path: "../../../node_modules/.pnpm/@fluidinference+react-native-fluidaudio@0.1.0_patch_hash=a4fdd34331f7be62ed27a6349ec42b_316805a756fde6998823e6491c0e8b53/node_modules/@fluidinference/react-native-fluidaudio"
+  react-native-keyboard-controller:
+    :path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.21.9_be569d899ae850b1336d97184ea71ed2/node_modules/react-native-keyboard-controller"
   react-native-safe-area-context:
     :path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.2_@babel+core@7.29.7_supports-co_da8c9cca9f0e66bd94757cb60dc12b45/node_modules/react-native-safe-area-context"
   React-NativeModulesApple:
@@ -2733,6 +2781,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: f413ee411341fb3c34d20e85e9f6f524921fab15
   React-mutationobservernativemodule: 58f6d2adf7d98e72b241608dfa2ddce414d2a4e7
   react-native-fluidaudio: eb8b9f01e01524ac94d617455ce16dddf84b7d92
+  react-native-keyboard-controller: d4796248609d4c03cd6b5f73a9fd083d7c5f33d6
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
   React-NativeModulesApple: 167e532fb9bae30f3c66636b8ee0092bab263667
   React-networking: 89f6b69755a3176f30e56ba1ba8e214b1518ecfb

@@ -10,6 +10,7 @@ import { MobileThreadComposer } from './mobile-thread-composer'
 import { MobileThreadTabContent } from './mobile-thread-content'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { MobileDetailShell } from './mobile-detail-shell'
+import { MobileGlass } from './mobile-glass'
 import { useMobileThreadController } from './use-mobile-thread-controller'
 import { useSessionCompletionHaptic } from './use-session-completion-haptic'
 
@@ -130,7 +131,7 @@ function ThreadBody({ detail, controller, threadKey }: { detail: MobileThreadDet
 
 function ThreadFooter({ serviceUrl, detail, controller }: { serviceUrl: string; detail: MobileThreadDetails; controller: MobileThreadController }) {
   return (
-    <View style={styles.footer}>
+    <MobileGlass tintColor="rgba(8, 10, 14, 0.34)" style={styles.footer}>
       <MobileThreadComposer
         serviceUrl={serviceUrl}
         detail={detail}
@@ -141,7 +142,7 @@ function ThreadFooter({ serviceUrl, detail, controller }: { serviceUrl: string; 
         onOptionsChange={controller.setAgentOptions}
         onSend={controller.actions.send}
       />
-    </View>
+    </MobileGlass>
   )
 }
 

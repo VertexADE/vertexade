@@ -12,7 +12,7 @@
       "android"
     ],
     "orientation": "default",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
       "expo-status-bar",

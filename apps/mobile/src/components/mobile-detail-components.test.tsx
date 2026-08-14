@@ -749,6 +749,9 @@ describe('mobile full detail views', () => {
     expect(screen.getByLabelText('Execution settings')).toBeOnTheScreen()
     expect(screen.getByText('gpt-5.6')).toBeOnTheScreen()
     expect(screen.getByText('Fixture · high · codex · Subagents off')).toBeOnTheScreen()
+
+    fireEvent(screen.getByLabelText('Thread message'), 'focus')
+    expect(screen.getByLabelText('Thread message')).toHaveStyle({ minHeight: 96, textAlignVertical: 'top' })
   })
 
   test('renders review summary, findings, and editable suggestions before posting', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentProps } from 'react'
-import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native'
+import { Keyboard, Platform, StyleSheet } from 'react-native'
 import { SafeAreaProvider, SafeAreaView, type Edge, type EdgeMode, type Edges } from 'react-native-safe-area-context'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 
 const modalEdges: Edge[] = ['top', 'right', 'bottom', 'left']
 
@@ -18,7 +19,7 @@ export function MobileModalSafeArea(props: ComponentProps<typeof SafeAreaView>) 
   }, [])
   return (
     <SafeAreaProvider>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoiding}>
+      <KeyboardAvoidingView automaticOffset behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoiding}>
         <SafeAreaView {...props} edges={visibleEdges} />
       </KeyboardAvoidingView>
     </SafeAreaProvider>
@@ -32,5 +33,5 @@ function withoutBottomEdge(edges: Edges): Edges {
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoiding: { flex: 1 },
+  keyboardAvoiding: { backgroundColor: '#000000', flex: 1 },
 })

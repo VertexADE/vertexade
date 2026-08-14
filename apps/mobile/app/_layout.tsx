@@ -1,11 +1,13 @@
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { KeyboardProvider } from 'react-native-keyboard-controller'
+import { StyleSheet, View } from 'react-native'
 import { colors } from '@/theme'
 import { MobileAppProvider } from '@/components/mobile-app-context'
 
 export default function RootLayout() {
-  return <SafeAreaProvider><MobileAppProvider>
+  return <SafeAreaProvider><KeyboardProvider><View style={styles.background}><MobileAppProvider>
     <StatusBar style="light" />
     <Stack screenOptions={{
       headerStyle: { backgroundColor: colors.surface },
@@ -17,5 +19,7 @@ export default function RootLayout() {
       <Stack.Screen name="pair" options={{ title: 'Pair device', presentation: 'modal' }} />
       <Stack.Screen name="extensions/[moduleId]" options={{ title: 'Extension' }} />
     </Stack>
-  </MobileAppProvider></SafeAreaProvider>
+  </MobileAppProvider></View></KeyboardProvider></SafeAreaProvider>
 }
+
+const styles = StyleSheet.create({ background: { backgroundColor: colors.background, flex: 1 } })

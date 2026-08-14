@@ -35,6 +35,7 @@ describe('VertexADE sub-agent MCP server', () => {
       protocolVersion: '2025-06-18',
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'vertexade-subagents' },
+      instructions: expect.stringMatching(/every collaboration mode, including Default mode.*prefer form for questionnaires/i),
     })
   })
 
@@ -44,6 +45,8 @@ describe('VertexADE sub-agent MCP server', () => {
       tools: typeof subagentTools
     }
     expect(listed.tools.map(({ name }) => name)).toEqual(['form'])
+    expect(listed.tools[0]?.description).toMatch(/available in every collaboration mode, including Default mode/i)
+    expect(listed.tools[0]?.description).toMatch(/Prefer it over a plain chat questionnaire/i)
   })
 
   it('uses the scoped capability when spawning a selected model', async () => {

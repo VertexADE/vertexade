@@ -37,6 +37,7 @@ export function MobileThreadComposer({
   onSend(delivery: MobileThreadDelivery): void
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [inputFocused, setInputFocused] = useState(false)
   const voicePreferences = useOptionalMobileApp()?.voicePreferences || defaultMobileVoicePreferences
   const attachments = useMobileThreadAttachments(serviceUrl, detail.backendId, value, onChange)
   const scrubber = useMobileTranscriptScrubber(onChange, voicePreferences)
@@ -52,7 +53,11 @@ export function MobileThreadComposer({
       <VoiceFeedback voice={voice} />
       {scrubber.error ? <Text accessibilityRole="alert" style={styles.error}>{scrubber.error}</Text> : null}
       <View testID="thread-composer-row" style={styles.composerRow}>
-        <MobileGlass testID="thread-composer-glass" style={styles.composerInputGlass}>
+        <MobileGlass
+          testID="thread-composer-glass"
+          style={[styles.composerInputGlass, inputFocused && styles.composerInputGlassFocused]}
+          tintColor="rgba(255, 255, 255, 0.10)"
+        >
           <TextInputWrapper
             testID="thread-paste-target"
             onPaste={(payload: PasteEventPayload) => payload.type === 'images' && void attachments.addUris(payload.uris)}
@@ -61,14 +66,18 @@ export function MobileThreadComposer({
             <TextInput
               accessibilityLabel="Thread message"
               experimental_acceptDragAndDropTypes={['public.image', 'image/*']}
+              keyboardAppearance="dark"
               maxLength={20_000}
               multiline
+              numberOfLines={inputFocused ? 4 : 1}
               placeholder="Message"
               placeholderTextColor={colors.muted}
               scrollEnabled
-              style={[styles.input, styles.composerInput]}
+              style={[styles.input, styles.composerInput, inputFocused && styles.composerInputFocused]}
               value={value}
+              onBlur={() => setInputFocused(false)}
               onChangeText={onChange}
+              onFocus={() => setInputFocused(true)}
             />
           </TextInputWrapper>
         </MobileGlass>

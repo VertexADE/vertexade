@@ -505,7 +505,6 @@ export const mobileDetailStyles = StyleSheet.create({
   textarea: { minHeight: 100, textAlignVertical: 'top' },
   compactTextarea: { minHeight: 72, textAlignVertical: 'top' },
   footer: {
-    backgroundColor: colors.background,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
@@ -527,12 +526,15 @@ export const mobileDetailStyles = StyleSheet.create({
     gap: spacing.xs,
   },
   composerInputGlass: {
+    borderColor: colors.border,
     borderCurve: 'continuous',
     borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
     minHeight: 44,
     overflow: 'hidden',
   },
+  composerInputGlassFocused: { borderRadius: 24, minHeight: 96 },
   composerPasteWrapper: { flex: 1 },
   composerVoiceActive: { backgroundColor: `${colors.danger}18` },
   composerVoicePreview: { color: colors.muted, fontSize: 12, paddingHorizontal: spacing.sm },
@@ -556,6 +558,7 @@ export const mobileDetailStyles = StyleSheet.create({
     paddingTop: 12,
     textAlignVertical: 'center',
   },
+  composerInputFocused: { maxHeight: 180, minHeight: 96, textAlignVertical: 'top' },
   composerControlGlass: {
     borderCurve: 'continuous',
     borderRadius: 22,
