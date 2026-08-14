@@ -332,6 +332,19 @@ describe('mobile full detail views', () => {
           formTitle: 'Choose a direction',
           formDescription: 'Answer to continue.',
         },
+        {
+          id: 'checks',
+          header: 'Include in the result',
+          question: 'Select everything that applies.',
+          description: '',
+          type: 'checkbox',
+          required: false,
+          multiline: false,
+          secret: false,
+          options: [{ label: 'Tests', value: 'tests', description: 'Add focused coverage.' }],
+          formTitle: 'Choose a direction',
+          formDescription: 'Answer to continue.',
+        },
       ],
     })
 
@@ -339,6 +352,10 @@ describe('mobile full detail views', () => {
 
     expect(await screen.findByTestId('thread-input-native-modal')).toBeOnTheScreen()
     expect(screen.getByText('Which direction should we take?')).toBeOnTheScreen()
+    expect(screen.getByText('Include in the result')).toBeOnTheScreen()
+    expect(screen.getAllByPlaceholderText('Enter your own answer')).toHaveLength(2)
+    expect(screen.getByLabelText('Other answer for Which direction should we take?')).toBeOnTheScreen()
+    expect(screen.getByLabelText('Other answer for Select everything that applies.')).toBeOnTheScreen()
   })
 
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {

@@ -318,12 +318,13 @@ function missingAnswer(answers: Record<string, { answers?: unknown[] }>, questio
   return !Array.isArray(answers[questionId]?.answers) || answers[questionId].answers.length === 0
 }
 
-function invalidFormAnswer(question: any, answers: Record<string, { answers?: unknown[] }>) {
+export function invalidFormAnswer(question: any, answers: Record<string, { answers?: unknown[] }>) {
   const values = Array.isArray(answers[question.id]?.answers) ? answers[question.id].answers.map(String) : []
   if (values.some((value) => !value.trim() || value.length > 20_000)) return true
   if (question.type === 'text') return values.length > 1
+  if (question.type === 'select') return values.length > 1
   const allowed = new Set((Array.isArray(question.options) ? question.options : []).map((option) => String(option.value || option.label)))
-  return (question.type === 'select' && values.length > 1) || values.some((value) => !allowed.has(value))
+  return values.filter((value) => !allowed.has(value)).length > 1
 }
 
 function writeInputResponse(child: ReturnType<typeof requiredActiveJob>, requestId: unknown, answers: object) {

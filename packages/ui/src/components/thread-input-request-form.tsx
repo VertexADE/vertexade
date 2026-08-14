@@ -58,30 +58,38 @@ export function ThreadInputRequestForm({
           <p className="text-sm">{question.question}</p>
           {question.description ? <p className="text-xs text-muted-foreground">{question.description}</p> : null}
           {question.type === 'checkbox' ? (
-            <div className="grid gap-1.5 sm:grid-cols-2">
-              {(question.options || []).map((option) => {
-                const value = option.value || option.label
-                const checked = selections[question.id]?.includes(value) || false
-                return (
-                  <Label key={value} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(next) =>
-                        setSelections((current) => ({
-                          ...current,
-                          [question.id]: next
-                            ? [...(current[question.id] || []), value]
-                            : (current[question.id] || []).filter((candidate) => candidate !== value),
-                        }))
-                      }
-                      className="row-span-2 mt-0.5"
-                    />
-                    <span className="text-xs">{option.label}</span>
-                    <small className="text-xs text-muted-foreground">{option.description}</small>
-                  </Label>
-                )
-              })}
-            </div>
+            <>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {(question.options || []).map((option) => {
+                  const value = option.value || option.label
+                  const checked = selections[question.id]?.includes(value) || false
+                  return (
+                    <Label key={value} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) =>
+                          setSelections((current) => ({
+                            ...current,
+                            [question.id]: next
+                              ? [...(current[question.id] || []), value]
+                              : (current[question.id] || []).filter((candidate) => candidate !== value),
+                          }))
+                        }
+                        className="row-span-2 mt-0.5"
+                      />
+                      <span className="text-xs">{option.label}</span>
+                      <small className="text-xs text-muted-foreground">{option.description}</small>
+                    </Label>
+                  )
+                })}
+              </div>
+              <Input
+                type={question.isSecret ? 'password' : 'text'}
+                value={custom[question.id] || ''}
+                onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
+                placeholder="Other — enter your own answer"
+              />
+            </>
           ) : question.options?.length ? (
             <>
               <RadioGroup
@@ -96,23 +104,19 @@ export function ThreadInputRequestForm({
                     <small className="text-xs text-muted-foreground">{option.description}</small>
                   </Label>
                 ))}
-                {!question.formTitle ? (
-                  <Label className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
-                    <RadioGroupItem value="__other__" className="row-span-2 mt-0.5" />
-                    <span className="text-xs">Other</span>
-                    <small className="text-xs text-muted-foreground">Enter a custom answer</small>
-                  </Label>
-                ) : null}
+                <Label className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+                  <RadioGroupItem value="__other__" className="row-span-2 mt-0.5" />
+                  <span className="text-xs">Other</span>
+                  <small className="text-xs text-muted-foreground">Enter your own answer</small>
+                </Label>
               </RadioGroup>
-              {!question.formTitle ? (
-                <Input
-                  type={question.isSecret ? 'password' : 'text'}
-                  value={custom[question.id] || ''}
-                  onFocus={() => setAnswers((current) => ({ ...current, [question.id]: '__other__' }))}
-                  onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
-                  placeholder="Custom answer"
-                />
-              ) : null}
+              <Input
+                type={question.isSecret ? 'password' : 'text'}
+                value={custom[question.id] || ''}
+                onFocus={() => setAnswers((current) => ({ ...current, [question.id]: '__other__' }))}
+                onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
+                placeholder="Other — enter your own answer"
+              />
             </>
           ) : question.isSecret ? (
             <Input

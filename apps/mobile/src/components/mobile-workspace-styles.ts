@@ -87,7 +87,8 @@ export const mobileWorkspaceStyles = StyleSheet.create({
   disclosureBody: { gap: spacing.sm },
   modalFooter: { backgroundColor: colors.glassStrong, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   modalFooterSummary: { color: colors.muted, fontSize: 11, textAlign: 'center' },
-  modalPrimary: { alignItems: 'center', backgroundColor: colors.accent, borderCurve: 'continuous', borderRadius: radii.md, justifyContent: 'center', minHeight: 50 },
+  actions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  modalPrimary: { alignItems: 'center', backgroundColor: colors.accent, borderCurve: 'continuous', borderRadius: radii.md, flex: 1, justifyContent: 'center', minHeight: 50 },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.72 },
 })

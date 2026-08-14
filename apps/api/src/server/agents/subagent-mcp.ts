@@ -62,7 +62,7 @@ export const subagentTools = [
     name: 'form',
     title: 'Ask the user with a form',
     description:
-      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. This tool is available in every collaboration mode, including Default mode. Prefer it over a plain chat questionnaire whenever you need multiple questions, choices, checkboxes, or other structured user input that cannot be inferred safely. The submitted values are returned as Markdown.',
+      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. This tool is available in every collaboration mode, including Default mode. Prefer it over a plain chat questionnaire whenever you need multiple questions, choices, checkboxes, or other structured user input that cannot be inferred safely. Choice fields automatically include an Other text input, so do not add an Other option yourself. The submitted values are returned as Markdown.',
     inputSchema: {
       type: 'object',
       properties: {

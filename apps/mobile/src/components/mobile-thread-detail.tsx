@@ -115,7 +115,12 @@ function ThreadInputRequestModal({ detail, controller }: { detail: MobileThreadD
           trailingLabel="Cancel"
           onTrailing={controller.actions.cancelForm}
         />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={styles.content}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+        >
           <MobileThreadInputRequest
             questions={questions}
             answers={controller.answers}

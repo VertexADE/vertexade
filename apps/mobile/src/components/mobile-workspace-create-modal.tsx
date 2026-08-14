@@ -63,7 +63,7 @@ export function MobileWorkspaceCreateModal(props: CreateModalProps) {
               options={props.backends.map((backend) => ({
                 id: `${backend.serviceUrl || ''}::${backend.id}`,
                 label: backend.label,
-                meta: backend.connected === false ? 'Offline' : 'Owns the filesystem, agents, extensions, and threads',
+                meta: 'Owns the filesystem, agents, extensions, and threads',
               }))}
               selectedId={creation.backendId}
               testIdPrefix="create-server"

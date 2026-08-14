@@ -520,15 +520,14 @@ export function MobileThreadInputRequest({
   if (!questions.length) return null
   const complete = questions.every((question) => question.required === false || Boolean(answers[question.id]?.length))
   return (
-    <DetailSection
-      title={questions[0]?.formTitle || 'Agent needs input'}
-      meta={`${questions.length} question${questions.length === 1 ? '' : 's'}`}
-    >
-      <Text style={styles.inputHint}>{questions[0]?.formDescription || 'Your response is sent directly to the waiting agent turn.'}</Text>
+    <View style={styles.inputRequestForm}>
       {questions.map((question) => (
-        <View key={question.id} style={styles.row}>
-          <Text style={styles.rowTitle}>{question.formTitle ? question.question : question.header || question.question}</Text>
-          {!question.formTitle && question.header ? <Text style={styles.rowText}>{question.question}</Text> : null}
+        <View key={question.id} style={styles.inputQuestion}>
+          <View style={styles.inputQuestionHeader}>
+            <Text style={styles.inputQuestionTitle}>{question.header || question.question}</Text>
+            {question.required ? <Text style={styles.inputQuestionRequired}>Required</Text> : <Text style={styles.inputQuestionOptional}>Optional</Text>}
+          </View>
+          {question.header ? <Text style={styles.inputQuestionPrompt}>{question.question}</Text> : null}
           {question.description ? <Text style={styles.rowText}>{question.description}</Text> : null}
           {question.options.length ? (
             <>
@@ -552,26 +551,41 @@ export function MobileThreadInputRequest({
                       }
                       style={[styles.actionOption, selected && styles.optionSelected]}
                     >
+                      <MobileSymbol
+                        name={question.type === 'checkbox' ? (selected ? 'checkmark.square.fill' : 'square') : selected ? 'circle.inset.filled' : 'circle'}
+                        fallback={selected ? '●' : '○'}
+                        color={selected ? colors.accent : colors.muted}
+                        size={21}
+                      />
                       <View style={styles.actionOptionCopy}>
                         <Text style={styles.actionOptionTitle}>{option.label}</Text>
                         {option.description ? <Text style={styles.actionOptionText}>{option.description}</Text> : null}
                       </View>
-                      <Text style={selected ? styles.notice : styles.muted}>{selected ? 'Selected' : 'Choose'}</Text>
                     </Pressable>
                   )
                 })}
               </View>
-              {question.type === 'select' && !question.formTitle ? (
+              <View style={styles.customAnswerGroup}>
+                <Text style={styles.customAnswerLabel}>Other</Text>
                 <TextInput
-                  accessibilityLabel={`Custom answer for ${question.question}`}
+                  accessibilityLabel={`Other answer for ${question.question}`}
                   secureTextEntry={question.secret}
-                  placeholder="Other — enter a custom answer"
+                  placeholder="Enter your own answer"
                   placeholderTextColor={colors.muted}
                   style={styles.input}
-                  value={question.options.some((option) => option.value === answers[question.id]?.[0]) ? '' : answers[question.id]?.[0] || ''}
-                  onChangeText={(answer) => onAnswer(question.id, [answer])}
+                  value={customAnswer(question, answers[question.id] || [])}
+                  onChangeText={(answer) =>
+                    onAnswer(
+                      question.id,
+                      question.type === 'checkbox'
+                        ? [...selectedOptions(question, answers[question.id] || []), answer].filter(Boolean)
+                        : answer
+                          ? [answer]
+                          : [],
+                    )
+                  }
                 />
-              ) : null}
+              </View>
             </>
           ) : (
             <TextInput
@@ -599,8 +613,18 @@ export function MobileThreadInputRequest({
           <Text style={styles.secondaryButtonText}>Cancel</Text>
         </Pressable>
       ) : null}
-    </DetailSection>
+    </View>
   )
+}
+
+function selectedOptions(question: MobileInputQuestion, answers: string[]): string[] {
+  const optionValues = new Set(question.options.map((option) => option.value))
+  return answers.filter((answer) => optionValues.has(answer))
+}
+
+function customAnswer(question: MobileInputQuestion, answers: string[]): string {
+  const optionValues = new Set(question.options.map((option) => option.value))
+  return answers.find((answer) => !optionValues.has(answer)) || ''
 }
 
 function formatDate(value: string): string {
