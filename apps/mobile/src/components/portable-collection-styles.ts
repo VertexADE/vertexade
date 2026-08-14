@@ -3,7 +3,7 @@ import { colors, radii, spacing } from '@/theme'
 
 export const portableCollectionStyles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
-  header: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, padding: spacing.md },
+  header: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingBottom: spacing.md, paddingHorizontal: spacing.md, paddingTop: spacing.lg },
   eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
   title: { color: colors.text, fontSize: 25, fontWeight: '800', letterSpacing: -0.6 },
   subtitle: { color: colors.muted, fontSize: 13, lineHeight: 18 },

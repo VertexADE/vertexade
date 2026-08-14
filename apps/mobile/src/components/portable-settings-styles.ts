@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native'
 import { colors, radii, spacing } from '@/theme'
 
 export const portableSettingsStyles = StyleSheet.create({
-  content: { gap: spacing.md, padding: spacing.md, paddingBottom: spacing.xl },
+  content: { gap: spacing.md, paddingBottom: spacing.xl, paddingHorizontal: spacing.md, paddingTop: spacing.lg },
   header: { gap: spacing.xs },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
   description: { color: colors.muted, fontSize: 12, lineHeight: 18 },

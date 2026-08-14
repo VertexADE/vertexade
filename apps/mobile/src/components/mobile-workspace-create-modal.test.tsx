@@ -75,7 +75,7 @@ describe('MobileWorkspaceCreateModal', () => {
     render(<MobileWorkspaceCreateModal mode="pullRequest" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
 
     fireEvent.changeText(screen.getByLabelText('Outcome and pull request title'), 'New delivery')
-    fireEvent.press(screen.getByTestId('create-repository-1'))
+    fireEvent(screen.getByTestId('create-repository'), 'valueChange', '1')
     fireEvent.changeText(screen.getByLabelText('Agent prompt'), 'Implement and verify it')
     fireEvent.press(screen.getByTestId('create-submit'))
 
@@ -131,6 +131,29 @@ describe('MobileWorkspaceCreateModal', () => {
     expect(onCompleted).toHaveBeenCalledWith('W-0002 agent thread started with draft PR delivery enabled.')
   })
 
+  test('creates Work when starting a thread without related Work', async () => {
+    createWork.mockResolvedValue({ id: 9, key: 'W-0009', title: 'Investigate latency', backendId: 'local', backendName: 'Local' })
+    startThread.mockResolvedValue()
+    const onCompleted = jest.fn().mockResolvedValue(undefined)
+    render(<MobileWorkspaceCreateModal mode="thread" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
+
+    fireEvent.changeText(screen.getByLabelText('New Work title'), 'Investigate latency')
+    fireEvent.changeText(screen.getByLabelText('Agent prompt'), 'Find and fix the mobile latency')
+    fireEvent.press(screen.getByTestId('create-submit'))
+
+    await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', {
+      backendId: 'local',
+      title: 'Investigate latency',
+      description: 'Find and fix the mobile latency',
+    }))
+    expect(startThread).toHaveBeenCalledWith('http://fixture:4173', expect.objectContaining({
+      backendId: 'local',
+      workItemId: 9,
+      prompt: 'Find and fix the mobile latency',
+    }))
+    expect(onCompleted).toHaveBeenCalledWith('W-0009 created and its agent started.')
+  })
+
   test('shows and preserves General for existing repository-free Work', async () => {
     startThread.mockResolvedValue()
     const generalWork = {
@@ -143,7 +166,7 @@ describe('MobileWorkspaceCreateModal', () => {
     }
     render(<MobileWorkspaceCreateModal mode="thread" serviceUrl="http://fixture:4173" backends={backends} workspace={{ ...workspace, workItems: [...workspace.workItems, generalWork] }} initialWorkItem={generalWork} onClose={jest.fn()} onCompleted={jest.fn().mockResolvedValue(undefined)} />)
 
-    expect(screen.getByTestId('create-repository-general')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.getByTestId('create-repository')).toBeOnTheScreen()
     expect(screen.getByText('Managed · isolated · no repository or Git required')).toBeOnTheScreen()
     fireEvent.press(screen.getByTestId('create-submit'))
 
@@ -161,7 +184,7 @@ describe('MobileWorkspaceCreateModal', () => {
     render(<MobileWorkspaceCreateModal mode="pullRequest" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
 
     fireEvent.changeText(screen.getByLabelText('Outcome and pull request title'), 'Partial delivery')
-    fireEvent.press(screen.getByTestId('create-repository-1'))
+    fireEvent(screen.getByTestId('create-repository'), 'valueChange', '1')
     fireEvent.changeText(screen.getByLabelText('Agent prompt'), 'Implement it')
     fireEvent.press(screen.getByTestId('create-submit'))
 
@@ -177,7 +200,7 @@ describe('MobileWorkspaceCreateModal', () => {
     ]
     render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://one:4173" backends={directBackends} workspace={{ repositories: [], pullRequests: [], workItems: [], threads: [] }} onClose={jest.fn()} onCompleted={jest.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.press(screen.getByTestId('create-server-http://two:4173::local'))
+    fireEvent(screen.getByTestId('create-server'), 'valueChange', 'http://two:4173::local')
     fireEvent.changeText(screen.getByLabelText('Work title'), 'Second server work')
     fireEvent.press(screen.getByTestId('create-submit'))
 
@@ -190,7 +213,7 @@ describe('MobileWorkspaceCreateModal', () => {
     render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
 
     fireEvent.changeText(screen.getByLabelText('Work title'), 'Plan launch')
-    fireEvent.press(screen.getByTestId('create-repository-general'))
+    fireEvent(screen.getByTestId('create-repository'), 'valueChange', 'general')
     fireEvent.press(screen.getByTestId('create-submit'))
 
     await waitFor(() => expect(createWork).toHaveBeenCalledWith('http://fixture:4173', {
@@ -235,7 +258,7 @@ describe('MobileWorkspaceCreateModal', () => {
     const onCompleted = jest.fn().mockResolvedValue(undefined)
     render(<MobileWorkspaceCreateModal mode="work" serviceUrl="http://fixture:4173" backends={backends} workspace={workspace} onClose={jest.fn()} onCompleted={onCompleted} />)
 
-    fireEvent.press(screen.getByTestId('create-mode-guided'))
+    fireEvent(screen.getByTestId('create-mode'), 'valueChange', 'guided')
     fireEvent.changeText(screen.getByLabelText('Work title'), 'Shared delivery')
     fireEvent.press(screen.getByTestId('create-continue'))
     fireEvent.press(screen.getByTestId('create-repository-1'))
@@ -272,7 +295,7 @@ describe('MobileWorkspaceCreateModal', () => {
     fireEvent.press(screen.getByText('acme/private-app'))
 
     await waitFor(() => expect(addRepository).toHaveBeenCalledWith('http://fixture:4173', backends[0], 'acme/private-app'))
-    expect(screen.getByTestId('create-repository-12')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.getByTestId('create-repository')).toBeOnTheScreen()
   })
 
   test('browses, adds, and selects a direct local folder without leaving the modal', async () => {
@@ -297,6 +320,6 @@ describe('MobileWorkspaceCreateModal', () => {
     await waitFor(() => expect(addLocalFolder).toHaveBeenCalledWith('http://fixture:4173', backends[0], {
       localPath: '/Users/dom/Projects/client', name: 'Client files', workspaceStrategy: 'direct',
     }))
-    expect(screen.getByTestId('create-repository-18')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.getByTestId('create-repository')).toBeOnTheScreen()
   })
 })

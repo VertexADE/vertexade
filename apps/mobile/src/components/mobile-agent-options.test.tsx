@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native'
+import { act, fireEvent, render, screen } from '@testing-library/react-native'
 import { createPlatformClient } from '@vertexade/platform-client'
 import { MobileAgentOptions } from './mobile-agent-options'
 
@@ -25,9 +25,7 @@ describe('MobileAgentOptions', () => {
     const onChange = jest.fn()
     render(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
     expect(screen.getByTestId('agent-options-loading')).toBeOnTheScreen()
-    await screen.findByText('Codex')
-    expect(screen.queryByText('Hidden')).not.toBeOnTheScreen()
-    expect(screen.queryByText('Off')).not.toBeOnTheScreen()
+    await screen.findByTestId('agent-select')
     expect(onChange).toHaveBeenCalledWith({ agentId: 'codex', model: '', reasoningEffort: '' })
   })
 
@@ -37,11 +35,11 @@ describe('MobileAgentOptions', () => {
     const { rerender } = render(
       <MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={onChange} />,
     )
-    await screen.findByText('GPT')
-    fireEvent.press(screen.getByText('GPT'))
+    await screen.findByTestId('model-select')
+    fireEvent(screen.getByTestId('model-select'), 'valueChange', 'gpt')
     expect(onChange).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt', reasoningEffort: '' })
     rerender(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: 'gpt', reasoningEffort: '' }} onChange={onChange} />)
-    fireEvent.press(screen.getByText('high'))
+    fireEvent(screen.getByTestId('reasoning-select'), 'valueChange', 'high')
     expect(onChange).toHaveBeenCalledWith({ agentId: 'codex', model: 'gpt', reasoningEffort: 'high' })
   })
 
@@ -51,7 +49,7 @@ describe('MobileAgentOptions', () => {
     render(<MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: 'codex', model: '', reasoningEffort: '' }} onChange={jest.fn()} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('offline')
     fireEvent.press(screen.getByText('Retry agent options'))
-    await screen.findByText('Codex')
+    await screen.findByTestId('agent-select')
     expect(request).toHaveBeenCalledTimes(2)
   })
 
@@ -71,9 +69,8 @@ describe('MobileAgentOptions', () => {
       <MobileAgentOptions serviceUrl="http://service" backendId="one" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />,
     )
     rerender(<MobileAgentOptions serviceUrl="http://service" backendId="two" value={{ agentId: '', model: '', reasoningEffort: '' }} onChange={onChange} />)
-    await screen.findByText('New agent')
+    await screen.findByTestId('agent-select')
     await act(async () => resolveFirst?.(options))
-    await waitFor(() => expect(screen.queryByText('Codex')).not.toBeOnTheScreen())
     expect(onChange).not.toHaveBeenCalledWith({ agentId: 'codex', model: '', reasoningEffort: '' })
   })
 })

@@ -11,6 +11,7 @@ import {
   reorderMobileQueuedMessages,
   steerMobileQueuedMessage,
   uploadMobilePromptImages,
+  updateMobileWorkState,
   type MobilePullRequestDetails,
   type MobileThreadDetails,
   type MobileWorkItemDetails,
@@ -299,6 +300,7 @@ describe('mobile full detail views', () => {
     jest.mocked(cancelMobileQueuedMessage).mockResolvedValue(undefined)
     jest.mocked(postMobileReviewSuggestions).mockResolvedValue(1)
     jest.mocked(uploadMobilePromptImages).mockResolvedValue([])
+    jest.mocked(updateMobileWorkState).mockResolvedValue(undefined)
   })
 
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {
@@ -340,13 +342,35 @@ describe('mobile full detail views', () => {
     )
 
     expect(await screen.findByText('Match the important web UI information.')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('detail-tab-threads'))
+    fireEvent.press(screen.getByLabelText('Open threads'))
     fireEvent.press(screen.getByTestId('detail-thread-fixture-7'))
     expect(onOpenThread).toHaveBeenCalledWith(thread)
-    fireEvent.press(screen.getByTestId('detail-tab-activity'))
+    fireEvent.press(screen.getByTestId('detail-tab-overview'))
+    fireEvent.press(screen.getByLabelText('Open events'))
     expect(screen.getByText('Thread started')).toBeOnTheScreen()
-    fireEvent.press(screen.getByTestId('detail-tab-links'))
+    fireEvent.press(screen.getByTestId('detail-tab-overview'))
+    fireEvent.press(screen.getByLabelText('Open links'))
     expect(screen.getByText('PR #299')).toBeOnTheScreen()
+  })
+
+  test('moves Work through a compact lifecycle dropdown', async () => {
+    const onChanged = jest.fn().mockResolvedValue(undefined)
+    render(
+      <MobileWorkDetail
+        serviceUrl="http://fixture:4173"
+        item={workItem}
+        onClose={jest.fn()}
+        onChanged={onChanged}
+        onOpenThread={jest.fn()}
+        onStartThread={jest.fn()}
+      />,
+    )
+
+    await screen.findByTestId('work-lifecycle-select')
+    fireEvent(screen.getByTestId('work-lifecycle-select'), 'valueChange', 'review')
+
+    await waitFor(() => expect(updateMobileWorkState).toHaveBeenCalledWith('http://fixture:4173', workItem, 'review'))
+    expect(onChanged).toHaveBeenCalledWith('W-0001 moved to review.')
   })
 
   test('shows thread activity and changes and queues a bounded follow-up', async () => {

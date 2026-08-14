@@ -1,7 +1,7 @@
-import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Switch, Text, View } from 'react-native'
 import { colors } from '@/theme'
-import { CollectionChip } from './portable-collection-presentation'
 import { portableCollectionStyles as styles } from './portable-collection-styles'
+import { MobileSingleSelect } from './mobile-single-select'
 import type { AgentOptions } from './portable-action-values'
 import { useMobileAgentOptions, type SelectableAgent, type SelectableModel } from './use-mobile-agent-options'
 
@@ -90,63 +90,61 @@ function AgentSelector({ agents, value, locked, onChange }: Pick<MobileAgentOpti
   locked: boolean
 }) {
   return (
-    <ScrollView horizontal contentContainerStyle={styles.chips}>
-      {agents.length ? agents.map((agent) => (
-        <CollectionChip
-          active={value.agentId === agent.id}
-          disabled={locked}
-          key={agent.id}
-          label={`${agent.name}${agent.preset ? ' · custom' : ''}`}
-          onPress={() => onChange({
-            ...value,
-            agentId: agent.id,
-            model: agent.preset?.model || '',
-            reasoningEffort: agent.preset?.reasoningEffort || '',
-            serviceTier: agent.id === 'codex' ? value.serviceTier : '',
-          })}
-        />
-      )) : <Text style={styles.subtitle}>No selectable agents available.</Text>}
-    </ScrollView>
+    <MobileSingleSelect
+      enabled={!locked}
+      label="Agent"
+      options={agents.map((agent) => ({ id: agent.id, label: `${agent.name}${agent.preset ? ' · custom' : ''}` }))}
+      value={value.agentId}
+      testID="agent-select"
+      onChange={(agentId) => {
+        const agent = agents.find((candidate) => candidate.id === agentId)
+        if (agent) onChange({
+          ...value,
+          agentId: agent.id,
+          model: agent.preset?.model || '',
+          reasoningEffort: agent.preset?.reasoningEffort || '',
+          serviceTier: agent.id === 'codex' ? value.serviceTier : '',
+        })
+      }}
+    />
   )
 }
 
 function ServiceTierSelector({ value, onChange }: Pick<MobileAgentOptionsProps, 'value' | 'onChange'>) {
   return (
-    <ScrollView horizontal contentContainerStyle={styles.chips}>
-      <CollectionChip active={!value.serviceTier} label="Normal speed" onPress={() => onChange({ ...value, serviceTier: '' })} />
-      <CollectionChip active={value.serviceTier === 'priority'} label="Fast" onPress={() => onChange({ ...value, serviceTier: 'priority' })} />
-    </ScrollView>
+    <MobileSingleSelect
+      label="Service speed"
+      options={[{ id: 'normal', label: 'Normal' }, { id: 'priority', label: 'Fast' }]}
+      value={value.serviceTier || 'normal'}
+      testID="service-tier-select"
+      onChange={(serviceTier) => onChange({ ...value, serviceTier: serviceTier === 'normal' ? '' : serviceTier })}
+    />
   )
 }
 
 function ModelSelector({ models, value, onChange }: Pick<MobileAgentOptionsProps, 'value' | 'onChange'> & { models: SelectableModel[] }) {
   return (
-    <ScrollView horizontal contentContainerStyle={styles.chips}>
-      <CollectionChip active={!value.model} label="Default model" onPress={() => onChange({ ...value, model: '', reasoningEffort: '' })} />
-      {models.map((model) => (
-        <CollectionChip
-          active={value.model === model.id}
-          key={model.id}
-          label={model.name}
-          onPress={() => onChange({ ...value, model: model.id, reasoningEffort: model.default_reasoning_effort || '' })}
-        />
-      ))}
-    </ScrollView>
+    <MobileSingleSelect
+      label="Model"
+      options={[{ id: 'default', label: 'Default model' }, ...models.map((model) => ({ id: model.id, label: model.name }))]}
+      value={value.model || 'default'}
+      testID="model-select"
+      onChange={(modelId) => {
+        const model = models.find((candidate) => candidate.id === modelId)
+        onChange({ ...value, model: model?.id || '', reasoningEffort: model?.default_reasoning_effort || '' })
+      }}
+    />
   )
 }
 
 function ReasoningSelector({ model, value, onChange }: Pick<MobileAgentOptionsProps, 'value' | 'onChange'> & { model: SelectableModel }) {
   return (
-    <ScrollView horizontal contentContainerStyle={styles.chips}>
-      <CollectionChip active={!value.reasoningEffort} label="Default reasoning" onPress={() => onChange({ ...value, reasoningEffort: '' })} />
-      {model.reasoning_efforts.map((effort) => (
-        <CollectionChip
-          active={value.reasoningEffort === effort.id}
-          key={effort.id}
-          label={effort.id}
-          onPress={() => onChange({ ...value, reasoningEffort: effort.id })}
-        />
-      ))}
-    </ScrollView>
+    <MobileSingleSelect
+      label="Reasoning"
+      options={[{ id: 'default', label: 'Default reasoning' }, ...model.reasoning_efforts.map((effort) => ({ id: effort.id, label: effort.id }))]}
+      value={value.reasoningEffort || 'default'}
+      testID="reasoning-select"
+      onChange={(reasoningEffort) => onChange({ ...value, reasoningEffort: reasoningEffort === 'default' ? '' : reasoningEffort })}
+    />
   )
 }

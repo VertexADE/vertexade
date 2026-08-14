@@ -170,13 +170,15 @@ export function DetailSection({ title, meta, children }: { title: string; meta?:
   )
 }
 
-export function DetailMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <View style={styles.metric}>
+export function DetailMetric({ label, value, onPress }: { label: string; value: string | number; onPress?: () => void }) {
+  const content = (
+    <>
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
-    </View>
+    </>
   )
+  if (onPress) return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${label.toLowerCase()}`} onPress={onPress} style={({ pressed }) => [styles.metric, styles.metricInteractive, pressed && styles.pressed]}>{content}</Pressable>
+  return <View style={styles.metric}>{content}</View>
 }
 
 export function DetailRow({

@@ -4,7 +4,7 @@ import { colors, radii, spacing } from '@/theme'
 export const mobileHomeStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.lg },
-  hero: { paddingTop: spacing.md, gap: spacing.sm },
+  hero: { gap: spacing.sm, paddingTop: spacing.lg },
   eyebrow: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.8 },
   title: { color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1.1, lineHeight: 41 },
   subtitle: { color: colors.muted, fontSize: 15, lineHeight: 22 },

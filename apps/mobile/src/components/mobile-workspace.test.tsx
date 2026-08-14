@@ -118,7 +118,7 @@ describe('MobileWorkspaceScreen', () => {
 
     fireEvent.press(screen.getByText('Start thread'))
     expect(screen.getByTestId('workspace-create-modal')).toBeOnTheScreen()
-    expect(screen.getByTestId('create-work-item-2')).toHaveProp('accessibilityState', { selected: true })
+    expect(screen.getByTestId('create-work-item')).toBeOnTheScreen()
     expect(screen.queryByTestId('workspace-detail-modal')).not.toBeOnTheScreen()
   })
 

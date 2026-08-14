@@ -12,6 +12,7 @@ import { MobileSheetHeader } from './mobile-sheet-header'
 import { useMobileWorkspaceCreation, type MobileCreateMode } from './use-mobile-workspace-creation'
 import { MobileRepositorySearch } from './mobile-repository-search'
 import { MobileSymbol } from './mobile-symbol'
+import { MobileSingleSelect } from './mobile-single-select'
 
 export type { MobileCreateMode } from './use-mobile-workspace-creation'
 
@@ -183,21 +184,44 @@ function CreationTarget({ mode, creation }: { mode: MobileCreateMode; creation: 
     )
   }
   return (
-    <OptionGroup
-      label="Work item"
-      empty="No active Work is available on this server. Create Work first."
-      options={creation.workItems.map((item) => ({
-        id: String(item.id),
-        label: `${item.key} · ${item.title}`,
-        meta: `${item.state} · ${item.repositoryNames.join(', ') || 'No repository'}`,
-      }))}
-      selectedId={creation.workItemId === null ? '' : String(creation.workItemId)}
-      testIdPrefix="create-work-item"
-      onSelect={(id) => {
-        const item = creation.workItems.find((candidate) => candidate.id === Number(id))
-        if (item) creation.chooseWorkItem(item)
-      }}
-    />
+    <View style={styles.creationSection}>
+      <OptionGroup
+        label="Related Work"
+        options={[
+          { id: 'new', label: 'New Work item', meta: 'Creates Work and starts its first thread' },
+          ...creation.workItems.map((item) => ({
+            id: String(item.id),
+            label: `${item.key} · ${item.title}`,
+            meta: `${item.state} · ${item.repositoryNames.join(', ') || 'No repository'}`,
+          })),
+        ]}
+        selectedId={creation.workItemId === null ? 'new' : String(creation.workItemId)}
+        testIdPrefix="create-work-item"
+        onSelect={(id) => {
+          if (id === 'new') creation.chooseNewWorkItem()
+          else {
+            const item = creation.workItems.find((candidate) => candidate.id === Number(id))
+            if (item) creation.chooseWorkItem(item)
+          }
+        }}
+      />
+      {!creation.selectedWorkItem ? (
+        <>
+          <Text style={styles.inputLabel}>What should be different when this is done?</Text>
+          <TextInput
+            testID="create-title"
+            accessibilityLabel="New Work title"
+            maxLength={200}
+            multiline
+            placeholder="Describe the outcome in one sentence"
+            placeholderTextColor={colors.muted}
+            style={[styles.search, styles.textArea]}
+            value={creation.title}
+            onChangeText={creation.setTitle}
+          />
+        </>
+      ) : null}
+    </View>
   )
 }
 
@@ -223,7 +247,15 @@ function RepositoryTarget({ mode, creation, serviceUrl, single = false }: { mode
           meta: repositoryDescription(repository),
         })),
       ]}
-      selectedIds={creation.selectedRepositories.length ? creation.selectedRepositories.map((repository) => String(repository.id)) : mode !== 'pullRequest' ? ['general'] : []}
+      {...(single
+        ? { selectedId: creation.selectedRepositories[0] ? String(creation.selectedRepositories[0].id) : mode === 'pullRequest' ? '' : 'general' }
+        : {
+            selectedIds: creation.selectedRepositories.length
+              ? creation.selectedRepositories.map((repository) => String(repository.id))
+              : mode !== 'pullRequest'
+                ? ['general']
+                : [],
+          })}
       testIdPrefix="create-repository"
       onSelect={(id) => id === 'general' ? creation.clearRepositories() : single ? creation.selectSingleRepository(Number(id)) : creation.toggleRepository(Number(id))}
       />
@@ -434,6 +466,21 @@ function OptionGroup({ label, hint, empty, options, selectedId, selectedIds, tes
   testIdPrefix: string
   onSelect(id: string): void
 }) {
+  if (!selectedIds) {
+    return options.length ? (
+      <MobileSingleSelect
+        label={label}
+        hint={hint}
+        options={options}
+        value={selectedId || ''}
+        placeholder={empty || `Choose ${label?.toLowerCase() || 'an option'}`}
+        testID={testIdPrefix}
+        onChange={onSelect}
+      />
+    ) : (
+      <Text style={styles.inputHint}>{empty}</Text>
+    )
+  }
   return (
     <View style={styles.inputGroup}>
       {label ? <Text style={styles.inputLabel}>{label}</Text> : null}

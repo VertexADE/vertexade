@@ -6,6 +6,7 @@ import type { MobileThread, MobileWorkItem } from '@/mobile-workspace-service'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
 import { DetailMetric, DetailRow, DetailSection, MobileDetailShell } from './mobile-detail-shell'
 import { MobileMarkdown } from './mobile-markdown'
+import { MobileSingleSelect } from './mobile-single-select'
 import { useMobileDetail } from './use-mobile-detail'
 
 type WorkDetailTab = 'overview' | 'threads' | 'activity' | 'links'
@@ -86,6 +87,7 @@ export function MobileWorkDetail({
           tab={tab}
           detail={detail.value}
           saving={saving}
+          onTab={setTab}
           onError={setActionError}
           onMove={(state) => void move(state)}
           onOpenThread={onOpenThread}
@@ -111,6 +113,7 @@ function WorkTabContent({
   detail,
   saving,
   onError,
+  onTab,
   onMove,
   onOpenThread,
   onStartThread,
@@ -119,6 +122,7 @@ function WorkTabContent({
   detail: MobileWorkItemDetails
   saving: boolean
   onError(message: string): void
+  onTab(tab: WorkDetailTab): void
   onMove(state: MobileWorkState): void
   onOpenThread(thread: MobileThread): void
   onStartThread(): void
@@ -126,7 +130,7 @@ function WorkTabContent({
   if (tab === 'threads') return <WorkThreads detail={detail} onOpenThread={onOpenThread} onStartThread={onStartThread} />
   if (tab === 'activity') return <WorkActivity detail={detail} />
   if (tab === 'links') return <WorkLinks detail={detail} onError={onError} />
-  return <WorkOverview detail={detail} saving={saving} onMove={onMove} onStartThread={onStartThread} />
+  return <WorkOverview detail={detail} saving={saving} onMove={onMove} onStartThread={onStartThread} onTab={onTab} />
 }
 
 function WorkOverview({
@@ -134,20 +138,22 @@ function WorkOverview({
   saving,
   onMove,
   onStartThread,
+  onTab,
 }: {
   detail: MobileWorkItemDetails
   saving: boolean
   onMove(state: MobileWorkState): void
   onStartThread(): void
+  onTab(tab: WorkDetailTab): void
 }) {
   return (
     <>
       <DetailSection title="Outcome">
         <MobileMarkdown content={detail.description} emptyText="No description has been added." />
         <View style={styles.metrics}>
-          <DetailMetric label="THREADS" value={detail.threads.length} />
-          <DetailMetric label="LINKS" value={detail.resources.length} />
-          <DetailMetric label="EVENTS" value={detail.events.length} />
+          <DetailMetric label="THREADS" value={detail.threads.length} onPress={() => onTab('threads')} />
+          <DetailMetric label="LINKS" value={detail.resources.length} onPress={() => onTab('links')} />
+          <DetailMetric label="EVENTS" value={detail.events.length} onPress={() => onTab('activity')} />
         </View>
         <Text style={styles.muted}>
           {detail.kind.replaceAll('_', ' ')} · {detail.priority} priority
@@ -155,21 +161,16 @@ function WorkOverview({
         </Text>
         {detail.attention ? <Text style={styles.error}>{detail.attention}</Text> : null}
       </DetailSection>
-      <DetailSection title="Lifecycle" meta={saving ? 'Saving…' : detail.state}>
-        <View style={styles.actions}>
-          {states.map((state) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: state === detail.state }}
-              disabled={saving || state === detail.state}
-              key={state}
-              onPress={() => onMove(state)}
-              style={[styles.secondaryButton, state === detail.state && styles.disabled]}
-            >
-              <Text style={styles.secondaryButtonText}>{state}</Text>
-            </Pressable>
-          ))}
-        </View>
+      <DetailSection title="Lifecycle" meta={saving ? 'Saving…' : undefined}>
+        <MobileSingleSelect
+          enabled={!saving}
+          label="Status"
+          hint="Move this Work item through its delivery lifecycle."
+          options={states.map((state) => ({ id: state, label: lifecycleLabel(state) }))}
+          value={detail.state}
+          testID="work-lifecycle-select"
+          onChange={onMove}
+        />
       </DetailSection>
       <DetailSection title="Next action">
         <Pressable accessibilityRole="button" onPress={onStartThread} style={styles.primaryButton}>
@@ -285,4 +286,8 @@ function WorkLinks({ detail, onError }: { detail: MobileWorkItemDetails; onError
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : value
+}
+
+function lifecycleLabel(state: MobileWorkState): string {
+  return state.replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase())
 }

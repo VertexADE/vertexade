@@ -78,6 +78,10 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     })
   }
 
+  function chooseNewWorkItem() {
+    update({ workItemId: null, repositoryIds: [], resourceSelection: null })
+  }
+
   async function submit() {
     if (!valid || state.busy) return
     update({ busy: true, error: '' })
@@ -151,6 +155,7 @@ export function useMobileWorkspaceCreation(options: CreationOptions) {
     setResourceSelection: (resourceSelection: MobileAgentResourceSelection) => update({ resourceSelection }),
     chooseBackend,
     chooseWorkItem,
+    chooseNewWorkItem,
     addRepository,
     addLocalFolder,
     submit,
@@ -191,7 +196,7 @@ function initialPrompt(item: MobileWorkItem | undefined): string {
 
 function validCreation(mode: MobileCreateMode, state: CreationState, selectedWorkItem: MobileWorkItem | null): boolean {
   if (mode === 'work') return Boolean(state.title.trim() && state.backendId)
-  if (mode === 'thread') return Boolean(selectedWorkItem && state.prompt.trim())
+  if (mode === 'thread') return Boolean(state.prompt.trim() && (selectedWorkItem || state.title.trim()))
   return Boolean(state.title.trim() && state.repositoryIds.length && state.prompt.trim())
 }
 
@@ -202,7 +207,7 @@ async function executeCreation(
   selectedWorkItem: MobileWorkItem | null,
 ): Promise<string> {
   const serviceUrl = backend.serviceUrl || ''
-  if (mode === 'thread') return startExistingWorkThread(serviceUrl, backend.id, state, selectedWorkItem)
+  if (mode === 'thread') return startWorkThread(serviceUrl, backend.id, state, selectedWorkItem)
   const item = await createMobileWorkItem(serviceUrl, {
     backendId: backend.id,
     title: state.title,
@@ -221,23 +226,35 @@ async function executeCreation(
   return `${item.key} created. Its agent will publish the draft PR when the work is ready.`
 }
 
-async function startExistingWorkThread(
+async function startWorkThread(
   serviceUrl: string,
   backendId: string,
   state: CreationState,
   selectedWorkItem: MobileWorkItem | null,
 ): Promise<string> {
-  if (!selectedWorkItem) throw new Error('Choose Work')
-  await startMobileThread(serviceUrl, {
+  const workItem = selectedWorkItem || (await createMobileWorkItem(serviceUrl, {
     backendId,
-    workItemId: selectedWorkItem.id,
+    title: state.title,
+    description: state.prompt,
     ...(state.repositoryIds.length ? { repositoryIds: state.repositoryIds } : {}),
-    prompt: state.prompt,
-    createPullRequest: state.createPullRequest,
-    agentOptions: state.agentOptions,
     ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
-  })
-  return `${selectedWorkItem.key} agent thread started${state.createPullRequest ? ' with draft PR delivery enabled' : ''}.`
+  }))
+  try {
+    await startMobileThread(serviceUrl, {
+      backendId,
+      workItemId: workItem.id,
+      ...(state.repositoryIds.length ? { repositoryIds: state.repositoryIds } : {}),
+      prompt: state.prompt,
+      createPullRequest: state.createPullRequest,
+      agentOptions: state.agentOptions,
+      ...(state.resourceSelection ? { resourceSelection: state.resourceSelection } : {}),
+    })
+  } catch (reason) {
+    if (selectedWorkItem) throw reason
+    const message = reason instanceof Error ? reason.message : 'The agent could not start'
+    return `${workItem.key} was created, but its agent could not start: ${message}. Retry from Work.`
+  }
+  return `${workItem.key} ${selectedWorkItem ? 'agent thread started' : 'created and its agent started'}${state.createPullRequest ? ' with draft PR delivery enabled' : ''}.`
 }
 
 async function workLaunchFailure(

@@ -41,7 +41,7 @@ function HeaderAction({ label, disabled, side, testID, onPress }: { label?: stri
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.glassStrong, borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+  container: { backgroundColor: colors.glassStrong, borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, paddingTop: spacing.xs },
   bar: { alignItems: 'center', flexDirection: 'row', minHeight: 44, paddingHorizontal: spacing.sm },
   title: { color: colors.text, flex: 1, fontSize: 17, fontWeight: '600', textAlign: 'center' },
   action: { alignItems: 'center', flexDirection: 'row', minHeight: 44, minWidth: 72, paddingHorizontal: spacing.xs },

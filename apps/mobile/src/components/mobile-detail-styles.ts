@@ -270,6 +270,7 @@ export const mobileDetailStyles = StyleSheet.create({
     minWidth: 78,
     padding: spacing.sm,
   },
+  metricInteractive: { borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth },
   metricValue: { color: colors.text, fontSize: 16, fontWeight: '800' },
   metricLabel: { color: colors.muted, fontSize: 9, fontWeight: '700' },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
