@@ -50,6 +50,86 @@ function readModel(id: number, name: string) {
 }
 
 describe('multi-backend API proxy', () => {
+  it('rejects mixed-server destructive batches before contacting a backend', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/work-items/delete-preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ work_item_ids: [7, 1_000_000_009] }),
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'Batch operations must target one server at a time' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('merges workspace search results and preserves their backend destination', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async (input) => {
+        const host = new URL(String(input)).hostname
+        return Response.json({ results: [{ id: 'work:VA-1', type: 'Work', title: host, subtitle: 'active', to: '/work/VA-1' }] })
+      }),
+    )
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/search?q=vertex') })
+    const payload = await response.json()
+
+    expect(payload.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'local~work:VA-1', to: '/work/local~VA-1' }),
+        expect.objectContaining({ id: 'team~work:VA-1', to: '/work/team~VA-1' }),
+      ]),
+    )
+  })
+
+  it('routes a remote deletion batch explicitly and converts its IDs back to local values', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ work_item_ids: [9] })
+      return Response.json({ items: [] })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const response = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/backends/team/work-items/delete-preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ work_item_ids: [1_000_000_009] }),
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(new URL(String(fetch.mock.calls[0]?.[0])).hostname).toBe('team.internal')
+  })
+
   it('federates only the servers paired by the current browser and uses each session token', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
@@ -107,7 +187,7 @@ describe('multi-backend API proxy', () => {
 
     expect(response.status).toBe(413)
     await expect(response.json()).resolves.toEqual({ error: 'Request body is too large' })
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('divides the aggregate response budget across backends without buffering an oversized body', async () => {
@@ -278,7 +358,7 @@ describe('multi-backend API proxy', () => {
     expect(headers.has('proxy-authorization')).toBe(false)
   })
 
-  it('discovers backend-managed linked servers without frontend URL configuration', async () => {
+  it('does not import server-managed linked servers into the browser connection catalog', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
       const url = new URL(String(input))
@@ -295,10 +375,8 @@ describe('multi-backend API proxy', () => {
 
     const response = await proxyApiRequest({ request: new Request('http://frontend.internal/api/read-model?since=0') })
     const payload = await response.json()
-    expect(payload.updates.repositories.entries).toMatchObject([
-      { key: 'server-1:1', value: { backend_name: 'Local' } },
-      { key: 'team:2', value: { backend_name: 'Team' } },
-    ])
+    expect(payload.updates.repositories.entries).toMatchObject([{ key: '1', value: { full_name: 'local/api' } }])
+    expect(fetch.mock.calls.some(([input]) => new URL(String(input)).pathname === '/api/settings/linked-servers')).toBe(false)
   })
 
   it('merges server read models and routes a namespaced entity back to its source', async () => {

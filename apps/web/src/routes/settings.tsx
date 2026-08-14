@@ -58,7 +58,6 @@ import { ServerRuntimeSettings } from '../components/settings/server-runtime-set
 import { TestTargetSettings } from '../components/settings/test-target-settings'
 import { EvidencePolicySettings } from '../components/settings/evidence-policy-settings'
 import { DesktopOnboardingSettings } from '../components/onboarding/desktop-onboarding-settings'
-import { LinkedServersSettings } from '../components/settings/linked-servers-settings'
 import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
 import { BrowserPairingSettings } from '../components/settings/browser-pairing-settings'
 
@@ -563,7 +562,7 @@ function SettingsPage() {
                     id="connectivity-settings"
                     eyebrow="Connectivity"
                     title="Devices & servers"
-                    description="Share the authenticated web gateway with your phone, keep the raw API private, and federate independent VertexADE servers only when needed."
+                    description="Pair each device and server independently while keeping the raw API private."
                     icon={Network}
                     badge="Security-sensitive"
                     summary={[
@@ -600,16 +599,6 @@ function SettingsPage() {
                     icon={Wifi}
                   >
                     <ServerRuntimeSettings />
-                  </SettingsGroup>
-                  <SettingsSectionDivider />
-                  <SettingsGroup
-                    id="connectivity-federation"
-                    title="Server federation"
-                    description="Operator-managed server-to-server federation for shared deployments. Browser pairing above is the normal personal flow."
-                    icon={Network}
-                    badge="Advanced"
-                  >
-                    <LinkedServersSettings />
                   </SettingsGroup>
                 </section>
               </TabsContent>

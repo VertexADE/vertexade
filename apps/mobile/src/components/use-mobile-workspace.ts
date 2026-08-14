@@ -97,11 +97,12 @@ function newlyCompletedThread(previous: Map<string, string> | null, threads: Mob
 }
 
 async function loadUnifiedMobileWorkspace(connections: MobileConnectionCatalog[]): Promise<{ workspace: MobileWorkspace; warning: string }> {
+  const discoveryFailures = connections.flatMap((connection) => connection.error ? [new Error(`${connection.name || connection.serviceUrl}: ${connection.error}`)] : [])
   const settled = await Promise.allSettled(connections
     .filter((connection) => !connection.error)
     .map(async (connection) => loadMobileWorkspace(connection.serviceUrl, connection.servers)))
   const workspaces = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-  const failures = settled.flatMap((result) => result.status === 'rejected' ? [result.reason] : [])
+  const failures = [...discoveryFailures, ...settled.flatMap((result) => result.status === 'rejected' ? [result.reason] : [])]
   if (!workspaces.length && failures.length) throw failures[0]
   return { workspace: mergeMobileWorkspaces(workspaces), warning: workspaceFailureMessage(failures) }
 }

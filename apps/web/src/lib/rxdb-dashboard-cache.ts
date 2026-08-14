@@ -14,6 +14,7 @@ import { useDashboardModelRows } from './tanstack-dashboard-db'
 type ConnectionState = {
   connected: boolean
   lastSyncedAt: string | null
+  error: string | null
 }
 
 type DashboardStorage = typeof import('./rxdb-dashboard-storage')
@@ -21,6 +22,7 @@ type DashboardStorage = typeof import('./rxdb-dashboard-storage')
 const connectionState = new BehaviorSubject<ConnectionState>({
   connected: false,
   lastSyncedAt: null,
+  error: null,
 })
 const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
@@ -71,11 +73,12 @@ async function syncOnce() {
     writeDashboardBootstraps(updatedCollections, payload.version, syncedAt)
     clearTimeout(retryTimer)
     retryDelay = 1_000
-    connectionState.next({ connected: true, lastSyncedAt: syncedAt })
+    connectionState.next({ connected: true, lastSyncedAt: syncedAt, error: null })
   } catch (error) {
     connectionState.next({
       connected: false,
       lastSyncedAt: connectionState.value.lastSyncedAt,
+      error: error instanceof Error ? error.message : String(error),
     })
     throw error
   }
@@ -122,6 +125,7 @@ function startDashboardSync() {
       connectionState.next({
         connected: false,
         lastSyncedAt: connectionState.value.lastSyncedAt,
+        error: state.error,
       })
     }
   })
@@ -175,6 +179,7 @@ export function useRxDashboardCollection<T extends object>(collection: Dashboard
     values,
     ready,
     connected: connection.connected,
+    error: connection.error,
     lastSyncedAt: connection.lastSyncedAt,
     refresh: syncDashboardCache,
   }

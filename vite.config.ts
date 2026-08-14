@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  test: {
+    exclude: ['**/.vertex-ade/**', '**/node_modules/**', '**/dist/**', '**/.output/**'],
+  },
   check: {
     fmt: true,
   },

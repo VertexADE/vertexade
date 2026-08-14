@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useIsMobile } from '@vertexade/ui/hooks/use-mobile'
 import type { PrDetailsTab } from '@vertexade/ui/components/pr-details-dialog'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { api, federationFailureMessage, type FederatedResult } from '@vertexade/ui/lib/dashboard-api'
 import { pullRequestReviewActivity } from '@vertexade/ui/lib/activity-status'
 import { agentIsWorking, agentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import type { DashboardData, GithubReviewer, JobLog, PullRequest } from '@vertexade/ui/lib/dashboard-types'
@@ -414,10 +414,13 @@ function usePullRequestWorkspaceRefresh(load: () => Promise<void>) {
   const refresh = async () => {
     setRefreshing(true)
     try {
-      const result = await api<{ repositories: number; open_prs: number; errors: { repository: string }[] }>('/api/repositories/sync-all', {
-        method: 'POST',
-        body: '{}',
-      })
+      const result = await api<{ repositories: number; open_prs: number; errors: { repository: string }[] } & FederatedResult>(
+        '/api/repositories/sync-all',
+        {
+          method: 'POST',
+          body: '{}',
+        },
+      )
       await load()
       notifyRefreshResult(result)
     } catch (error) {
@@ -429,8 +432,10 @@ function usePullRequestWorkspaceRefresh(load: () => Promise<void>) {
   return { refreshing, refresh }
 }
 
-function notifyRefreshResult(result: { repositories: number; open_prs: number; errors: unknown[] }) {
-  if (result.errors.length) toast.warning(`Refreshed ${result.repositories} repositories; ${result.errors.length} failed`)
+function notifyRefreshResult(result: { repositories: number; open_prs: number; errors: unknown[] } & FederatedResult) {
+  const federationWarning = federationFailureMessage(result, 'Repository refresh')
+  if (federationWarning) toast.warning(federationWarning)
+  else if (result.errors.length) toast.warning(`Refreshed ${result.repositories} repositories; ${result.errors.length} failed`)
   else toast.success(`Refreshed ${result.repositories} repositories · ${result.open_prs} open PRs`)
 }
 

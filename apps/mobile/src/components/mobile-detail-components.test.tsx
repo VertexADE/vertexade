@@ -92,7 +92,11 @@ jest.mock('@fluidinference/react-native-fluidaudio', () => ({
 jest.mock('./mobile-markdown', () => {
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native')
   return {
-    MobileMarkdown: ({ content, emptyText }: { content: string; emptyText: string }) => <ReactNative.Text>{content || emptyText}</ReactNative.Text>,
+    MobileMarkdown: ({ content, emptyText, tone }: { content: string; emptyText: string; tone?: 'default' | 'onAccent' }) => (
+      <ReactNative.Text style={tone === 'onAccent' ? { color: '#ffffff', fontSize: 15, lineHeight: 21 } : { color: '#f2f2f7', fontSize: 15, lineHeight: 22, width: '100%' }}>
+        {content || emptyText}
+      </ReactNative.Text>
+    ),
   }
 })
 
@@ -375,7 +379,7 @@ describe('mobile full detail views', () => {
     render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
 
     await screen.findByTestId('thread-markdown-transcript')
-    expect(screen.getByText('Worked for 1h')).toBeOnTheScreen()
+    expect(screen.getByText('Worked for 1h 2m')).toBeOnTheScreen()
     expect(screen.getByText(/Building full thread details/)).toBeOnTheScreen()
     expect(screen.queryByText(/\*\*You\*\*/)).not.toBeOnTheScreen()
     expect(screen.queryByText(/### Codex/)).not.toBeOnTheScreen()
@@ -398,6 +402,8 @@ describe('mobile full detail views', () => {
     )
     fireEvent.press(screen.getByTestId('detail-tab-changes'))
     expect(screen.getByText('apps/mobile/src/thread.tsx')).toBeOnTheScreen()
+    fireEvent.press(screen.getByTestId('detail-tab-summary'))
+    expect(screen.getByText('Building full thread details')).toBeOnTheScreen()
     fireEvent.press(screen.getByTestId('detail-tab-context'))
     expect(screen.getByText('Implement the full view.')).toBeOnTheScreen()
   })
@@ -457,18 +463,35 @@ describe('mobile full detail views', () => {
     await screen.findByText(/Make the spacing native/)
     const userMessage = screen.getAllByTestId('thread-user-message').at(-1)
     expect(userMessage).toHaveStyle({ alignItems: 'flex-end' })
-    expect(screen.getAllByTestId('thread-user-bubble').at(-1)).toHaveStyle({ backgroundColor: '#0a84ff' })
+    expect(screen.getAllByTestId('thread-user-bubble').at(-1)).toHaveStyle({ backgroundColor: '#0a84ff', flexShrink: 1, maxWidth: '88%' })
+    expect(screen.getByText('Make the spacing native')).toHaveStyle({ color: '#ffffff', fontSize: 15, lineHeight: 21 })
     expect(screen.queryByText(/You continued the thread/)).not.toBeOnTheScreen()
     expect(screen.queryByText(/### Codex/)).not.toBeOnTheScreen()
-    expect(screen.getByText('Worked for 2m')).toBeOnTheScreen()
+    expect(screen.getByText('Worked for 3m')).toBeOnTheScreen()
     expect(screen.getByText(/The composer now uses native spacing/)).toBeOnTheScreen()
+    expect(screen.getByText('The composer now uses native spacing.')).toHaveStyle({ color: '#f2f2f7', fontSize: 15, lineHeight: 22, width: '100%' })
     expect(screen.queryByText('Inspect composer')).not.toBeOnTheScreen()
     expect(screen.getByText('1 changed file')).toBeOnTheScreen()
     fireEvent.press(screen.getByText('1 changed file'))
     expect(screen.getByText('apps/mobile/src/components/mobile-thread-composer.tsx')).toBeOnTheScreen()
-    fireEvent.press(screen.getByText('Worked for 2m'))
+    fireEvent.press(screen.getByText('Worked for 3m'))
     expect(screen.getByText(/The composer now uses native spacing/)).toBeOnTheScreen()
     expect(screen.getByText('Inspect composer')).toBeOnTheScreen()
+  })
+
+  test('hides injected boundaries and renders only the actual user request', async () => {
+    const wrappedPrompt = '<agent-safety>Do not expose this.</agent-safety>\n<trusted-work-item>Internal context</trusted-work-item>\n<user_request>\nShow the actual request\n</user_request>'
+    jest.mocked(loadMobileThreadDetails).mockResolvedValue({
+      ...threadDetails,
+      prompt: wrappedPrompt,
+      events: [{ id: 'request', kind: 'user_message', title: 'You', text: 'Show the actual request', time: threadDetails.createdAt, status: 'completed', event: 'user_message' }],
+    })
+
+    render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findAllByText('Show the actual request')).toHaveLength(1)
+    expect(screen.queryByText(/Do not expose this/)).not.toBeOnTheScreen()
+    expect(screen.queryByText(/Internal context/)).not.toBeOnTheScreen()
   })
 
   test('loads a larger transcript window and fetches earlier messages when scrolling up', async () => {
@@ -514,6 +537,59 @@ describe('mobile full detail views', () => {
     fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { y: 500 } } })
     fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { y: 80 } } })
     expect(await screen.findByText(/Session 1 request/)).toBeOnTheScreen()
+  })
+
+  test('keeps the oldest visible session complete at the lazy-loading boundary', async () => {
+    const events = Array.from({ length: 29 }, (_, index) => {
+      const session = index + 1
+      return [
+        {
+          id: `boundary-trigger-${session}`,
+          kind: 'user_message',
+          title: 'You continued the thread',
+          text: `Boundary session ${session} request`,
+          time: `2026-08-11T10:${String(index).padStart(2, '0')}:00Z`,
+          status: 'completed',
+          event: 'follow_up_started',
+        },
+        ...(index === 0
+          ? Array.from({ length: 3 }, (_, activity) => ({
+              id: `boundary-activity-${activity}`,
+              kind: 'assistant',
+              title: 'Working',
+              text: `First session activity ${activity + 1}`,
+              time: `2026-08-11T10:00:1${activity}Z`,
+              status: 'completed',
+              event: 'agent_message',
+            }))
+          : []),
+        {
+          id: `boundary-final-${session}`,
+          kind: 'message',
+          title: 'Codex',
+          text: `Boundary session ${session} complete`,
+          time: `2026-08-11T10:${String(index).padStart(2, '0')}:30Z`,
+          status: 'completed',
+          event: 'agent_message',
+        },
+        {
+          id: `boundary-complete-${session}`,
+          kind: 'system',
+          title: 'Turn completed',
+          text: '',
+          time: `2026-08-11T10:${String(index).padStart(2, '0')}:40Z`,
+          status: 'completed',
+          event: 'turn_completed',
+        },
+      ]
+    }).flat()
+    jest.mocked(loadMobileThreadDetails).mockResolvedValue({ ...threadDetails, status: 'completed', events })
+
+    render(<MobileThreadDetail serviceUrl="http://fixture:4173" thread={thread} onClose={jest.fn()} onChanged={jest.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Boundary session 1 request')).toBeOnTheScreen()
+    expect(screen.getByText('Boundary session 1 complete')).toBeOnTheScreen()
+    expect(screen.queryByText(threadDetails.prompt)).not.toBeOnTheScreen()
   })
 
   test('steers or removes queued messages from the full activity flow', async () => {

@@ -8,7 +8,7 @@ import { Input } from '@vertexade/ui/components/ui/input'
 import { api } from '@vertexade/ui/lib/dashboard-api'
 import { readBrowserPairedServers, writeBrowserPairedServers, type BrowserPairedServer } from '../../lib/browser-pairing'
 
-type Redemption = Pick<BrowserPairedServer, 'serviceUrl' | 'sessionToken' | 'expiresAt'>
+type Redemption = Pick<BrowserPairedServer, 'serviceUrl' | 'credentialId' | 'expiresAt' | 'namespace'>
 
 export function BrowserPairingSettings() {
   const [servers, setServers] = useState<BrowserPairedServer[]>([])
@@ -16,7 +16,22 @@ export function BrowserPairingSettings() {
   const [name, setName] = useState('')
   const [pairing, setPairing] = useState(false)
 
-  useEffect(() => setServers(readBrowserPairedServers()), [])
+  useEffect(() => {
+    const stored = readBrowserPairedServers()
+    setServers(stored)
+    if (!stored.some((server) => server.sessionToken)) return
+    void api<{ credentials: Array<{ serviceUrl: string; credentialId: string }> }>('/api/browser-pairing/migrate', { method: 'POST' })
+      .then(({ credentials }) => {
+        const byUrl = new Map(credentials.map((credential) => [credential.serviceUrl, credential.credentialId]))
+        const migrated = stored.map(({ sessionToken: _sessionToken, ...server }) => ({
+          ...server,
+          credentialId: byUrl.get(server.serviceUrl) || server.credentialId,
+        }))
+        writeBrowserPairedServers(migrated)
+        setServers(migrated)
+      })
+      .catch(() => undefined)
+  }, [])
 
   function persist(next: BrowserPairedServer[], reload = false) {
     writeBrowserPairedServers(next)
@@ -27,20 +42,15 @@ export function BrowserPairingSettings() {
   async function pair() {
     setPairing(true)
     try {
-      const [redemption, registry] = await Promise.all([
-        api<Redemption>('/api/browser-pairing/redeem', {
-          method: 'POST',
-          body: JSON.stringify({
-            pairUrl: pairUrl.trim(),
-            deviceName: navigator.userAgent.includes('Electron') ? 'VertexADE Desktop' : 'VertexADE Web',
-          }),
+      const redemption = await api<Redemption>('/api/browser-pairing/redeem', {
+        method: 'POST',
+        body: JSON.stringify({
+          pairUrl: pairUrl.trim(),
+          deviceName: navigator.userAgent.includes('Electron') ? 'VertexADE Desktop' : 'VertexADE Web',
         }),
-        api<{ backends: Array<{ namespace: number }> }>('/api/backends'),
-      ])
+      })
       const existing = servers.find((server) => server.serviceUrl === redemption.serviceUrl)
-      const namespace =
-        existing?.namespace ||
-        Math.max(0, ...servers.map((server) => server.namespace), ...registry.backends.map((backend) => backend.namespace)) + 1
+      const namespace = existing?.namespace || redemption.namespace
       const id = existing?.id || uniqueId(new URL(redemption.serviceUrl).hostname, servers)
       const server: BrowserPairedServer = {
         ...redemption,
@@ -115,18 +125,7 @@ export function BrowserPairingSettings() {
                 />
                 <span className="block truncate px-1 text-xs text-muted-foreground">{server.serviceUrl}</span>
               </span>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Unpair ${server.name}`}
-                onClick={() =>
-                  persist(
-                    servers.filter((candidate) => candidate.id !== server.id),
-                    true,
-                  )
-                }
-              >
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={`Unpair ${server.name}`} onClick={() => void unpair(server)}>
                 <Trash2 />
               </Button>
             </div>
@@ -138,6 +137,19 @@ export function BrowserPairingSettings() {
       </CardContent>
     </Card>
   )
+
+  async function unpair(server: BrowserPairedServer) {
+    try {
+      if (server.credentialId)
+        await api(`/api/browser-pairing/credential?id=${encodeURIComponent(server.credentialId)}`, { method: 'DELETE' })
+      persist(
+        servers.filter((candidate) => candidate.id !== server.id),
+        true,
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  }
 }
 
 function uniqueId(hostname: string, servers: BrowserPairedServer[]) {

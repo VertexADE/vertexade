@@ -6,7 +6,14 @@ import { toast } from 'sonner'
 import { Button, IconButton } from '@vertexade/ui/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@vertexade/ui/components/ui/popover'
 import { useReactiveApi } from '@vertexade/ui/hooks/use-reactive-api'
-import { api, age, isModuleCatalogEvent, isNotificationEvent } from '@vertexade/ui/lib/dashboard-api'
+import {
+  api,
+  age,
+  federationFailureMessage,
+  isModuleCatalogEvent,
+  isNotificationEvent,
+  type FederatedResult,
+} from '@vertexade/ui/lib/dashboard-api'
 import type { Notification } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
@@ -118,7 +125,12 @@ export function NotificationCenter() {
   async function markAllRead() {
     setUnread(0)
     try {
-      await api('/api/notifications/read', { method: 'POST', body: '{}' })
+      const result = await api<FederatedResult>('/api/notifications/read', { method: 'POST', body: '{}' })
+      const warning = federationFailureMessage(result, 'Mark read')
+      if (warning) {
+        await notifications.refresh()
+        toast.warning(warning)
+      }
     } catch (error) {
       await notifications.refresh()
       toast.error(errorMessage(error, 'Could not mark notifications as read'))
@@ -149,12 +161,15 @@ export function NotificationCenter() {
   async function prune() {
     setPruning(true)
     try {
-      const result = await api<{ pruned: number }>('/api/notifications', { method: 'DELETE' })
+      const result = await api<{ pruned: number } & FederatedResult>('/api/notifications', { method: 'DELETE' })
       setItems([])
       setUnread(0)
       setConfirmingPrune(false)
-      void notifications.refresh()
-      toast.success(`Pruned ${notificationCount(result.pruned)}`)
+      const warning = federationFailureMessage(result, 'Pruning')
+      if (warning) {
+        await notifications.refresh()
+        toast.warning(warning)
+      } else toast.success(`Pruned ${notificationCount(result.pruned)}`)
     } catch (error) {
       toast.error(errorMessage(error, 'Could not prune notifications'))
     } finally {

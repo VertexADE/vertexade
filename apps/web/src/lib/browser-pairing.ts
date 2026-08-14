@@ -1,12 +1,14 @@
 import type { MobilePairingRedemption } from '@vertexade/platform-contracts'
 
-export type BrowserPairedServer = MobilePairingRedemption & {
+export type BrowserPairedServer = Omit<MobilePairingRedemption, 'sessionToken'> & {
   id: string
   name: string
   namespace: number
+  credentialId?: string
+  sessionToken?: string
 }
 
-export const browserPairingStorageKey = 'vertexade.web.paired-servers.v1'
+const browserPairingStorageKey = 'vertexade.web.paired-servers.v1'
 export const browserPairingHeader = 'x-vertexade-paired-servers'
 const pairTokenPattern = /^[A-Z0-9]{32}$/
 
@@ -40,13 +42,23 @@ function validServer(value: unknown): BrowserPairedServer | null {
     const serviceUrl = origin(String(server.serviceUrl || ''))
     const expiresAt = String(server.expiresAt || '')
     const sessionToken = String(server.sessionToken || '').trim()
+    const credentialId = String(server.credentialId || '').trim()
     const namespace = Number(server.namespace)
     const id = String(server.id || '')
       .trim()
       .toLowerCase()
-    if (!sessionToken || Date.parse(expiresAt) <= Date.now() || !Number.isSafeInteger(namespace) || namespace < 1) return null
+    if ((!sessionToken && !credentialId) || Date.parse(expiresAt) <= Date.now() || !Number.isSafeInteger(namespace) || namespace < 1)
+      return null
     if (!/^[a-z0-9][a-z0-9_-]{0,47}$/.test(id)) return null
-    return { id, name: String(server.name || '').trim() || new URL(serviceUrl).host, namespace, serviceUrl, sessionToken, expiresAt }
+    return {
+      id,
+      name: String(server.name || '').trim() || new URL(serviceUrl).host,
+      namespace,
+      serviceUrl,
+      ...(credentialId ? { credentialId } : {}),
+      ...(sessionToken ? { sessionToken } : {}),
+      expiresAt,
+    }
   } catch {
     return null
   }

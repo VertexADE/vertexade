@@ -305,7 +305,7 @@ export function denormalizePayload(value: unknown, backend: ApiBackend): unknown
   return Object.fromEntries(
     Object.entries(candidate).map(([key, item]) => {
       if (idBodyFields.has(key)) return [key, item == null ? item : localId(item)]
-      if (key === 'repository_ids' && Array.isArray(item)) return [key, item.map(localId)]
+      if ((key === 'repository_ids' || key === 'work_item_ids') && Array.isArray(item)) return [key, item.map(localId)]
       if (key === 'repositoryIds' && Array.isArray(item)) return [key, item.map(localId)]
       if (key === 'work_item_key') return [key, localWorkKey(backend, item)]
       return [key, denormalizePayload(item, backend)]

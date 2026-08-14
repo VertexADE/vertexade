@@ -23,4 +23,18 @@ describe('useMobileWorkspace completion monitoring', () => {
     await waitFor(() => expect(result.current.completedThread?.id).toBe(7))
     expect(result.current.loading).toBe(false)
   })
+
+  test('keeps healthy workspace data while warning about a connection discovery failure', async () => {
+    jest.mocked(loadMobileWorkspace).mockResolvedValueOnce(workspace('completed'))
+    const mixedConnections = [
+      ...connections,
+      { serviceUrl: 'http://offline', name: 'Studio', servers: [], error: 'Session expired' },
+    ]
+
+    const { result } = renderHook(() => useMobileWorkspace(mixedConnections))
+
+    await waitFor(() => expect(result.current.workspace.threads).toHaveLength(1))
+    expect(result.current.error).toContain('1 paired server unavailable')
+    expect(result.current.error).toContain('Studio: Session expired')
+  })
 })

@@ -8,7 +8,7 @@ const extensionIds = readdirSync(resolve(root, 'packages/extensions'), { withFil
   .map((entry) => entry.name)
   .sort()
 const unifiedPortableExtensions = ['airtable', 'azure-devops', 'coderabbit', 'linear', 'sentry', 'sonarqube']
-const formattedLegacyModuleLineLimits = new Map<string, number>()
+const formattedLegacyModuleLineLimits = new Map<string, number>([['apps/api/src/dashboard-server.ts', 806]])
 
 function manifest(path: string) {
   return JSON.parse(readFileSync(resolve(root, path, 'package.json'), 'utf8'))

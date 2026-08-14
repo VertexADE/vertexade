@@ -6,7 +6,7 @@ import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { ChoiceItem, ChoiceItemContent, ChoiceItemDescription, ChoiceItemTitle, ChoiceList } from '@vertexade/ui/components/ui/choice-list'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 import { Input } from '@vertexade/ui/components/ui/input'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { WorkBatchDeletionPreview, WorkBatchDeletionResult, WorkItem } from '@vertexade/ui/lib/dashboard-types'
 import { batchDeleteConfirmation, summarizeBatchDeletion } from './work-batch-delete'
 
@@ -49,11 +49,21 @@ export function BatchDeleteWorkDialog({ items, initialSelectedIds = [], open, on
   async function review() {
     setBusy(true)
     try {
-      const value = await api<WorkBatchDeletionPreview>('/api/work-items/delete-preview', {
-        method: 'POST',
-        body: JSON.stringify({ work_item_ids: selectedItems.map((item) => item.id) }),
-      })
-      setPreview(value)
+      const groups = backendGroups(selectedItems)
+      const outcomes = await Promise.allSettled(
+        groups.map(({ backendId, ids }) =>
+          backendApi<WorkBatchDeletionPreview>(backendId, '/api/work-items/delete-preview', {
+            method: 'POST',
+            body: JSON.stringify({ work_item_ids: ids }),
+          }),
+        ),
+      )
+      const values = outcomes.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : []))
+      const failures = outcomes.filter((outcome) => outcome.status === 'rejected')
+      if (!values.length) throw failures[0]?.reason || new Error('Could not load deletion preview')
+      setPreview({ items: values.flatMap((value) => value.items) })
+      if (failures.length)
+        toast.warning(`Preview loaded from ${values.length}/${groups.length} servers; unavailable items will not be deleted`)
       setConfirmation('')
     } catch (error) {
       toast.error((error as Error).message)
@@ -66,13 +76,24 @@ export function BatchDeleteWorkDialog({ items, initialSelectedIds = [], open, on
     if (!preview) return
     setBusy(true)
     try {
-      const value = await api<WorkBatchDeletionResult>('/api/work-items', {
-        method: 'DELETE',
-        body: JSON.stringify({
-          confirmed: true,
-          work_item_ids: preview.items.map((item) => item.work_item.id),
-        }),
-      })
+      const groups = backendGroups(selectedItems)
+      const settled = await Promise.allSettled(
+        groups.map(({ backendId, ids }) =>
+          backendApi<WorkBatchDeletionResult>(backendId, '/api/work-items', {
+            method: 'DELETE',
+            body: JSON.stringify({ confirmed: true, work_item_ids: ids }),
+          }),
+        ),
+      )
+      const values = settled.map((outcome, index) =>
+        outcome.status === 'fulfilled'
+          ? outcome.value
+          : failedBatchDeletionResult(
+              selectedItems.filter((item) => groups[index]?.ids.includes(item.id)),
+              outcome.reason,
+            ),
+      )
+      const value = mergeBatchDeletionResults(values)
       onDeleted()
       if (!value.failed) {
         toast.success(`${value.deleted} Work item${value.deleted === 1 ? '' : 's'} permanently deleted`)
@@ -123,6 +144,51 @@ export function BatchDeleteWorkDialog({ items, initialSelectedIds = [], open, on
       </DialogContent>
     </Dialog>
   )
+}
+
+function failedBatchDeletionResult(items: WorkItem[], reason: unknown): WorkBatchDeletionResult {
+  const error = reason instanceof Error ? reason.message : String(reason)
+  return {
+    requested: items.length,
+    deleted: 0,
+    failed: items.length,
+    results: items.map((item) => ({
+      deleted: false,
+      work_item_key: item.key,
+      threads_deleted: 0,
+      worktrees_removed: 0,
+      local_branches_deleted: 0,
+      logs_deleted: 0,
+      logs_retained: 0,
+      provider_threads_retained: 0,
+      memory_deleted: false,
+      shared_worktrees_retained: 0,
+      shared_branches_retained: 0,
+      preserved_pull_requests: [],
+      errors: [{ target: item.backend_name || item.backend_id || item.key, error }],
+    })),
+  }
+}
+
+function backendGroups(items: WorkItem[]) {
+  const groups = new Map<string, { backendId: string | null; ids: number[] }>()
+  for (const item of items) {
+    const backendId = item.backend_id || null
+    const key = backendId || ''
+    const group = groups.get(key) || { backendId, ids: [] }
+    group.ids.push(item.id)
+    groups.set(key, group)
+  }
+  return [...groups.values()]
+}
+
+function mergeBatchDeletionResults(values: WorkBatchDeletionResult[]): WorkBatchDeletionResult {
+  return {
+    requested: values.reduce((total, value) => total + value.requested, 0),
+    deleted: values.reduce((total, value) => total + value.deleted, 0),
+    failed: values.reduce((total, value) => total + value.failed, 0),
+    results: values.flatMap((value) => value.results),
+  }
 }
 
 function batchDeletionDescription(result: WorkBatchDeletionResult | null, preview: WorkBatchDeletionPreview | null) {

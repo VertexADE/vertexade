@@ -60,7 +60,8 @@ function namespacedEvent(raw: Event, backend: BackendDescriptor) {
 function createFederatedEventStream() {
   const events = new Subject<PlatformEventMessage>()
   const connection = new BehaviorSubject<PlatformConnectionState>(initialConnection)
-  const sources: EventSource[] = []
+  const sources: AbortController[] = []
+  let closed = false
   let primaryBackend: BackendDescriptor = {
     id: 'primary',
     label: 'Primary',
@@ -91,37 +92,38 @@ function createFederatedEventStream() {
     })
   }
 
-  const openSource = (url: string, backend: () => BackendDescriptor) => {
-    const source = new EventSource(url)
-    sources.push(source)
-    source.addEventListener('open', () => setBackendConnected(backend().id, true))
-    source.addEventListener('change', (raw) => {
-      const currentBackend = backend()
-      setBackendConnected(currentBackend.id, true)
-      const event = namespacedEvent(raw, currentBackend)
-      const data = parsePlatformEvent(event)
-      if (!data) return
-      connection.next({
-        connected: true,
-        lastEventAt: data.time,
-        lastSequence: Math.max(connection.value.lastSequence, data.sequence),
-        error: null,
-      })
-      events.next({ data, raw: event })
+  const receive = (raw: Event, currentBackend: BackendDescriptor) => {
+    setBackendConnected(currentBackend.id, true)
+    const event = namespacedEvent(raw, currentBackend)
+    const data = parsePlatformEvent(event)
+    if (!data) return
+    connection.next({
+      connected: true,
+      lastEventAt: data.time,
+      lastSequence: Math.max(connection.value.lastSequence, data.sequence),
+      error: null,
     })
-    source.addEventListener('error', () => setBackendConnected(backend().id, false, 'Realtime connection lost'))
+    events.next({ data, raw: event })
   }
 
-  openSource('/api/events', () => primaryBackend)
+  const openSource = (url: string, backend: () => BackendDescriptor) => {
+    const controller = new AbortController()
+    sources.push(controller)
+    void reconnectingEventStream(
+      url,
+      controller.signal,
+      (raw) => receive(raw, backend()),
+      (error) => setBackendConnected(backend().id, false, error),
+    )
+  }
 
   void loadBackendRegistry()
     .then(({ backends }) => {
       primaryBackend = backends.find((backend) => backend.isDefault) || backends[0] || primaryBackend
       backendState.next(backends)
       connection.next({ ...connection.value, connected: backends.some((backend) => backend.connected) })
-      for (const backend of backends.filter((candidate) => !candidate.isDefault && candidate.realtime !== false)) {
-        openSource(`${backend.apiPath}/events`, () => backend)
-      }
+      for (const backend of backends.filter((candidate) => candidate.realtime !== false))
+        openSource(backend.isDefault ? '/api/events' : `${backend.apiPath}/events`, () => backend)
     })
     .catch((error) => {
       connection.next({ ...connection.value, connected: false, error: error instanceof Error ? error.message : String(error) })
@@ -131,11 +133,78 @@ function createFederatedEventStream() {
     events$: events.asObservable(),
     connection$: connection.asObservable(),
     close() {
-      sources.forEach((source) => source.close())
+      closed = true
+      sources.forEach((source) => source.abort())
       events.complete()
       connection.next({ ...connection.value, connected: false })
       connection.complete()
     },
+  }
+}
+
+async function reconnectingEventStream(
+  url: string,
+  signal: AbortSignal,
+  receive: (event: Event) => void,
+  disconnected: (error: string) => void,
+) {
+  let attempt = 0
+  while (!signal.aborted) {
+    try {
+      await streamEvents(url, signal, receive)
+      if (!signal.aborted) disconnected('Realtime connection ended')
+    } catch (error) {
+      if (signal.aborted) return
+      disconnected(error instanceof Error ? error.message : 'Realtime connection lost')
+    }
+    attempt += 1
+    await abortableDelay(Math.min(30_000, 1_000 * 2 ** Math.min(attempt - 1, 5)), signal)
+  }
+}
+
+function abortableDelay(duration: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, duration)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeout)
+        resolve()
+      },
+      { once: true },
+    )
+  })
+}
+
+async function streamEvents(url: string, signal: AbortSignal, receive: (event: Event) => void) {
+  const response = await fetch(url, {
+    headers: { accept: 'text/event-stream', ...browserPairedServersRequestHeaders() },
+    signal,
+  })
+  if (!response.ok) throw new Error(`Realtime connection failed with HTTP ${response.status}`)
+  if (!response.body) throw new Error('Realtime connection returned no stream')
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (!signal.aborted) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done })
+    const frames = buffer.split(/\r?\n\r?\n/)
+    buffer = frames.pop() || ''
+    for (const frame of frames) {
+      const lines = frame.split(/\r?\n/)
+      const eventName =
+        lines
+          .find((line) => line.startsWith('event:'))
+          ?.slice(6)
+          .trim() || 'message'
+      const data = lines
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n')
+      if (eventName === 'change' && data) receive(new MessageEvent('change', { data }))
+    }
+    if (done) break
   }
 }
 
@@ -163,6 +232,16 @@ export async function api<T>(url: string, options: RequestInit = {}): Promise<T>
 
 export async function backendApi<T>(backendId: string | null | undefined, url: string, options: RequestInit = {}): Promise<T> {
   return api<T>(backendApiPath(url, backendId), options)
+}
+
+export type FederationFailure = { backendId: string; backendName: string; error: string }
+export type FederatedResult = { federation?: { connected: number; total: number; failures: FederationFailure[] } }
+
+export function federationFailureMessage(value: FederatedResult, action: string) {
+  const failures = value.federation?.failures || []
+  if (!failures.length) return ''
+  const servers = failures.map((failure) => failure.backendName).join(', ')
+  return `${action} succeeded on ${value.federation!.connected}/${value.federation!.total} servers; failed on ${servers}`
 }
 
 export function createScopedApi(request: (path: string, init?: RequestInit) => Promise<Response>): ApiClient {

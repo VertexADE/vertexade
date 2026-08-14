@@ -64,7 +64,9 @@ function pairs(value: string) {
   )
 }
 
-export function AgentResourceSettings({ section = 'all' }: { section?: 'all' | 'agents' | 'context' }) {
+type AgentResourceSection = 'all' | 'agents' | 'context' | 'skills' | 'mcp'
+
+export function AgentResourceSettings({ section = 'all' }: { section?: AgentResourceSection }) {
   const confirmAction = useConfirm()
   const [catalog, setCatalog] = useState(emptyCatalog)
   const load = useCallback(
@@ -104,13 +106,13 @@ export function AgentResourceSettings({ section = 'all' }: { section?: 'all' | '
   }
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-3">
-      {section !== 'agents' && (
-        <>
-          <SkillSettings skills={catalog.skills} reload={load} onDefault={setDefault} onRemove={remove} />
-          <McpSettings servers={catalog.mcpServers} reload={load} onDefault={setDefault} onRemove={remove} />
-        </>
+      {['all', 'context', 'skills'].includes(section) && (
+        <SkillSettings skills={catalog.skills} reload={load} onDefault={setDefault} onRemove={remove} />
       )}
-      {section !== 'context' && (
+      {['all', 'context', 'mcp'].includes(section) && (
+        <McpSettings servers={catalog.mcpServers} reload={load} onDefault={setDefault} onRemove={remove} />
+      )}
+      {['all', 'agents'].includes(section) && (
         <div className="col-span-full min-w-0">
           <CustomAgentSettings profiles={catalog.profiles} skills={catalog.skills} mcpServers={catalog.mcpServers} reload={load} />
         </div>

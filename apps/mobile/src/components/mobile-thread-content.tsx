@@ -98,18 +98,28 @@ export function MobileThreadTabContent({
 }
 
 function ThreadSummary({ detail }: { detail: MobileThreadDetails }) {
+  const result = detail.reviewSummary || detail.resultText || latestAssistantResult(detail) || detail.content
   return (
     <>
       <MobileThreadOutcomeBanner outcome={mobileThreadOutcome(detail)} />
       <DetailSection title={detail.reviewSummary ? 'Review summary' : 'Result'} meta={detail.ephemeral ? 'Private · Ephemeral' : 'Private'}>
         <MobileThreadHeaderContext detail={detail} />
         <MobileMarkdown
-          content={detail.reviewSummary || detail.resultText}
+          content={result}
           emptyText={`${detail.agentName} is still preparing the final result.`}
         />
       </DetailSection>
     </>
   )
+}
+
+function latestAssistantResult(detail: MobileThreadDetails): string {
+  return detail.events.findLast((event) => {
+    if (!event.text.trim()) return false
+    const identity = `${event.kind} ${event.event}`.toLowerCase().replaceAll('-', '_')
+    if (['tool', 'action', 'command', 'function_call', 'system', 'user', 'change', 'diff'].some((value) => identity.includes(value))) return false
+    return identity.includes('assistant') || identity.includes('agent_message') || event.kind.toLowerCase() === 'message'
+  })?.text.trim() || ''
 }
 
 function ThreadFindings({ detail }: { detail: MobileThreadDetails }) {

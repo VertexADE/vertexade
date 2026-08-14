@@ -8,6 +8,7 @@ import { MobileActionDock, MobileMenuButton } from '@vertexade/ui/components/app
 import { NotificationCenter } from '@vertexade/ui/components/notification-center'
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { Button } from '@vertexade/ui/components/ui/button'
+import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Kbd } from '@vertexade/ui/components/ui/kbd'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import {
@@ -280,23 +281,42 @@ function ActiveBackendSelect({ backends }: { backends: BackendDescriptor[] }) {
   }
 
   if (backends.length <= 1) return null
+  const connectedCount = backends.filter((backend) => backend.connected).length
+  const degraded = connectedCount < backends.length
   return (
-    <Select value={selectedBackendId} onValueChange={selectBackend}>
-      <SelectTrigger size="sm" className="max-w-36 border-border/55 bg-muted/24" aria-label="Active VertexADE server">
-        <Server />
-        <SelectValue placeholder="Select server" />
-      </SelectTrigger>
-      <SelectContent align="end">
-        <SelectGroup>
-          {backends.map((backend) => (
-            <SelectItem key={backend.id} value={backend.id}>
-              <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
-              {backend.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-2">
+      {degraded ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" aria-label={`${connectedCount} of ${backends.length} servers connected`}>
+              {connectedCount}/{backends.length}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            {backends
+              .filter((backend) => !backend.connected)
+              .map((backend) => `${backend.label}: ${backend.error || 'Unavailable'}`)
+              .join(' · ')}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      <Select value={selectedBackendId} onValueChange={selectBackend}>
+        <SelectTrigger size="sm" className="max-w-36 border-border/55 bg-muted/24" aria-label="Active VertexADE server">
+          <Server />
+          <SelectValue placeholder="Select server" />
+        </SelectTrigger>
+        <SelectContent align="end">
+          <SelectGroup>
+            {backends.map((backend) => (
+              <SelectItem key={backend.id} value={backend.id}>
+                <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
+                {backend.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 

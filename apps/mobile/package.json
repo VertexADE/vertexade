@@ -40,7 +40,6 @@
     "expo-status-bar": "^57.0.1",
     "expo-symbols": "~57.0.2",
     "expo-widgets": "~57.0.9",
-    "mermaid": "^11.16.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
@@ -67,10 +66,16 @@
   "jest": {
     "preset": "jest-expo",
     "moduleNameMapper": {
+      "^@tanstack/markdown$": "<rootDir>/node_modules/@tanstack/markdown/dist/index.js",
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "setupFilesAfterEnv": [
       "<rootDir>/test/setup.ts"
+    ],
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@tanstack/markdown))",
+      "/node_modules/react-native-reanimated/plugin/",
+      "/node_modules/@react-native/babel-preset/"
     ],
     "testMatch": [
       "<rootDir>/**/*.(test|spec).(ts|tsx)"

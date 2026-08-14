@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
+import { buildThreadWorkSessions, type ThreadWorkSession } from '@vertexade/platform-contracts'
 import type { MobileDiffFile, MobileInputQuestion, MobileQueuedFollowUp, MobileThreadDetails } from '@/mobile-detail-service'
 import { colors } from '@/theme'
 import { mobileDetailStyles as styles } from './mobile-detail-styles'
@@ -25,31 +26,20 @@ export function MobileThreadActivity({
   onCancelQueued(id: number): void
   onReorderQueued(ids: number[]): void
 }) {
-  const sessions = useMemo(() => threadWorkSessions(detail), [detail])
-  const messageCount = sessions.reduce((total, session) => total + session.messages.length, 0)
+  const sessions = useMemo(() => mobileThreadWorkSessions(detail), [detail])
+  const messageCount = sessions.reduce((total, session) => total + sessionMessageCount(session), 0)
   const [visibleCount, setVisibleCount] = useState(() => Math.min(messageCount, INITIAL_MESSAGE_COUNT))
-  const hiddenCount = Math.max(0, messageCount - visibleCount)
+  const window = visibleSessionWindow(sessions, visibleCount)
+  const hiddenCount = window.hiddenMessageCount
   const loadEarlier = useCallback(() => setVisibleCount((count) => Math.min(messageCount, count + MESSAGE_PAGE_SIZE)), [messageCount])
   useDetailLoadEarlier(loadEarlier, hiddenCount > 0)
-  const visibleIds = new Set(
-    sessions
-      .flatMap((session) => session.messages)
-      .slice(hiddenCount)
-      .map((message) => message.id),
-  )
-  const visibleSessions = sessions
-    .map((session) => ({
-      ...session,
-      messages: session.messages.filter((message) => visibleIds.has(message.id)),
-    }))
-    .filter((session) => session.messages.length)
   return (
     <>
       <View accessibilityRole="list" style={styles.chatTimeline}>
-        {visibleSessions.length ? (
+        {window.sessions.length ? (
           <View testID="thread-markdown-transcript">
-            {visibleSessions.map((session) => (
-              <WorkSession key={session.id} session={session} />
+            {window.sessions.map((session) => (
+              <WorkSession key={session.key} session={session} />
             ))}
           </View>
         ) : (
@@ -70,8 +60,23 @@ export function MobileThreadActivity({
   )
 }
 
+function visibleSessionWindow(sessions: Array<ThreadWorkSession<ThreadMessage>>, targetMessageCount: number) {
+  let firstVisible = sessions.length
+  let visibleMessageCount = 0
+  while (firstVisible > 0 && visibleMessageCount < targetMessageCount) {
+    firstVisible -= 1
+    visibleMessageCount += sessionMessageCount(sessions[firstVisible])
+  }
+  const hiddenMessageCount = sessions
+    .slice(0, firstVisible)
+    .reduce((total, session) => total + sessionMessageCount(session), 0)
+  return { hiddenMessageCount, sessions: sessions.slice(firstVisible) }
+}
+
 type ThreadMessageRole = 'user' | 'assistant' | 'system'
 type ThreadMessage = {
+  key: string
+  kind: string
   id: string
   role: ThreadMessageRole
   title: string
@@ -83,41 +88,33 @@ type ThreadMessage = {
   additions: number
   deletions: number
 }
-type ThreadWorkSession = {
-  id: string
-  complete: boolean
-  messages: ThreadMessage[]
-}
 
-function threadWorkSessions(detail: MobileThreadDetails): ThreadWorkSession[] {
-  const sessions: ThreadWorkSession[] = []
-  let current = newWorkSession(sessions.length, initialPrompt(detail))
+function mobileThreadWorkSessions(detail: MobileThreadDetails): Array<ThreadWorkSession<ThreadMessage>> {
+  const timeline = initialPrompt(detail)
   for (const event of detail.events) {
-    if (isSessionTrigger(event)) {
-      closeWorkSession(sessions, current)
-      current = newWorkSession(sessions.length)
-    }
-    const message = threadMessage(event, detail.agentName)
-    if (message) current.messages.push(message)
-    if (isSessionCompletion(event)) {
-      closeWorkSession(sessions, current)
-      current = newWorkSession(sessions.length)
+    if (isSessionCompletion(event)) timeline.push(completionMessage(event))
+    else {
+      const message = threadMessage(event, detail.agentName)
+      if (message) timeline.push(message)
     }
   }
-  if (current.messages.length) sessions.push(current)
-  if (!['starting', 'running'].includes(detail.status) && sessions.length) sessions[sessions.length - 1].complete = true
-  return sessions
+  return buildThreadWorkSessions(timeline, !['starting', 'running'].includes(detail.status))
 }
 
 function initialPrompt(detail: MobileThreadDetails): ThreadMessage[] {
-  const shownInEvents = detail.events.some((event) => event.text.trim() === detail.prompt.trim())
-  return detail.prompt && !shownInEvents
+  const prompt = displayedUserRequest(detail.prompt)
+  const shownInEvents = detail.events.some(
+    (event) => eventRole(event.kind) === 'user' && displayedUserRequest(event.text) === prompt,
+  )
+  return prompt && !shownInEvents
     ? [
         {
+          key: 'prompt',
+          kind: 'user_message',
           id: 'prompt',
           role: 'user',
           title: 'You',
-          text: detail.prompt,
+          text: prompt,
           meta: '',
           time: detail.createdAt,
           tool: false,
@@ -129,17 +126,8 @@ function initialPrompt(detail: MobileThreadDetails): ThreadMessage[] {
     : []
 }
 
-function newWorkSession(index: number, messages: ThreadMessage[] = []): ThreadWorkSession {
-  return { id: `session-${index + 1}`, complete: false, messages }
-}
-
-function closeWorkSession(sessions: ThreadWorkSession[], session: ThreadWorkSession) {
-  session.complete = true
-  if (session.messages.length) sessions.push(session)
-}
-
-function isSessionTrigger(event: MobileThreadDetails['events'][number]): boolean {
-  return event.event.toLowerCase().replaceAll('-', '_') === 'follow_up_started'
+function sessionMessageCount(session: ThreadWorkSession<ThreadMessage>) {
+  return Number(Boolean(session.trigger)) + session.activity.length + Number(Boolean(session.finalMessage)) + Number(Boolean(session.changes))
 }
 
 function isSessionCompletion(event: MobileThreadDetails['events'][number]): boolean {
@@ -148,62 +136,71 @@ function isSessionCompletion(event: MobileThreadDetails['events'][number]): bool
 
 function threadMessage(event: MobileThreadDetails['events'][number], agentName: string): ThreadMessage | null {
   if (!shouldShowThreadEvent(event)) return null
+  const role = eventRole(event.kind)
+  const tool = isToolEvent(event)
   return {
+    key: event.id,
+    kind: mobileSessionEventKind(Boolean(event.files?.length), tool, role),
     id: event.id,
-    role: eventRole(event.kind),
+    role,
     title: eventTitle(event.kind, event.title, agentName),
-    text: event.text,
+    text: role === 'user' ? displayedUserRequest(event.text) : event.text,
     meta: [event.status, formatDate(event.time)].filter(Boolean).join(' · '),
     time: event.time,
-    tool: isToolEvent(event),
+    tool,
     files: event.files || [],
     additions: event.additions || 0,
     deletions: event.deletions || 0,
   }
 }
 
-function WorkSession({ session }: { session: ThreadWorkSession }) {
+function mobileSessionEventKind(files: boolean, tool: boolean, role: ThreadMessageRole) {
+  if (files) return 'changes'
+  if (tool) return 'action'
+  if (role === 'user') return 'user_message'
+  return role === 'assistant' ? 'message' : 'activity'
+}
+
+function completionMessage(event: MobileThreadDetails['events'][number]): ThreadMessage {
+  return {
+    key: event.id,
+    kind: 'completed',
+    id: event.id,
+    role: 'system',
+    title: event.title,
+    text: event.text,
+    meta: '',
+    time: event.time,
+    tool: false,
+    files: [],
+    additions: 0,
+    deletions: 0,
+  }
+}
+
+function WorkSession({ session }: { session: ThreadWorkSession<ThreadMessage> }) {
   const [expanded, setExpanded] = useState(!session.complete)
-  const presentation = workSessionPresentation(session)
   return (
     <View style={styles.workSessionFlow}>
-      <SessionMessage message={presentation.trigger} emptyText="No request content." />
+      <SessionMessage message={session.trigger} emptyText="No request content." />
       <View style={styles.workSession}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.workSessionHeader}>
           <View style={styles.workSessionCopy}>
-            <Text style={styles.workSessionTitle}>{presentation.title}</Text>
+            <Text style={styles.workSessionTitle}>{session.complete ? `Worked for ${session.duration}` : 'Agent is working'}</Text>
             <Text style={styles.workSessionMeta}>
-              {presentation.activity.length} update
-              {presentation.activity.length === 1 ? '' : 's'}
-              {presentation.tools ? ` · ${presentation.tools} tools` : ''}
+              {session.activity.length} update
+              {session.activity.length === 1 ? '' : 's'}
+              {session.actions ? ` · ${session.actions} tools` : ''}
             </Text>
           </View>
           <MobileSymbol name={expanded ? 'chevron.down' : 'chevron.right'} fallback={expanded ? '⌄' : '›'} color={colors.muted} size={13} />
         </Pressable>
-        <SessionActivity expanded={expanded} messages={presentation.activity} />
+        <SessionActivity expanded={expanded} messages={session.activity} />
       </View>
-      <SessionMessage message={presentation.finalMessage} emptyText="No final response." />
-      <TurnChanges message={presentation.changes} />
+      <SessionMessage message={session.finalMessage} emptyText="No final response." />
+      <TurnChanges message={session.changes} />
     </View>
   )
-}
-
-function workSessionPresentation(session: ThreadWorkSession) {
-  const triggerIndex = session.messages.findIndex((message) => message.role === 'user' && message.text.trim())
-  const finalIndex = session.complete ? findFinalAssistantIndex(session.messages) : -1
-  const trigger = triggerIndex >= 0 ? session.messages[triggerIndex] : undefined
-  const finalMessage = finalIndex >= 0 ? session.messages[finalIndex] : undefined
-  const changes = session.messages.findLast((message) => message.files.length > 0)
-  const activity = session.messages.filter((message, index) => index !== triggerIndex && index !== finalIndex && !message.files.length)
-  const tools = activity.filter((message) => message.tool).length
-  return {
-    activity,
-    finalMessage,
-    changes,
-    title: session.complete ? `Worked for ${workDuration(session.messages)}` : 'Agent is working',
-    tools,
-    trigger,
-  }
 }
 
 function TurnChanges({ message }: { message?: ThreadMessage }) {
@@ -252,7 +249,7 @@ function SessionMessage({ message, emptyText }: { message?: ThreadMessage; empty
         testID={`thread-${message.role}-bubble`}
         style={user ? [styles.chatMessage, styles.chatMessageUser] : styles.chatAssistantMessage}
       >
-        <MobileMarkdown content={message.text.trim() || 'No message content.'} emptyText={emptyText} tone={user ? 'onAccent' : 'default'} />
+        <MobileMarkdown content={message.text} emptyText={emptyText} tone={user ? 'onAccent' : 'default'} />
       </Pressable>
       <View style={[styles.chatMessageActions, user && styles.chatMessageActionsUser]}>
         <Text style={styles.chatMessageTime}>{formatTime(message.time)}</Text>
@@ -260,6 +257,10 @@ function SessionMessage({ message, emptyText }: { message?: ThreadMessage; empty
       </View>
     </View>
   )
+}
+
+function displayedUserRequest(text: string) {
+  return text.match(/<user_request>\s*([\s\S]*?)\s*<\/user_request>/i)?.[1]?.trim() || text.trim()
 }
 
 function MessageCopyButton({ label, onCopy }: { label: string; onCopy(): Promise<boolean> }) {
@@ -291,23 +292,6 @@ function SessionActivity({ expanded, messages }: { expanded: boolean; messages: 
   )
 }
 
-function findFinalAssistantIndex(messages: ThreadMessage[]): number {
-  for (let index = messages.length - 1; index >= 0; index -= 1)
-    if (messages[index].role === 'assistant' && !messages[index].tool && messages[index].text.trim()) return index
-  return -1
-}
-
-function workDuration(messages: ThreadMessage[]): string {
-  const times = messages.map((message) => Date.parse(message.time)).filter(Number.isFinite)
-  if (times.length < 2) return 'a moment'
-  const seconds = Math.max(0, Math.round((Math.max(...times) - Math.min(...times)) / 1000))
-  if (seconds < 60) return seconds < 5 ? 'a moment' : `${seconds}s`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-}
 
 function isToolEvent(event: MobileThreadDetails['events'][number]): boolean {
   const identity = `${event.kind} ${event.event}`.toLowerCase().replaceAll('-', '_')

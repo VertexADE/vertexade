@@ -1,11 +1,12 @@
 import { lazy, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Bot, MessageSquareText, Plus, SlidersHorizontal } from 'lucide-react'
+import { AlertCircle, Bot, MessageSquareText, Plus, SlidersHorizontal } from 'lucide-react'
 import { GlobalHighlights } from '@vertexade/ui/components/global-highlights'
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { SearchInput } from '@vertexade/ui/components/ui/search-input'
+import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { FilterBar, FilterBarControls, FilterBarToggle } from '@vertexade/ui/components/ui/toolbar'
 import { useIsMobile } from '@vertexade/ui/hooks/use-mobile'
 import type { Job } from '@vertexade/ui/lib/dashboard-types'
@@ -208,6 +209,20 @@ function ThreadsPage() {
             </Button>
           }
         />
+        {threadCache.error && !threadCache.connected ? (
+          <StatusPanel tone="danger" className="mb-4">
+            <AlertCircle />
+            <StatusPanelContent>
+              <StatusPanelTitle>Threads could not be loaded</StatusPanelTitle>
+              <StatusPanelDescription>
+                {threadCache.error}. Pair this browser with the server in Settings, or reconnect the unavailable server.
+              </StatusPanelDescription>
+            </StatusPanelContent>
+            <Button type="button" variant="outline" size="sm" onClick={refresh}>
+              Try again
+            </Button>
+          </StatusPanel>
+        ) : null}
         <ThreadPrioritySummary stats={stats} activeFilter={statusFilter} onFilter={setStatusFilter} />
 
         <div className="xl:hidden" data-audit-agents-layout="list">

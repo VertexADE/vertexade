@@ -7,38 +7,18 @@ import type {
   ModuleCatalogCategory,
   ModuleCatalogEntry,
 } from '@vertexade/platform-contracts'
-import {
-  AlertTriangle,
-  ArrowRight,
-  Boxes,
-  Check,
-  CircleDot,
-  ExternalLink,
-  PackageCheck,
-  Pin,
-  PlugZap,
-  RefreshCw,
-  Settings2,
-  ShieldCheck,
-  SlidersHorizontal,
-} from 'lucide-react'
+import { AlertTriangle, Boxes, CircleDot, PlugZap, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { ExtensionSettingsPanel } from '@vertexade/ui/extensions/settings-panel'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
-import { Badge } from '@vertexade/ui/components/ui/badge'
-import { Button } from '@vertexade/ui/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
 import { SearchInput } from '@vertexade/ui/components/ui/search-input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@vertexade/ui/components/ui/sheet'
+import { Sheet } from '@vertexade/ui/components/ui/sheet'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
 import { FilterBar, FilterBarControls, FilterBarToggle, FilterChip, ToolbarGroup, ToolbarLabel } from '@vertexade/ui/components/ui/toolbar'
 import { useReactiveApi } from '@vertexade/ui/hooks/use-reactive-api'
 import { api, isModuleCatalogEvent } from '@vertexade/ui/lib/dashboard-api'
-import { extensionPresentation } from '@vertexade/ui/lib/extension-presentation'
-import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
 import { cn } from '@vertexade/ui/lib/utils'
 import { useUiPreferences } from '@vertexade/ui/lib/ui-preferences'
 import { extensionAvailableInView, type ExtensionCatalogView } from '../lib/extension-catalog'
@@ -153,157 +133,172 @@ export function ExtensionsPage() {
         description={`${active} active tools${attention ? ` · ${attention} need setup` : ''}. Search, open, or configure one place at a time.`}
       />
 
-      <section aria-label="Browse extensions" className="space-y-3">
-        <details className="rounded-lg border bg-card/30">
-          <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 marker:hidden">
-            <PlugZap className="size-4 text-violet-400" />
-            <span className="min-w-0 flex-1">
-              <strong className="block text-sm">Agent extensions</strong>
-              <span className="block text-xs text-muted-foreground">Skills and MCP servers installed for Work-item agents</span>
-            </span>
-            <Badge variant="secondary">Skills + MCP</Badge>
-          </summary>
-          <div className="border-t p-3">
-            <AgentResourceSettings section="context" />
-          </div>
-        </details>
-        {diagnostics.length > 0 && (
-          <StatusPanel tone="danger">
-            <AlertTriangle />
-            <StatusPanelContent>
-              <StatusPanelTitle>
-                {diagnostics.length} extension {diagnostics.length === 1 ? 'problem was' : 'problems were'} isolated
-              </StatusPanelTitle>
-              <StatusPanelDescription>Other extensions remain available.</StatusPanelDescription>
-              <ul className="mt-2 space-y-1 font-mono text-[10px]">
-                {diagnostics.slice(0, 3).map((diagnostic, index) => (
-                  <li key={`${diagnostic.moduleId}:${diagnostic.phase}:${index}`} className="break-words">
-                    <span className="font-semibold">
-                      {diagnostic.moduleId} · {diagnostic.phase}
-                    </span>{' '}
-                    — {diagnostic.message}
-                  </li>
-                ))}
-              </ul>
-              {diagnostics.length > 3 && <StatusPanelDescription>And {diagnostics.length - 3} more.</StatusPanelDescription>}
-            </StatusPanelContent>
-          </StatusPanel>
-        )}
-        <FilterBar className="sm:flex-col sm:items-stretch">
-          <SearchInput
-            containerClassName="flex-1"
-            density="compact"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onClear={() => setQuery('')}
-            placeholder="Search extensions and capabilities…"
-          />
-          <FilterBarToggle
-            label="Extension filters"
-            count={activeFilters}
-            active={activeFilters > 0}
-            aria-expanded={mobileFiltersOpen}
-            aria-controls="extension-filters"
-            onClick={() => setMobileFiltersOpen((open) => !open)}
-          >
-            <SlidersHorizontal />
-          </FilterBarToggle>
-          <FilterBarControls id="extension-filters" open={mobileFiltersOpen}>
-            <ToolbarGroup className="col-span-2" aria-label="Extension categories">
-              <ToolbarLabel>Category</ToolbarLabel>
-              <FilterChip active={category === 'all'} className="shrink-0" onClick={() => setCategory('all')}>
-                All
-              </FilterChip>
-              {categories.map((item) => (
-                <FilterChip key={item} active={category === item} className="shrink-0" onClick={() => setCategory(item)}>
-                  {categoryLabel(item)}
-                </FilterChip>
-              ))}
-            </ToolbarGroup>
-            <ToolbarGroup className="col-span-2" aria-label="Extension view">
-              <ToolbarLabel>View</ToolbarLabel>
-              <FilterChip active={view === 'installed'} count={active} onClick={() => setView('installed')}>
-                Installed
-              </FilterChip>
-              <FilterChip active={view === 'catalog'} count={modules.length} onClick={() => setView('catalog')}>
-                Catalog
-              </FilterChip>
-            </ToolbarGroup>
-            <ToolbarGroup className="col-span-2" aria-label="Extension status">
-              <ToolbarLabel>Status</ToolbarLabel>
-              <FilterChip active={lifecycle === 'all'} count={modules.length} onClick={() => setLifecycle('all')}>
-                All
-              </FilterChip>
-              <FilterChip active={lifecycle === 'ready'} count={ready} onClick={() => setLifecycle('ready')}>
-                <CircleDot className="text-emerald-400" />
-                Ready
-              </FilterChip>
-              <FilterChip active={lifecycle === 'attention'} count={attention} onClick={() => setLifecycle('attention')}>
-                <AlertTriangle className="text-amber-400" />
-                Needs setup
-              </FilterChip>
-              <FilterChip
-                active={lifecycle === 'disabled'}
-                count={modules.filter((module) => module.lifecycle === 'disabled').length}
-                onClick={() => setLifecycle('disabled')}
-              >
-                Disabled
-              </FilterChip>
-            </ToolbarGroup>
-          </FilterBarControls>
-        </FilterBar>
+      <Tabs defaultValue="apps" className="gap-4">
+        <TabsList aria-label="Extension type" className="w-full justify-start overflow-x-auto sm:w-fit">
+          <TabsTrigger value="apps">
+            <Boxes /> App extensions
+          </TabsTrigger>
+          <TabsTrigger value="skills">
+            <Sparkles /> Skills
+          </TabsTrigger>
+          <TabsTrigger value="mcp">
+            <PlugZap /> MCP servers
+          </TabsTrigger>
+        </TabsList>
 
-        {loading ? (
-          <div className={cn('grid gap-2', view === 'catalog' && 'md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4')}>
-            {[0, 1, 2].map((item) => (
-              <div key={item} className={cn('animate-pulse rounded-lg border bg-card/40', view === 'catalog' ? 'h-56' : 'h-16')} />
-            ))}
-          </div>
-        ) : visible.length ? (
-          view === 'installed' ? (
-            <div className="overflow-hidden rounded-lg border bg-card/30">
-              {visible.map((module) => (
-                <ExtensionInstalledRow
-                  key={module.id}
-                  module={module}
-                  cache={cacheStats.find((item) => item.namespace === module.id)}
-                  busy={busy === module.id || busy === `cache:${module.id}`}
-                  pinned={pinned.has(module.id)}
-                  onManage={() => setSelectedId(module.id)}
-                  onTogglePin={() => togglePin(module)}
-                  onToggle={(enabled) => void toggle(module, enabled)}
-                  onClearCache={() => void clearCache(module)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {visible.map((module) => (
-                <ExtensionCard
-                  key={module.id}
-                  module={module}
-                  cache={cacheStats.find((item) => item.namespace === module.id)}
-                  busy={busy === module.id}
-                  pinned={pinned.has(module.id)}
-                  onManage={() => setSelectedId(module.id)}
-                  onTogglePin={() => togglePin(module)}
-                  onToggle={(enabled) => void toggle(module, enabled)}
-                />
-              ))}
-            </div>
-          )
-        ) : (
-          <Empty className="min-h-52">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Boxes />
-              </EmptyMedia>
-              <EmptyTitle>No extensions match this view</EmptyTitle>
-              <EmptyDescription>Try a different search or category.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-      </section>
+        <TabsContent value="skills">
+          <section aria-label="Skills">
+            <AgentResourceSettings section="skills" />
+          </section>
+        </TabsContent>
+
+        <TabsContent value="mcp">
+          <section aria-label="MCP servers">
+            <AgentResourceSettings section="mcp" />
+          </section>
+        </TabsContent>
+
+        <TabsContent value="apps">
+          <section aria-label="Browse app extensions" className="flex flex-col gap-3">
+            {diagnostics.length > 0 && (
+              <StatusPanel tone="danger">
+                <AlertTriangle />
+                <StatusPanelContent>
+                  <StatusPanelTitle>
+                    {diagnostics.length} extension {diagnostics.length === 1 ? 'problem was' : 'problems were'} isolated
+                  </StatusPanelTitle>
+                  <StatusPanelDescription>Other extensions remain available.</StatusPanelDescription>
+                  <ul className="mt-2 space-y-1 font-mono text-[10px]">
+                    {diagnostics.slice(0, 3).map((diagnostic, index) => (
+                      <li key={`${diagnostic.moduleId}:${diagnostic.phase}:${index}`} className="break-words">
+                        <span className="font-semibold">
+                          {diagnostic.moduleId} · {diagnostic.phase}
+                        </span>{' '}
+                        — {diagnostic.message}
+                      </li>
+                    ))}
+                  </ul>
+                  {diagnostics.length > 3 && <StatusPanelDescription>And {diagnostics.length - 3} more.</StatusPanelDescription>}
+                </StatusPanelContent>
+              </StatusPanel>
+            )}
+            <FilterBar className="sm:flex-col sm:items-stretch">
+              <SearchInput
+                containerClassName="flex-1"
+                density="compact"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onClear={() => setQuery('')}
+                placeholder="Search extensions and capabilities…"
+              />
+              <FilterBarToggle
+                label="Extension filters"
+                count={activeFilters}
+                active={activeFilters > 0}
+                aria-expanded={mobileFiltersOpen}
+                aria-controls="extension-filters"
+                onClick={() => setMobileFiltersOpen((open) => !open)}
+              >
+                <SlidersHorizontal />
+              </FilterBarToggle>
+              <FilterBarControls id="extension-filters" open={mobileFiltersOpen}>
+                <ToolbarGroup className="col-span-2" aria-label="Extension categories">
+                  <ToolbarLabel>Category</ToolbarLabel>
+                  <FilterChip active={category === 'all'} className="shrink-0" onClick={() => setCategory('all')}>
+                    All
+                  </FilterChip>
+                  {categories.map((item) => (
+                    <FilterChip key={item} active={category === item} className="shrink-0" onClick={() => setCategory(item)}>
+                      {categoryLabel(item)}
+                    </FilterChip>
+                  ))}
+                </ToolbarGroup>
+                <ToolbarGroup className="col-span-2" aria-label="Extension view">
+                  <ToolbarLabel>View</ToolbarLabel>
+                  <FilterChip active={view === 'installed'} count={active} onClick={() => setView('installed')}>
+                    Installed
+                  </FilterChip>
+                  <FilterChip active={view === 'catalog'} count={modules.length} onClick={() => setView('catalog')}>
+                    Catalog
+                  </FilterChip>
+                </ToolbarGroup>
+                <ToolbarGroup className="col-span-2" aria-label="Extension status">
+                  <ToolbarLabel>Status</ToolbarLabel>
+                  <FilterChip active={lifecycle === 'all'} count={modules.length} onClick={() => setLifecycle('all')}>
+                    All
+                  </FilterChip>
+                  <FilterChip active={lifecycle === 'ready'} count={ready} onClick={() => setLifecycle('ready')}>
+                    <CircleDot className="text-emerald-400" />
+                    Ready
+                  </FilterChip>
+                  <FilterChip active={lifecycle === 'attention'} count={attention} onClick={() => setLifecycle('attention')}>
+                    <AlertTriangle className="text-amber-400" />
+                    Needs setup
+                  </FilterChip>
+                  <FilterChip
+                    active={lifecycle === 'disabled'}
+                    count={modules.filter((module) => module.lifecycle === 'disabled').length}
+                    onClick={() => setLifecycle('disabled')}
+                  >
+                    Disabled
+                  </FilterChip>
+                </ToolbarGroup>
+              </FilterBarControls>
+            </FilterBar>
+
+            {loading ? (
+              <div className={cn('grid gap-2', view === 'catalog' && 'md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4')}>
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className={cn('animate-pulse rounded-lg border bg-card/40', view === 'catalog' ? 'h-56' : 'h-16')} />
+                ))}
+              </div>
+            ) : visible.length ? (
+              view === 'installed' ? (
+                <div className="overflow-hidden rounded-lg border bg-card/30">
+                  {visible.map((module) => (
+                    <ExtensionInstalledRow
+                      key={module.id}
+                      module={module}
+                      cache={cacheStats.find((item) => item.namespace === module.id)}
+                      busy={busy === module.id || busy === `cache:${module.id}`}
+                      pinned={pinned.has(module.id)}
+                      onManage={() => setSelectedId(module.id)}
+                      onTogglePin={() => togglePin(module)}
+                      onToggle={(enabled) => void toggle(module, enabled)}
+                      onClearCache={() => void clearCache(module)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {visible.map((module) => (
+                    <ExtensionCard
+                      key={module.id}
+                      module={module}
+                      cache={cacheStats.find((item) => item.namespace === module.id)}
+                      busy={busy === module.id}
+                      pinned={pinned.has(module.id)}
+                      onManage={() => setSelectedId(module.id)}
+                      onTogglePin={() => togglePin(module)}
+                      onToggle={(enabled) => void toggle(module, enabled)}
+                    />
+                  ))}
+                </div>
+              )
+            ) : (
+              <Empty className="min-h-52">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Boxes />
+                  </EmptyMedia>
+                  <EmptyTitle>No extensions match this view</EmptyTitle>
+                  <EmptyDescription>Try a different search or category.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </section>
+        </TabsContent>
+      </Tabs>
 
       <Sheet
         open={Boolean(selected)}

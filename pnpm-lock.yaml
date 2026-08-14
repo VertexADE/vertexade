@@ -181,9 +181,6 @@ importers:
       expo-widgets:
         specifier: ~57.0.9
         version: 57.0.9(07fffcede32d55800a89452ff48905b7)
-      mermaid:
-        specifier: ^11.16.1
-        version: 11.16.1
       react:
         specifier: 19.2.3
         version: 19.2.3

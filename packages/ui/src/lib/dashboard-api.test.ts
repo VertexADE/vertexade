@@ -227,40 +227,53 @@ describe('dashboard API client', () => {
 
   it('debounces accepted dashboard events over the shared stream', async () => {
     vi.useFakeTimers()
-    class FakeEventSource {
-      static instance: FakeEventSource
-      listeners = new Map<string, Array<(event: Event) => void>>()
-      closed = false
-
-      constructor(readonly url: string) {
-        FakeEventSource.instance = this
+    const encoder = new TextEncoder()
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      if (String(input) === '/api/backends') {
+        return Response.json({
+          backends: [
+            {
+              id: 'primary',
+              label: 'Primary',
+              namespace: 0,
+              isDefault: true,
+              connected: true,
+              lastConnectedAt: null,
+              error: null,
+              apiPath: '/api',
+              realtime: true,
+            },
+          ],
+        })
       }
-
-      addEventListener(type: string, listener: (event: Event) => void) {
-        this.listeners.set(type, [...(this.listeners.get(type) || []), listener])
-      }
-
-      emit(type: string, event: Event) {
-        for (const listener of this.listeners.get(type) || []) listener(event)
-      }
-
-      close() {
-        this.closed = true
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
+      expect(String(input)).toBe('/api/events')
+      expect(new Headers(init?.headers).get('accept')).toBe('text/event-stream')
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            streamController = controller
+          },
+        }),
+        {
+          headers: { 'content-type': 'text/event-stream' },
+        },
+      )
+    })
+    vi.stubGlobal('fetch', fetch)
     const listener = vi.fn()
     const cleanup = subscribeToDashboardEvents(listener, isNotificationEvent)
-    const stream = FakeEventSource.instance
+    await vi.waitFor(() => expect(streamController).toBeDefined())
 
-    stream.emit('change', new MessageEvent('change', { data: JSON.stringify({ reason: 'job' }) }))
-    stream.emit('change', new MessageEvent('change', { data: JSON.stringify({ reason: 'notification' }) }))
-    stream.emit('change', new MessageEvent('change', { data: JSON.stringify({ reason: 'notification_dismissed' }) }))
+    streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"job"}\n\n'))
+    streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"notification"}\n\n'))
+    streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"notification_dismissed"}\n\n'))
     await vi.advanceTimersByTimeAsync(120)
 
-    expect(stream.url).toBe('/api/events')
     expect(listener).toHaveBeenCalledOnce()
+    streamController!.close()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.waitFor(() => expect(fetch.mock.calls.filter(([input]) => String(input) === '/api/events')).toHaveLength(2))
     cleanup()
-    expect(stream.closed).toBe(false)
   })
 })
