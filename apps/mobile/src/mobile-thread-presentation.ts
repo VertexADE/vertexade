@@ -61,7 +61,7 @@ export function mobileThreadOutcome(detail: MobileThreadDetails): MobileThreadOu
 }
 
 export function canComposeThreadMessage(detail: MobileThreadDetails): boolean {
-  return Boolean(detail.threadId && !detail.inputQuestions.length && !['review', 'work_review'].includes(detail.kind))
+  return Boolean(detail.threadId && !['review', 'work_review'].includes(detail.kind))
 }
 
 export function canForkMobileThread(detail: MobileThreadDetails): boolean {

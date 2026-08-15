@@ -136,6 +136,25 @@ describe('VertexADE sub-agent MCP server', () => {
     ).resolves.toMatchObject({ resultType: 'complete', structuredContent: { channel: 'stable' } })
   })
 
+  it('keeps legacy form requests open without a fixed-duration timeout', async () => {
+    process.env.VERTEXADE_SUBAGENT_API_URL = 'http://127.0.0.1:4174'
+    process.env.VERTEXADE_SUBAGENT_TOKEN = 'parent.capability'
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json({ status: 'submitted', markdown: '## Answer' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      handleSubagentMcpRequest({
+        jsonrpc: '2.0',
+        id: 16,
+        method: 'tools/call',
+        params: { name: 'form', arguments: { title: 'Release', fields: [{ id: 'channel', label: 'Channel', type: 'text' }] } },
+      }),
+    ).resolves.toMatchObject({ isError: false })
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4174/api/internal/subagents/form', expect.any(Object))
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false)
+  })
+
   it('uses the scoped capability when spawning a selected model', async () => {
     process.env.VERTEXADE_SUBAGENT_API_URL = 'http://127.0.0.1:4174/'
     process.env.VERTEXADE_SUBAGENT_TOKEN = 'parent.capability'

@@ -359,6 +359,7 @@ describe('mobile full detail views', () => {
     expect(screen.getAllByPlaceholderText('Enter your own answer')).toHaveLength(2)
     expect(screen.getByLabelText('Other answer for Which direction should we take?')).toBeOnTheScreen()
     expect(screen.getByLabelText('Other answer for Select everything that applies.')).toBeOnTheScreen()
+    expect(screen.getByLabelText('Thread message')).toBeOnTheScreen()
   })
 
   test('shows PR overview, conversation, checks, commits, and changed files', async () => {

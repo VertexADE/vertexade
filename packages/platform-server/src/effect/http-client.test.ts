@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { resilientFetch } from './http-client.ts'
+
+afterEach(() => vi.useRealTimers())
 
 describe('resilient Effect fetch', () => {
   it('retries idempotent requests after transient failures', async () => {
@@ -49,5 +51,24 @@ describe('resilient Effect fetch', () => {
         attempts: 1,
       }),
     ).resolves.toBe(response)
+  })
+
+  it('supports requests with no fixed-duration timeout', async () => {
+    vi.useFakeTimers()
+    let complete: ((response: Response) => void) | undefined
+    const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise((resolve) => { complete = resolve }))
+    let settled = false
+    const request = resilientFetch({
+      service: 'Long-lived form',
+      fetch,
+      url: 'https://vertexade.test/form',
+      timeoutMs: null,
+      attempts: 1,
+    }).finally(() => { settled = true })
+
+    await vi.advanceTimersByTimeAsync(7 * 24 * 60 * 60 * 1_000)
+    expect(settled).toBe(false)
+    complete?.(Response.json({ ok: true }))
+    await expect(request).resolves.toMatchObject({ ok: true })
   })
 })

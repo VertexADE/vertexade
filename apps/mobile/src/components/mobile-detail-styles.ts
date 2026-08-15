@@ -506,6 +506,7 @@ export const mobileDetailStyles = StyleSheet.create({
   textarea: { minHeight: 100, textAlignVertical: 'top' },
   compactTextarea: { minHeight: 72, textAlignVertical: 'top' },
   footer: {
+    backgroundColor: 'transparent',
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,

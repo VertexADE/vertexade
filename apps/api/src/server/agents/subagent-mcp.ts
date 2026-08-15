@@ -30,19 +30,21 @@ function environment() {
 
 async function api(path: string, options: RequestInit = {}) {
   const { apiUrl, token } = environment()
+  const url = `${apiUrl}${path}`
+  const init: RequestInit = {
+    ...options,
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...options.headers,
+    },
+  }
   const response = await resilientFetch({
     service: 'VertexADE sub-agent harness',
     fetch: globalThis.fetch,
-    url: `${apiUrl}${path}`,
-    init: {
-      ...options,
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        ...options.headers,
-      },
-    },
-    timeoutMs: path === '/api/internal/subagents/form' ? 86_400_000 : 65_000,
+    url,
+    init,
+    timeoutMs: path === '/api/internal/subagents/form' ? null : 65_000,
     attempts: 1,
   })
   const text = (await readResponseBody(response, maximumResponseBytes)).toString('utf8')

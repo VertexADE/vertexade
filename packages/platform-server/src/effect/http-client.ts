@@ -10,7 +10,7 @@ export type ResilientFetchInput = {
   fetch: typeof globalThis.fetch
   url: string | URL
   init?: RequestInit
-  timeoutMs?: number
+  timeoutMs?: number | null
   attempts?: number
   retryableStatuses?: ReadonlySet<number>
   retryDelayMs?: (response: Response | undefined, attempt: number) => number
@@ -27,7 +27,7 @@ function requestSignal(effectSignal: AbortSignal, requestSignal?: AbortSignal | 
 }
 
 function requestAttempt({ service, fetch, url, init = {}, timeoutMs = 15_000 }: ResilientFetchInput): ApiEffect<Response> {
-  return tryApiPromise(
+  const request = tryApiPromise(
     (effectSignal) =>
       fetch(url, {
         ...init,
@@ -39,7 +39,9 @@ function requestAttempt({ service, fetch, url, init = {}, timeoutMs = 15_000 }: 
       status: 502,
       code: 'UPSTREAM_REQUEST_FAILED',
     },
-  ).pipe(
+  )
+  if (timeoutMs === null) return request
+  return request.pipe(
     Effect.timeoutFail({
       duration: Duration.millis(timeoutMs),
       onTimeout: () =>
