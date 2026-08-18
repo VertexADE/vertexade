@@ -85,9 +85,6 @@ export const agentLaunchOptionsStore = new Store<StoredAgentLaunchOptions>(store
 
 export function agentLaunchOptions(agentId?: string): AgentLaunchOptions {
   const stored = storedAgentLaunchOptions()
-  if (JSON.stringify(stored) !== JSON.stringify(agentLaunchOptionsStore.state)) {
-    agentLaunchOptionsStore.setState(() => stored)
-  }
   return optionsFromStored(stored, agentId)
 }
 

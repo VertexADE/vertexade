@@ -1,6 +1,6 @@
 import { lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ModuleAccent, ModuleCatalog, ModuleCatalogEntry } from '@vertexade/platform-contracts'
-import { Moon, Plus, Search, Server, Sun, type LucideIcon } from 'lucide-react'
+import { Moon, Plus, Search, Sun, type LucideIcon } from 'lucide-react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { readAppearancePreferences, saveAppearancePreferences } from '@vertexade/ui/lib/appearance-preferences'
@@ -8,9 +8,7 @@ import { MobileActionDock, MobileMenuButton } from '@vertexade/ui/components/app
 import { NotificationCenter } from '@vertexade/ui/components/notification-center'
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Kbd } from '@vertexade/ui/components/ui/kbd'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import {
   Sidebar,
   SidebarContent,
@@ -29,10 +27,11 @@ import {
 } from '@vertexade/ui/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@vertexade/ui/components/ui/tooltip'
 import { useReactiveApi } from '@vertexade/ui/hooks/use-reactive-api'
-import { api, isModuleCatalogEvent, platformBackendState, platformConnectionState } from '@vertexade/ui/lib/dashboard-api'
-import { activeBackendId, resolveActiveBackend, saveActiveBackendId, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
+import { api, backendApi, isModuleCatalogEvent, platformBackendState, platformConnectionState } from '@vertexade/ui/lib/dashboard-api'
+import { loadBackendRegistry, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import { extensionAccent, extensionIcon } from '@vertexade/ui/lib/extension-presentation'
 import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
+import { unifiedNavigationModules, type NavigationModule } from '@vertexade/ui/lib/app-nav-model'
 import { desktopSidebarOpen, WIDE_DESKTOP_BREAKPOINT } from '@vertexade/ui/lib/responsive-layout'
 import { cn } from '@vertexade/ui/lib/utils'
 import { useUiPreferences } from '@vertexade/ui/lib/ui-preferences'
@@ -59,7 +58,11 @@ export type WorkspaceSearchResult = {
 }
 
 const loadAppCommandPalette = () => import('@vertexade/ui/components/app-command-palette')
-const LazyAppCommandPalette = lazy(() => loadAppCommandPalette().then(({ AppCommandPalette }) => ({ default: AppCommandPalette })))
+const LazyAppCommandPalette = lazy(() =>
+  loadAppCommandPalette().then(({ AppCommandPalette }) => ({
+    default: AppCommandPalette,
+  })),
+)
 const sidebarPreferenceCookie = 'sidebar_state'
 
 function storedSidebarPreference() {
@@ -82,14 +85,25 @@ function remoteDescription(module: ModuleCatalogEntry) {
   return [module.navigation?.description, module.description, `Open the ${module.name} module`].find(Boolean) as string
 }
 
-function remoteNavigationItem(module: ModuleCatalogEntry, existingPaths: Set<string>): NavItem | null {
-  const routeBase = extensionWorkspaceRoute(module)
-  if (!module.enabled || !routeBase || existingPaths.has(routeBase)) return null
+async function loadNavigationCatalog(): Promise<{ modules: NavigationModule[] }> {
+  const { backends } = await loadBackendRegistry()
+  const catalogs = await Promise.allSettled(
+    backends.map(async (backend) => ({ backend, catalog: await backendApi<ModuleCatalog>(backend.id, '/api/modules') })),
+  )
+  return {
+    modules: unifiedNavigationModules(catalogs.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))),
+  }
+}
+
+function remoteNavigationItem(module: NavigationModule, existingPaths: Set<string>): NavItem | null {
+  const routeBase = extensionWorkspaceRoute(module, module.backendId)
+  const pathname = routeBase?.split('?')[0]
+  if (!module.enabled || !routeBase || !pathname || existingPaths.has(pathname)) return null
   return {
     to: routeBase,
     label: remoteLabel(module),
     description: remoteDescription(module),
-    icon: extensionIcon(module.catalog?.icon, module.id),
+    icon: extensionIcon(module.catalog?.icon, module.id, module.backendId),
     group: 'Operations',
     moduleId: module.id,
     accent: module.catalog?.accent,
@@ -97,7 +111,7 @@ function remoteNavigationItem(module: ModuleCatalogEntry, existingPaths: Set<str
   }
 }
 
-function navigationItems(modules: ModuleCatalogEntry[], pinned?: ReadonlySet<string>): NavItem[] {
+function navigationItems(modules: NavigationModule[], pinned?: ReadonlySet<string>): NavItem[] {
   const core = [...coreItems]
   const existingPaths = new Set<string>(core.map((item) => item.to))
   const eligible = pinned ? modules.filter((module) => pinned.has(module.id)) : modules
@@ -106,8 +120,9 @@ function navigationItems(modules: ModuleCatalogEntry[], pinned?: ReadonlySet<str
 }
 
 function isActiveNavigationItem(item: NavItem, pathname: string) {
-  if (!item.moduleId) return item.to === '/' ? pathname === '/' : item.to === pathname || pathname.startsWith(`${item.to}/`)
-  return pathname === item.to || pathname.startsWith(`${item.to}/`)
+  const itemPath = item.to.split('?')[0]!
+  if (!item.moduleId) return itemPath === '/' ? pathname === '/' : itemPath === pathname || pathname.startsWith(`${itemPath}/`)
+  return pathname === itemPath || pathname.startsWith(`${itemPath}/`)
 }
 
 function navigationStatus(item: NavItem) {
@@ -266,67 +281,19 @@ function MobileSidebarRouteCloser({ pathname }: { pathname: string }) {
   return null
 }
 
-function ActiveBackendSelect({ backends }: { backends: BackendDescriptor[] }) {
-  const [selectedBackendId, setSelectedBackendId] = useState('')
-
-  useEffect(() => {
-    const selected = resolveActiveBackend(backends, activeBackendId())
-    setSelectedBackendId(selected?.id || '')
-  }, [backends])
-
-  const selectBackend = (backendId: string) => {
-    if (backendId === selectedBackendId) return
-    saveActiveBackendId(backendId)
-    window.location.reload()
-  }
-
-  if (backends.length <= 1) return null
-  const connectedCount = backends.filter((backend) => backend.connected).length
-  const degraded = connectedCount < backends.length
-  return (
-    <div className="flex items-center gap-2">
-      {degraded ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" aria-label={`${connectedCount} of ${backends.length} servers connected`}>
-              {connectedCount}/{backends.length}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            {backends
-              .filter((backend) => !backend.connected)
-              .map((backend) => `${backend.label}: ${backend.error || 'Unavailable'}`)
-              .join(' · ')}
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
-      <Select value={selectedBackendId} onValueChange={selectBackend}>
-        <SelectTrigger size="sm" className="max-w-36 border-border/55 bg-muted/24" aria-label="Active VertexADE server">
-          <Server />
-          <SelectValue placeholder="Select server" />
-        </SelectTrigger>
-        <SelectContent align="end">
-          <SelectGroup>
-            {backends.map((backend) => (
-              <SelectItem key={backend.id} value={backend.id}>
-                <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
-                {backend.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </div>
-  )
+function backendHealth(backend: Pick<BackendDescriptor, 'connected' | 'error' | 'realtime'>) {
+  if (!backend.connected) return { label: 'Offline', tone: 'bg-destructive' }
+  if (backend.realtime === false || backend.error) return { label: 'Unstable', tone: 'bg-warning' }
+  return { label: 'Connected', tone: 'bg-success' }
 }
 
 export function AppNav({ children }: { children: ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
   const [searchResults, setSearchResults] = useState<WorkspaceSearchResult[]>([])
-  const moduleCatalog = useReactiveApi<ModuleCatalog>({
-    key: 'module-catalog',
-    load: () => api<ModuleCatalog>('/api/modules'),
+  const moduleCatalog = useReactiveApi<{ modules: NavigationModule[] }>({
+    key: 'unified-navigation-module-catalog',
+    load: loadNavigationCatalog,
     accepts: isModuleCatalogEvent,
   })
   const modules = moduleCatalog.data?.modules ?? []
@@ -338,9 +305,29 @@ export function AppNav({ children }: { children: ReactNode }) {
   const [recentPaths, setRecentPaths] = useState<string[]>([])
   const [wideDesktopNavigation, setWideDesktopNavigation] = useState(false)
   const { resolvedTheme, setTheme } = useTheme()
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   const navigate = useNavigate()
-
+  const displayedBackends = useMemo<BackendDescriptor[]>(
+    () =>
+      backends.length
+        ? backends
+        : [
+            {
+              id: 'local',
+              label: 'Local',
+              namespace: 0,
+              isDefault: true,
+              connected,
+              lastConnectedAt: null,
+              error: null,
+              apiPath: '/api',
+              realtime: connected,
+            },
+          ],
+    [backends, connected],
+  )
   useEffect(() => {
     const media = window.matchMedia(`(min-width: ${WIDE_DESKTOP_BREAKPOINT}px)`)
     const syncNavigation = () => setWideDesktopNavigation(desktopSidebarOpen(window.innerWidth, storedSidebarPreference()))
@@ -445,9 +432,13 @@ export function AppNav({ children }: { children: ReactNode }) {
         module.enabled
           ? (module.ui?.commands || []).map((command) => ({
               ...command,
+              to:
+                module.backendId && command.to.startsWith(`/extensions/${module.id}`) && !command.to.includes('server=')
+                  ? `${command.to}${command.to.includes('?') ? '&' : '?'}server=${encodeURIComponent(module.backendId)}`
+                  : command.to,
               moduleId: module.id,
               moduleName: module.name,
-              icon: extensionIcon(module.catalog?.icon, module.id),
+              icon: extensionIcon(module.catalog?.icon, module.id, module.backendId),
             }))
           : [],
       ),
@@ -540,7 +531,12 @@ export function AppNav({ children }: { children: ReactNode }) {
                     }}
                     size="lg"
                     className="h-10 rounded-lg bg-primary/10 text-sidebar-primary hover:bg-primary/15 md:h-8 md:rounded-md group-data-[collapsible=icon]:justify-center"
-                    onClick={() => void navigate({ to: '/work', search: { create: 1, start: 1 } })}
+                    onClick={() =>
+                      void navigate({
+                        to: '/work',
+                        search: { create: 1, start: 1 },
+                      })
+                    }
                   >
                     <span className="grid size-7 shrink-0 place-items-center">
                       <Plus className="size-4" />
@@ -563,59 +559,46 @@ export function AppNav({ children }: { children: ReactNode }) {
                 asChild
                 tooltip={{
                   children: (
-                    <span className="grid min-w-44 gap-0.5 py-0.5 text-left">
-                      <strong className="flex items-center gap-2 text-xs font-semibold">
-                        <span className={cn('size-1.5 rounded-full', connected ? 'bg-emerald-500' : 'bg-amber-500')} />
-                        {backends.length > 1
-                          ? `${backends.filter((backend) => backend.connected).length}/${backends.length} servers live`
-                          : connected
-                            ? 'Workspace live'
-                            : 'Reconnecting'}
-                      </strong>
-                      {backends.length > 1 ? (
-                        <span className="mt-1 grid gap-1 text-[11px] text-background/70">
-                          {backends.map((backend) => (
-                            <span key={backend.id} className="flex items-center gap-1.5">
-                              <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-emerald-500' : 'bg-amber-500')} />
-                              <span className="truncate">{backend.label}</span>
-                              <span className="ml-auto">{backend.connected ? 'Live' : 'Offline'}</span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-background/70">
-                          {connected ? 'Realtime updates are connected' : 'Trying to restore realtime updates'}
-                        </span>
-                      )}
+                    <span className="grid min-w-40 gap-1 text-left">
+                      {displayedBackends.map((backend) => {
+                        const health = backendHealth(backend)
+                        return (
+                          <span key={backend.id} className="flex min-w-0 items-center gap-2">
+                            <span className={cn('size-1.5 shrink-0 rounded-full', health.tone)} />
+                            <strong className="truncate text-xs font-semibold">{backend.label}</strong>
+                            <span className="ml-auto text-[10px] text-background/70">{health.label}</span>
+                          </span>
+                        )
+                      })}
                     </span>
                   ),
-                  className: 'items-stretch px-3 py-2',
+                  className: 'px-3 py-2',
                   sideOffset: 8,
                 }}
-                className={cn(
-                  'rounded-md px-2 text-[11px] text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:justify-center',
-                  backends.length > 1 ? 'h-auto min-h-8 py-1.5' : 'h-8',
-                )}
+                className="h-auto min-h-8 rounded-md px-2 py-1 text-[11px] text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:py-0"
               >
-                <div role="status">
-                  <span className="grid size-7 shrink-0 place-items-center">
-                    <span className={cn('size-2 rounded-full ring-4 ring-sidebar-accent', connected ? 'bg-emerald-500' : 'bg-amber-500')} />
+                <div
+                  role="status"
+                  aria-label={displayedBackends
+                    .map((backend) => `${backend.label}: ${backendHealth(backend).label.toLowerCase()}`)
+                    .join(', ')}
+                >
+                  <span className="hidden size-7 shrink-0 place-items-center gap-0.5 group-data-[collapsible=icon]:flex">
+                    {displayedBackends.slice(0, 3).map((backend) => (
+                      <span key={backend.id} className={cn('size-1.5 rounded-full', backendHealth(backend).tone)} />
+                    ))}
                   </span>
-                  <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                    {backends.length > 1 ? (
-                      <span className="grid gap-0.5">
-                        {backends.map((backend) => (
-                          <span key={backend.id} className="flex min-w-0 items-center gap-1.5">
-                            <span className={cn('size-1.5 shrink-0 rounded-full', backend.connected ? 'bg-emerald-500' : 'bg-amber-500')} />
-                            <span className="truncate">{backend.label}</span>
-                          </span>
-                        ))}
-                      </span>
-                    ) : connected ? (
-                      'Workspace live'
-                    ) : (
-                      'Reconnecting…'
-                    )}
+                  <span className="grid min-w-0 flex-1 gap-0.5 group-data-[collapsible=icon]:hidden">
+                    {displayedBackends.map((backend) => {
+                      const health = backendHealth(backend)
+                      return (
+                        <span key={backend.id} className="flex min-w-0 items-center gap-1.5">
+                          <span className={cn('size-1.5 shrink-0 rounded-full', health.tone)} />
+                          <span className="truncate">{backend.label}</span>
+                          <span className="ml-auto text-[9px] text-sidebar-foreground/40">{health.label}</span>
+                        </span>
+                      )
+                    })}
                   </span>
                 </div>
               </SidebarMenuButton>
@@ -663,7 +646,6 @@ export function AppNav({ children }: { children: ReactNode }) {
               <Kbd className="ml-auto">⌘ K</Kbd>
             </Button>
             <div className="ml-auto flex items-center gap-1">
-              <ActiveBackendSelect backends={backends} />
               {!coreScreenOwnsPrimaryAction(pathname) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -671,7 +653,12 @@ export function AppNav({ children }: { children: ReactNode }) {
                       variant="ghost"
                       size="icon-sm"
                       className="md:hidden"
-                      onClick={() => void navigate({ to: '/work', search: { create: 1, start: 1 } })}
+                      onClick={() =>
+                        void navigate({
+                          to: '/work',
+                          search: { create: 1, start: 1 },
+                        })
+                      }
                       aria-label="Start new work"
                     >
                       <Plus />
@@ -706,7 +693,10 @@ export function AppNav({ children }: { children: ReactNode }) {
                     onClick={() => {
                       const colorMode = resolvedTheme === 'dark' ? 'light' : 'dark'
                       setTheme(colorMode)
-                      saveAppearancePreferences({ ...readAppearancePreferences(), colorMode })
+                      saveAppearancePreferences({
+                        ...readAppearancePreferences(),
+                        colorMode,
+                      })
                     }}
                     aria-label="Toggle color theme"
                   >

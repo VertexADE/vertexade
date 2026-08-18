@@ -79,6 +79,7 @@ export function loadedAgentOptions(current: AgentLaunchOptions, result: AgentOpt
 
 export function AgentOptionsPicker({
   compact = false,
+  fields = 'all',
   value,
   onChange,
   lockedAgentId,
@@ -88,6 +89,7 @@ export function AgentOptionsPicker({
   backendId,
 }: {
   compact?: boolean
+  fields?: 'all' | 'essentials' | 'advanced'
   value?: AgentLaunchOptions
   onChange?: (value: AgentLaunchOptions) => void
   lockedAgentId?: string
@@ -101,6 +103,8 @@ export function AgentOptionsPicker({
   const [agents, setAgents] = useState<AgentChoice[]>([])
   const stored = useAgentLaunchOptions()
   const current = controlled ? value! : stored
+  const showEssentials = fields !== 'advanced'
+  const showAdvanced = fields !== 'essentials'
   const [agentName, setAgentName] = useState('Agent')
   function update(next: AgentLaunchOptions) {
     if (controlled) onChange!(next)
@@ -181,23 +185,48 @@ export function AgentOptionsPicker({
   )
   const controls = (
     <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-3">
-      <Label className="min-w-0 flex-col items-stretch gap-1.5">
-        Agent
-        <Select disabled={Boolean(lockedAgentId)} value={current.agentId || 'default'} onValueChange={changeAgent}>
-          <SelectTrigger className="w-full min-w-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {choices.map((item) => (
-              <SelectItem key={item.id} value={item.id}>
-                {item.name}
-                {item.preset ? ' · custom' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Label>
-      {current.agentId === 'codex' && (
+      {showEssentials && (
+        <>
+          <Label className="min-w-0 flex-col items-stretch gap-1.5">
+            Agent
+            <Select disabled={Boolean(lockedAgentId)} value={current.agentId || 'default'} onValueChange={changeAgent}>
+              <SelectTrigger className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {choices.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                    {item.preset ? ' · custom' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Label>
+          <Label className="min-w-0 flex-col items-stretch gap-1.5">
+            Model
+            <Select
+              disabled={Boolean(fixedPreset)}
+              value={current.model || 'default'}
+              onValueChange={(next) => changeModel(next === 'default' ? '' : next)}
+            >
+              <SelectTrigger className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">{agentName} default</SelectItem>
+                {pendingModel && <SelectItem value={pendingModel}>{pendingModel}</SelectItem>}
+                {models.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Label>
+        </>
+      )}
+      {showAdvanced && current.agentId === 'codex' && (
         <Label className="min-w-0 flex-col items-stretch gap-1.5">
           Service speed
           <Select
@@ -214,52 +243,33 @@ export function AgentOptionsPicker({
           </Select>
         </Label>
       )}
-      <Label className="min-w-0 flex-col items-stretch gap-1.5">
-        Model
-        <Select
-          disabled={Boolean(fixedPreset)}
-          value={current.model || 'default'}
-          onValueChange={(next) => changeModel(next === 'default' ? '' : next)}
-        >
-          <SelectTrigger className="w-full min-w-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="default">{agentName} default</SelectItem>
-            {pendingModel && <SelectItem value={pendingModel}>{pendingModel}</SelectItem>}
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                {model.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Label>
-      <Label className="min-w-0 flex-col items-stretch gap-1.5">
-        Reasoning level
-        <Select
-          disabled={Boolean(fixedPreset)}
-          value={current.reasoningEffort || 'default'}
-          onValueChange={(next) => update({ ...current, reasoningEffort: next === 'default' ? '' : next })}
-        >
-          <SelectTrigger className="w-full min-w-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="default">Model default</SelectItem>
-            {pendingReasoningEffort && <SelectItem value={pendingReasoningEffort}>{pendingReasoningEffort}</SelectItem>}
-            {reasoningEfforts.map((effort) => (
-              <SelectItem key={effort.id} value={effort.id}>
-                {effort.id}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Label>
+      {showAdvanced && (
+        <Label className="min-w-0 flex-col items-stretch gap-1.5">
+          Reasoning level
+          <Select
+            disabled={Boolean(fixedPreset)}
+            value={current.reasoningEffort || 'default'}
+            onValueChange={(next) => update({ ...current, reasoningEffort: next === 'default' ? '' : next })}
+          >
+            <SelectTrigger className="w-full min-w-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Model default</SelectItem>
+              {pendingReasoningEffort && <SelectItem value={pendingReasoningEffort}>{pendingReasoningEffort}</SelectItem>}
+              {reasoningEfforts.map((effort) => (
+                <SelectItem key={effort.id} value={effort.id}>
+                  {effort.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Label>
+      )}
     </div>
   )
   const delegation =
-    showSubagents && !readOnlyOnly ? (
+    showAdvanced && showSubagents && !readOnlyOnly ? (
       <AgentSubagentOption
         agent={selectedAgent}
         checked={current.allowSubagents}
@@ -269,7 +279,9 @@ export function AgentOptionsPicker({
   if (!compact)
     return (
       <div className="space-y-2">
-        <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground">{agentName} execution</p>
+        <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+          {fields === 'essentials' ? 'Agent and model' : fields === 'advanced' ? 'Execution details' : `${agentName} execution`}
+        </p>
         {controls}
         {delegation}
       </div>

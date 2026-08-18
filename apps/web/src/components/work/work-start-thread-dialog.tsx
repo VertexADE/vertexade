@@ -61,15 +61,20 @@ export function StartThreadDialog({
             prompt={prompt}
             onPromptChange={setPrompt}
             onUploadingChange={setUploadingImages}
-            references={references}
-            onReferencesChange={setReferences}
             repositories={repositories}
             selected={selected}
             onSelectedChange={setSelected}
           />
-          <AgentSettings workItemId={item.id} resourceSelection={resourceSelection} onResourceSelectionChange={setResourceSelection} />
-          <ImplementationDeliveryOptions
-            hidden={contributorReview}
+          <section className="rounded-lg border bg-muted/[.06] p-3" aria-label="Quick agent setup">
+            <AgentOptionsPicker fields="essentials" />
+          </section>
+          <AdvancedThreadSettings
+            contributorReview={contributorReview}
+            workItemId={item.id}
+            resourceSelection={resourceSelection}
+            onResourceSelectionChange={setResourceSelection}
+            references={references}
+            onReferencesChange={setReferences}
             splitWorkItem={splitWorkItem}
             onSplitWorkItemChange={setSplitWorkItem}
             createPr={createPr}
@@ -112,8 +117,6 @@ function ImplementationStartFields({
   prompt,
   onPromptChange,
   onUploadingChange,
-  references,
-  onReferencesChange,
   repositories,
   selected,
   onSelectedChange,
@@ -122,8 +125,6 @@ function ImplementationStartFields({
   prompt: string
   onPromptChange: (value: string) => void
   onUploadingChange: (uploading: boolean) => void
-  references: Parameters<typeof WorkReferencePicker>[0]['selected']
-  onReferencesChange: Parameters<typeof WorkReferencePicker>[0]['onChange']
   repositories: Parameters<typeof RepositoryMultiSelect>[0]['repositories']
   selected: number[]
   onSelectedChange: (value: number[]) => void
@@ -131,11 +132,6 @@ function ImplementationStartFields({
   if (hidden) return null
   return (
     <>
-      <div className="rounded-lg border border-blue-500/25 bg-blue-500/[.05] p-3 text-[11px] leading-relaxed text-muted-foreground">
-        <Bot className="mr-2 inline size-4 text-blue-400" />
-        <strong className="text-blue-300">Work thread:</strong> use this for implementation or investigation. To inspect a stopped worktree
-        without changing it, start a review thread instead.
-      </div>
       <PromptImageTextarea
         value={prompt}
         onValueChange={onPromptChange}
@@ -143,35 +139,56 @@ function ImplementationStartFields({
         className="min-h-32"
         placeholder="Describe the complete outcome and paste reference images…"
       />
-      <WorkReferencePicker selected={references} onChange={onReferencesChange} />
       <RepositoryMultiSelect repositories={repositories} selected={selected} onChange={onSelectedChange} />
     </>
   )
 }
 
-function AgentSettings({
+function AdvancedThreadSettings({
+  contributorReview,
   workItemId,
   resourceSelection,
   onResourceSelectionChange,
+  references,
+  onReferencesChange,
+  splitWorkItem,
+  onSplitWorkItemChange,
+  createPr,
+  onCreatePrChange,
 }: {
+  contributorReview: boolean
   workItemId: number
   resourceSelection: Parameters<typeof AgentResourcePicker>[0]['value'] | null
   onResourceSelectionChange: Parameters<typeof AgentResourcePicker>[0]['onChange']
+  references: Parameters<typeof WorkReferencePicker>[0]['selected']
+  onReferencesChange: Parameters<typeof WorkReferencePicker>[0]['onChange']
+  splitWorkItem: boolean
+  onSplitWorkItemChange: (value: boolean) => void
+  createPr: boolean
+  onCreatePrChange: (value: boolean) => void
 }) {
   return (
     <details className="group rounded-lg border bg-muted/[.08]">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-medium">
         <Settings2 className="size-3.5 text-muted-foreground" />
-        <span className="flex-1">Agent and context settings</span>
-        <span className="text-[11px] font-normal text-muted-foreground">Use saved defaults</span>
+        <span className="flex-1">More settings</span>
+        <span className="text-[11px] font-normal text-muted-foreground">Reasoning, context, and delivery</span>
         <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="space-y-4 border-t p-3">
-        <AgentOptionsPicker />
+        <AgentOptionsPicker fields="advanced" />
         <AgentResourcePicker
           workItemId={workItemId}
           value={resourceSelection ?? emptyAgentResourceSelection}
           onChange={onResourceSelectionChange}
+        />
+        {!contributorReview && <WorkReferencePicker selected={references} onChange={onReferencesChange} />}
+        <ImplementationDeliveryOptions
+          hidden={contributorReview}
+          splitWorkItem={splitWorkItem}
+          onSplitWorkItemChange={onSplitWorkItemChange}
+          createPr={createPr}
+          onCreatePrChange={onCreatePrChange}
         />
       </div>
     </details>

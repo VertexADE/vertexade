@@ -15,18 +15,34 @@ import {
   type AppearancePreferences,
   type ColorMode,
   type FontPreset,
+  type MessageBubblePreset,
   type ThemePreset,
+  type ThreadFontPreset,
+  type ThreadFontSize,
 } from '@vertexade/ui/lib/appearance-preferences'
 import { cn } from '@vertexade/ui/lib/utils'
 
 const themes: Array<{ id: ThemePreset; label: string; color: string }> = [
-  { id: 'default', label: 'Indigo', color: '#6672df' },
+  { id: 'default', label: 'Indigo', color: '#8b92ff' },
+  { id: 'black', label: 'Black', color: '#171717' },
+  { id: 'graphite', label: 'Graphite', color: '#52525b' },
+  { id: 'slate', label: 'Slate', color: '#64748b' },
   { id: 'violet', label: 'Violet', color: '#9b87f5' },
   { id: 'ocean', label: 'Ocean', color: '#38b7dc' },
+  { id: 'teal', label: 'Teal', color: '#2dd4bf' },
   { id: 'forest', label: 'Forest', color: '#57c77c' },
+  { id: 'lime', label: 'Lime', color: '#a3e635' },
   { id: 'amber', label: 'Amber', color: '#e6a23c' },
+  { id: 'orange', label: 'Orange', color: '#fb923c' },
   { id: 'rose', label: 'Rose', color: '#ed7799' },
+  { id: 'fuchsia', label: 'Fuchsia', color: '#e879f9' },
 ]
+
+const messageBubbleThemes: Array<{
+  id: MessageBubblePreset
+  label: string
+  color: string
+}> = [{ id: 'theme', label: 'Theme', color: 'var(--primary)' }, ...themes]
 
 const fonts: Array<{ id: FontPreset; label: string }> = [
   { id: 'system', label: 'System' },
@@ -35,6 +51,13 @@ const fonts: Array<{ id: FontPreset; label: string }> = [
   { id: 'serif', label: 'Serif' },
   { id: 'mono', label: 'Monospace' },
   { id: 'custom', label: 'Custom stack' },
+]
+
+const threadFonts: Array<{ id: ThreadFontPreset; label: string }> = [{ id: 'interface', label: 'Follow interface' }, ...fonts]
+const threadFontSizes: Array<{ id: ThreadFontSize; label: string }> = [
+  { id: 'small', label: 'Small' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'large', label: 'Large' },
 ]
 
 export function AppearanceSettings() {
@@ -91,7 +114,7 @@ export function AppearanceSettings() {
               </Field>
               <Field>
                 <FieldLabel id="appearance-accent-palette">Accent palette</FieldLabel>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
                   {themes.map((theme) => (
                     <button
                       key={theme.id}
@@ -110,6 +133,28 @@ export function AppearanceSettings() {
                   ))}
                 </div>
                 <FieldDescription>Applied immediately to interactive controls, focus states, and accents.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel id="appearance-message-bubbles">Message bubbles</FieldLabel>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {messageBubbleThemes.map((theme) => (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => update({ messageBubblePreset: theme.id })}
+                      className={cn(
+                        'flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-lg border border-border/60 bg-background/35 text-[11px] text-muted-foreground transition-all hover:-translate-y-0.5 hover:bg-muted/60',
+                        value.messageBubblePreset === theme.id &&
+                          'border-primary/60 bg-primary/10 text-accent-foreground shadow-sm ring-1 ring-primary/15',
+                      )}
+                      aria-pressed={value.messageBubblePreset === theme.id}
+                    >
+                      <span className="size-5 rounded-full border border-white/15" style={{ backgroundColor: theme.color }} />
+                      {theme.label}
+                    </button>
+                  ))}
+                </div>
+                <FieldDescription>Choose a message color independently, or keep it matched to the interface theme.</FieldDescription>
               </Field>
             </FieldGroup>
           </CardContent>
@@ -135,6 +180,14 @@ export function AppearanceSettings() {
                 customValue={value.customCodeFont}
                 onPreset={(codeFont) => update({ codeFont })}
                 onCustom={(customCodeFont) => update({ customCodeFont })}
+              />
+              <ThreadTypographyControl
+                font={value.threadFont}
+                customFont={value.customThreadFont}
+                size={value.threadFontSize}
+                onFont={(threadFont) => update({ threadFont })}
+                onCustomFont={(customThreadFont) => update({ customThreadFont })}
+                onSize={(threadFontSize) => update({ threadFontSize })}
               />
             </FieldGroup>
           </CardContent>
@@ -164,6 +217,67 @@ export function AppearanceSettings() {
         </Button>
       </div>
     </div>
+  )
+}
+
+function ThreadTypographyControl({
+  font,
+  customFont,
+  size,
+  onFont,
+  onCustomFont,
+  onSize,
+}: {
+  font: ThreadFontPreset
+  customFont: string
+  size: ThreadFontSize
+  onFont: (value: ThreadFontPreset) => void
+  onCustomFont: (value: string) => void
+  onSize: (value: ThreadFontSize) => void
+}) {
+  return (
+    <Field className="sm:col-span-2">
+      <FieldLabel>Thread messages</FieldLabel>
+      <FieldGroup className="grid grid-cols-2 gap-2">
+        <Select value={font} onValueChange={(next) => onFont(next as ThreadFontPreset)}>
+          <SelectTrigger aria-label="Thread message font">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {threadFonts.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Select value={size} onValueChange={(next) => onSize(next as ThreadFontSize)}>
+          <SelectTrigger aria-label="Thread message size">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {threadFontSizes.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </FieldGroup>
+      {font === 'custom' && (
+        <Input
+          value={customFont}
+          onChange={(event) => onCustomFont(event.target.value)}
+          placeholder="Inter, Arial, sans-serif"
+          aria-label="Thread message custom font stack"
+        />
+      )}
+      <FieldDescription>Shared by user and agent messages; code keeps the code font.</FieldDescription>
+    </Field>
   )
 }
 

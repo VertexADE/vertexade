@@ -39,4 +39,44 @@ describe('thread work sessions', () => {
     )
     expect(sessions[0]).toMatchObject({ complete: true, finalMessage: { key: 'm1' }, duration: 'a moment' })
   })
+
+  it('shows a streamed assistant response after its worked group before completion is persisted', () => {
+    const finalMessage: TimelineEvent = {
+      ...event('m1', 'message', 'Final answer', '2026-08-13T10:00:10Z'),
+      data: { presentation: 'plain_assistant_message' },
+    }
+    const sessions = buildThreadWorkSessions(
+      [
+        event('u1', 'user_message', 'Question', '2026-08-13T10:00:00Z'),
+        event('a1', 'action', 'Inspected files', '2026-08-13T10:00:05Z'),
+        finalMessage,
+      ],
+      false,
+    )
+
+    expect(sessions[0]).toMatchObject({
+      complete: false,
+      actions: 1,
+      finalMessage: { key: 'm1' },
+    })
+    expect(sessions[0].activity.map(({ key }) => key)).toEqual(['a1'])
+  })
+
+  it('keeps an intermediate assistant update in sequence when more work follows it', () => {
+    const update: TimelineEvent = {
+      ...event('m1', 'message', 'I found the likely cause.', '2026-08-13T10:00:10Z'),
+      data: { presentation: 'plain_assistant_message' },
+    }
+    const sessions = buildThreadWorkSessions(
+      [
+        event('u1', 'user_message', 'Investigate it', '2026-08-13T10:00:00Z'),
+        update,
+        event('a1', 'action', 'Running the regression test', '2026-08-13T10:00:15Z'),
+      ],
+      false,
+    )
+
+    expect(sessions[0]).toMatchObject({ complete: false, finalMessage: undefined })
+    expect(sessions[0].activity.map(({ key }) => key)).toEqual(['m1', 'a1'])
+  })
 })

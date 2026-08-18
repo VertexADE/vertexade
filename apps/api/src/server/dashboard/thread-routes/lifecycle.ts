@@ -24,6 +24,8 @@ import { matchThreadRoute, rejectThreadRoute, storedJob, type MatchedThreadRoute
 const lifecycleRoutes = [
   { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/fork$/, handle: forkThread },
   { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/archive$/, handle: archiveThread },
+  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/settle$/, handle: settleThread },
+  { method: 'POST', pattern: /^\/api\/agent-threads\/(\d+)\/snooze$/, handle: snoozeThread },
   { method: 'DELETE', pattern: /^\/api\/agent-threads\/(\d+)$/, handle: deleteThread },
   { method: 'POST', pattern: /^\/api\/cleanup-worktrees\/(\d+)\/remove$/, handle: cleanupWorktree },
 ] satisfies MatchedThreadRoute[]
@@ -56,16 +58,49 @@ async function archiveThread(request: Request, _url: URL, match: RegExpMatchArra
   return json(200, { archived, worktree_retained: true })
 }
 
+async function settleThread(request: Request, _url: URL, match: RegExpMatchArray) {
+  const job = completedThread(match, 'settling')
+  const input = await body(request)
+  const settled = input.settled !== false
+  db.update(jobs)
+    .set({ settledAt: settled ? sql`CURRENT_TIMESTAMP` : null, snoozedUntil: settled ? null : job.snoozed_until })
+    .where(eq(jobs.id, job.id))
+    .run()
+  notifyClients(settled ? 'thread_settled' : 'thread_unsettled', job.id)
+  return json(200, { settled })
+}
+
+async function snoozeThread(request: Request, _url: URL, match: RegExpMatchArray) {
+  const job = completedThread(match, 'snoozing')
+  const input = await body(request)
+  const until = input.until == null ? null : String(input.until)
+  if (until && (!Number.isFinite(Date.parse(until)) || Date.parse(until) <= Date.now())) {
+    rejectThreadRoute(400, 'Snooze time must be in the future')
+  }
+  db.update(jobs)
+    .set({ snoozedUntil: until, settledAt: until ? null : job.settled_at })
+    .where(eq(jobs.id, job.id))
+    .run()
+  notifyClients(until ? 'thread_snoozed' : 'thread_awakened', job.id)
+  return json(200, { snoozed_until: until })
+}
+
 async function deleteThread(_request: Request, _url: URL, match: RegExpMatchArray) {
   const job = mutableThread(match, 'deleting')
   return json(200, await deleteThreadJob(job))
 }
 
-function mutableThread(match: RegExpMatchArray, action: 'archiving' | 'deleting') {
+function mutableThread(match: RegExpMatchArray, action: 'archiving' | 'deleting' | 'settling' | 'snoozing') {
   const job = requiredJob(match, 'Agent run not found')
   const runtimeAgent = agents.require(job.agent_id || agentProvider)
   assertThreadRetained(job, runtimeAgent.name)
   assertInactive(job, `Wait for the active ${runtimeAgent.name} turn to finish before ${action}`)
+  return job
+}
+
+function completedThread(match: RegExpMatchArray, action: 'settling' | 'snoozing') {
+  const job = mutableThread(match, action)
+  if (job.status !== 'completed') rejectThreadRoute(409, `Only completed threads can be ${action === 'settling' ? 'settled' : 'snoozed'}`)
   return job
 }
 

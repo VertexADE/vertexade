@@ -6,7 +6,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Separator } from '@vertexade/ui/components/ui/separator'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { ThreadRuntimeDefaults } from './settings-types'
 
 function threadDefaultsReady(draft: ThreadRuntimeDefaults): boolean {
@@ -39,16 +39,18 @@ function SaveThreadDefaultsButton({ draft, busy, onSave }: { draft: ThreadRuntim
 export function ThreadRuntimeDefaultSettings({
   value,
   onSaved,
+  backendId,
 }: {
   value: ThreadRuntimeDefaults
   onSaved(value: ThreadRuntimeDefaults): void
+  backendId: string
 }) {
   const [draft, setDraft] = useState(value)
   const [busy, setBusy] = useState(false)
   async function save() {
     setBusy(true)
     try {
-      const saved = await api<ThreadRuntimeDefaults>('/api/settings/thread-runtime-defaults', {
+      const saved = await backendApi<ThreadRuntimeDefaults>(backendId, '/api/settings/thread-runtime-defaults', {
         method: 'POST',
         body: JSON.stringify(draft),
       })
@@ -74,6 +76,7 @@ export function ThreadRuntimeDefaultSettings({
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Work items</h3>
           <AgentOptionsPicker
+            backendId={backendId}
             value={draft.workItem}
             onChange={(workItem) => setDraft((current) => ({ ...current, workItem }))}
             showSubagents={false}
@@ -83,6 +86,7 @@ export function ThreadRuntimeDefaultSettings({
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Reviews</h3>
           <AgentOptionsPicker
+            backendId={backendId}
             value={draft.review}
             onChange={(review) => setDraft((current) => ({ ...current, review }))}
             showSubagents={false}

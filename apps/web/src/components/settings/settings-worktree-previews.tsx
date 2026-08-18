@@ -9,7 +9,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/c
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { PreviewSettings } from './settings-types'
 
 function previewSavedMessage(settings: PreviewSettings): string {
@@ -43,11 +43,19 @@ function SavePreviewGatewayButton({ busy }: { busy: boolean }) {
   )
 }
 
-export function WorktreePreviewSettings({ settings, onSaved }: { settings: PreviewSettings; onSaved: (value: PreviewSettings) => void }) {
+export function WorktreePreviewSettings({
+  settings,
+  onSaved,
+  backendId,
+}: {
+  settings: PreviewSettings
+  onSaved: (value: PreviewSettings) => void
+  backendId: string
+}) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: (value: { domain: string; gatewayPort: number }) =>
-      api<PreviewSettings>('/api/settings/worktree-previews', {
+      backendApi<PreviewSettings>(backendId, '/api/settings/worktree-previews', {
         method: 'POST',
         body: JSON.stringify(value),
       }),

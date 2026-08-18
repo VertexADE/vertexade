@@ -75,7 +75,7 @@ function planText(entry: JsonRecord) {
     entries
       .map((value) => {
         const step = record(value)
-        const label = firstText(step.content, step.title, step.description)
+        const label = firstText(step.content, step.step, step.title, step.description)
         return label ? `${step.status ? `[${step.status}] ` : ''}${label}` : ''
       })
       .filter(Boolean)

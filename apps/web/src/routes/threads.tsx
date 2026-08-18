@@ -10,17 +10,11 @@ import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTit
 import { FilterBar, FilterBarControls, FilterBarToggle } from '@vertexade/ui/components/ui/toolbar'
 import { useIsMobile } from '@vertexade/ui/hooks/use-mobile'
 import type { Job } from '@vertexade/ui/lib/dashboard-types'
-import {
-  shouldCollapseThreadHistory,
-  sortThreads,
-  threadPriority,
-  threadPriorityStats,
-  type ThreadSort,
-} from '@vertexade/ui/lib/thread-priority'
+import { sortThreads, threadPriority, type ThreadSort } from '@vertexade/ui/lib/thread-priority'
 import { dialogNavigationOptions } from '@vertexade/ui/lib/work-dialogs'
 import { matchesStatus, ThreadFilters, type StatusFilter } from '../components/threads/thread-components'
 import { hideThreadId, reconcileHiddenThreadIds, restoreThreadId } from '../components/threads/thread-deletion-state'
-import { ThreadPrioritySummary, ThreadQueueList, type ThreadListActions } from '../components/threads/thread-workspace'
+import { ThreadQueueList, type ThreadListActions } from '../components/threads/thread-workspace'
 import { LazyThreadDialog } from '../lib/lazy-dialogs'
 import { useDashboardMeta } from '../lib/dashboard-cache'
 import { useRxDashboardCollection } from '../lib/rxdb-dashboard-cache'
@@ -37,7 +31,19 @@ type ThreadSearch = {
   q?: string
 }
 
-const threadStatuses: StatusFilter[] = ['all', 'attention', 'active', 'input', 'action', 'queued', 'completed', 'failed', 'resumable']
+const threadStatuses: StatusFilter[] = [
+  'all',
+  'attention',
+  'active',
+  'input',
+  'action',
+  'queued',
+  'completed',
+  'failed',
+  'resumable',
+  'settled',
+  'snoozed',
+]
 
 export const Route = createFileRoute('/threads')({
   ssr: false,
@@ -76,6 +82,7 @@ function ThreadsPage() {
   const [forkSource, setForkSource] = useState<Job | null>(null)
   const [focusedThreadId, setFocusedThreadId] = useState<number | null>(search.thread ?? null)
   const [hiddenThreadIds, setHiddenThreadIds] = useState<Set<number>>(() => new Set())
+  const [now, setNow] = useState(() => Date.now())
   const isMobile = useIsMobile()
   const repository = search.repo || 'all'
   const archiveView = search.archive || 'open'
@@ -128,15 +135,14 @@ function ThreadsPage() {
           return (
             (repository === 'all' || thread.full_name === repository) &&
             (agent === 'all' || thread.agent_id === agent) &&
-            matchesStatus(thread, statusFilter) &&
+            matchesStatus(thread, statusFilter, now) &&
             (!query || target.includes(query.toLowerCase()))
           )
         }),
         sort,
       ),
-    [agent, query, repository, sort, statusFilter, threads],
+    [agent, now, query, repository, sort, statusFilter, threads],
   )
-  const stats = useMemo(() => threadPriorityStats(threads), [threads])
   const selectedJob =
     visible.find((thread) => thread.id === search.thread) ||
     visible.find((thread) => thread.id === focusedThreadId) ||
@@ -148,7 +154,6 @@ function ThreadsPage() {
   const activeFilters =
     Number(repository !== 'all') + Number(archiveView !== 'open') + Number(statusFilter !== 'all') + Number(agent !== 'all')
   const mobileThreads = visible.slice(0, mobileLimit)
-  const collapseHistory = shouldCollapseThreadHistory(visible, statusFilter === 'completed')
   const openThread = (jobId: number, view?: 'details') => {
     if (isMobile) {
       void navigate({
@@ -183,17 +188,22 @@ function ThreadsPage() {
   }, [agent, archiveView, query, repository, sort, statusFilter])
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     if (search.thread) setFocusedThreadId(search.thread)
   }, [search.thread])
 
   return (
     <>
       <GlobalHighlights rules={highlights} />
-      <WorkspacePage className="max-w-none px-2 py-3 xl:px-3 xl:py-3">
+      <WorkspacePage className="max-w-none py-3 pl-2 pr-4 xl:py-3 xl:pl-3 xl:pr-5">
         <WorkspaceHeader
           className="mb-3 flex-row items-start justify-between [&_[data-slot=page-actions]]:w-auto xl:mb-2 xl:items-center xl:[&_[data-slot=page-description]]:mt-0 xl:[&_[data-slot=page-eyebrow]]:hidden xl:[&_[data-slot=page-header-content]]:flex xl:[&_[data-slot=page-header-content]]:items-baseline xl:[&_[data-slot=page-header-content]]:gap-3 xl:[&_[data-slot=page-title]]:text-lg"
           eyebrow="Priority queue"
-          title="Agents"
+          title="Threads"
           description={
             <>
               <span className="sm:hidden">Live runs, decisions, and history.</span>
@@ -223,8 +233,6 @@ function ThreadsPage() {
             </Button>
           </StatusPanel>
         ) : null}
-        <ThreadPrioritySummary stats={stats} activeFilter={statusFilter} onFilter={setStatusFilter} />
-
         <div className="xl:hidden" data-audit-agents-layout="list">
           <FilterBar className="mb-3 bg-muted/20 shadow-none ring-0">
             <SearchInput
@@ -232,7 +240,7 @@ function ThreadsPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onClear={() => setQuery('')}
-              placeholder="Search agent sessions or activity"
+              placeholder="Search threads or activity"
             />
             <FilterBarToggle
               label={`Agent filters${activeFilters ? `, ${activeFilters} active` : ''}`}
@@ -263,15 +271,8 @@ function ThreadsPage() {
             </FilterBarControls>
           </FilterBar>
           <div>
-            <ThreadQueueList
-              threads={mobileThreads}
-              sort={sort}
-              variant="cards"
-              collapseHistory={collapseHistory}
-              historyCount={visible.filter((thread) => threadPriority(thread) === 'history').length}
-              actions={threadListActions}
-            />
-            {!visible.length && <div className="py-16 text-center text-sm text-muted-foreground">No matching agent sessions.</div>}
+            <ThreadQueueList threads={mobileThreads} sort={sort} variant="cards" actions={threadListActions} />
+            {!visible.length && <div className="py-16 text-center text-sm text-muted-foreground">No matching threads.</div>}
             {mobileThreads.length < visible.length && (
               <div className="flex items-center justify-between border-t px-3 py-2 text-xs text-muted-foreground">
                 <span>
@@ -300,7 +301,7 @@ function ThreadsPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onClear={() => setQuery('')}
-                placeholder="Search agent sessions"
+                placeholder="Search threads"
               />
               <ThreadFilters
                 repositories={repositories}
@@ -319,19 +320,12 @@ function ThreadsPage() {
               />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <ThreadQueueList
-                threads={visible}
-                sort={sort}
-                variant="rail"
-                selectedId={selectedJob?.id}
-                collapseHistory={collapseHistory}
-                actions={threadListActions}
-              />
+              <ThreadQueueList threads={visible} sort={sort} variant="rail" selectedId={selectedJob?.id} actions={threadListActions} />
               {!visible.length && (
                 <div className="grid min-h-52 place-items-center px-6 text-center">
                   <div>
                     <Bot className="mx-auto size-6 text-muted-foreground" />
-                    <p className="mt-2 text-xs font-medium">No matching sessions</p>
+                    <p className="mt-2 text-xs font-medium">No matching threads</p>
                     <p className="mt-1 text-xs text-muted-foreground">Change the filters or select another project.</p>
                   </div>
                 </div>
@@ -359,9 +353,9 @@ function ThreadsPage() {
               <div className="grid h-full place-items-center p-8 text-center">
                 <div>
                   <MessageSquareText className="mx-auto size-8 text-muted-foreground" />
-                  <h2 className="mt-3 text-base font-semibold">Your agent queue is clear</h2>
+                  <h2 className="mt-3 text-base font-semibold">Your thread queue is clear</h2>
                   <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                    Adjust the filters or start a new task to open another session.
+                    Adjust the filters or start a new task to open another thread.
                   </p>
                 </div>
               </div>

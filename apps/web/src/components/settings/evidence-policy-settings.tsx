@@ -40,7 +40,7 @@ export function EvidencePolicySettings({ repositories }: { repositories: Reposit
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!repositoryId && repositories[0]) setRepositoryId(repositories[0].id)
+    if (!repositories.some((repository) => repository.id === repositoryId)) setRepositoryId(repositories[0]?.id || null)
   }, [repositories, repositoryId])
 
   const load = useCallback(async () => {

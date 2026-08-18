@@ -64,7 +64,7 @@ describe('agent timeline log parsing', () => {
       [
         {
           event: 'plan_updated',
-          plan: { entries: [{ status: 'in_progress', content: 'Inspect the repository' }] },
+          plan: { entries: [{ status: 'in_progress', step: 'Inspect the repository' }] },
         },
         { event: 'agent_message', text: 'I found the issue.' },
         { event: 'turn_completed', status: 'completed' },

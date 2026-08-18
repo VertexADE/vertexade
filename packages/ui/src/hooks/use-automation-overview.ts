@@ -63,5 +63,14 @@ export function useAutomationOverview() {
     }
   }, [query.data])
 
-  return { ...projection, runtime, setRuntime, load: query.refresh }
+  return {
+    ...projection,
+    runtime,
+    setRuntime,
+    load: query.refresh,
+    loading: query.loading,
+    error: query.error,
+    ready: query.ready,
+    updatedAt: query.updatedAt,
+  }
 }

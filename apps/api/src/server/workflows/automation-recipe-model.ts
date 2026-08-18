@@ -87,6 +87,14 @@ function threadAction(value: unknown): AutomationThreadAction {
   return action
 }
 
+function automationName(value: unknown) {
+  const name = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+  return name && !['null', 'undefined'].includes(name.toLowerCase()) ? name : ''
+}
+
 function resourceSelection(value: unknown): NormalizedRecipeInput['resourceSelection'] {
   if (value === undefined || value === null) return null
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Agent resources must be a selection object')
@@ -148,9 +156,7 @@ export function supportsThreadTarget(
 export function normalizeRecipeInput(input: RecipeInput, maximumSteps: number): NormalizedRecipeInput {
   const prompts = promptSteps(input.promptSteps, maximumSteps)
   return {
-    name: String(input.name || '')
-      .trim()
-      .slice(0, 120),
+    name: automationName(input.name),
     description: String(input.description || '')
       .trim()
       .slice(0, 1_000),
@@ -184,6 +190,7 @@ export function validateRecipeInput(value: NormalizedRecipeInput) {
 
 export function recipeThreadLaunchOptions(recipe: AutomationRecipe): AutomationThreadLaunchOptions {
   return {
+    automationName: recipe.name,
     agentId: recipe.agentId,
     model: recipe.model,
     reasoningEffort: recipe.reasoningEffort,
@@ -227,7 +234,7 @@ export function recipeFromRow(row: Record<string, unknown>, schedule?: Record<st
   const action = String(row.flowMode || 'direct') === 'improve' ? 'improve' : threadAction(row.threadAction)
   return {
     id: Number(row.id),
-    name: String(row.name),
+    name: automationName(row.name) || `Automation #${Number(row.id)}`,
     description: String(row.description || ''),
     triggerId: row.triggerId === null ? null : String(row.triggerId),
     enabled: Boolean(row.enabled),

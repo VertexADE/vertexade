@@ -7,7 +7,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { api } from '../lib/dashboard-api'
+import { backendApi } from '../lib/dashboard-api'
 
 export type SystemConfigurationValue = {
   prompts: { work: string; review: string; planning: string; followUp: string; scheduled: string }
@@ -44,15 +44,17 @@ const promptFields = [
 export function PromptPolicySettings({
   value,
   onSaved,
+  backendId,
 }: {
   value: SystemConfigurationValue
   onSaved(value: SystemConfigurationValue): void
+  backendId: string
 }) {
   const form = useForm({
     defaultValues: value.prompts,
     onSubmit: async ({ value: prompts }) => {
       try {
-        const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        const saved = await backendApi<SystemConfigurationValue>(backendId, '/api/settings/system-configuration', {
           method: 'POST',
           body: JSON.stringify({ ...value, prompts }),
         })
@@ -137,12 +139,20 @@ const toolFields = [
   ['fallow', 'Fallow'],
 ] as const
 
-export function ToolPathSettings({ value, onSaved }: { value: SystemConfigurationValue; onSaved(value: SystemConfigurationValue): void }) {
+export function ToolPathSettings({
+  value,
+  onSaved,
+  backendId,
+}: {
+  value: SystemConfigurationValue
+  onSaved(value: SystemConfigurationValue): void
+  backendId: string
+}) {
   const form = useForm({
     defaultValues: value.tools,
     onSubmit: async ({ value: tools }) => {
       try {
-        const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        const saved = await backendApi<SystemConfigurationValue>(backendId, '/api/settings/system-configuration', {
           method: 'POST',
           body: JSON.stringify({ ...value, tools }),
         })
@@ -201,12 +211,20 @@ export function ToolPathSettings({ value, onSaved }: { value: SystemConfiguratio
   )
 }
 
-export function RuntimeSettings({ value, onSaved }: { value: SystemConfigurationValue; onSaved(value: SystemConfigurationValue): void }) {
+export function RuntimeSettings({
+  value,
+  onSaved,
+  backendId,
+}: {
+  value: SystemConfigurationValue
+  onSaved(value: SystemConfigurationValue): void
+  backendId: string
+}) {
   const form = useForm({
     defaultValues: value.runtime,
     onSubmit: async ({ value: runtime }) => {
       try {
-        const saved = await api<SystemConfigurationValue>('/api/settings/system-configuration', {
+        const saved = await backendApi<SystemConfigurationValue>(backendId, '/api/settings/system-configuration', {
           method: 'POST',
           body: JSON.stringify({ ...value, runtime }),
         })

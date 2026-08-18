@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { extensionPresentation } from '@vertexade/ui/lib/extension-presentation'
 import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
 import { cn } from '@vertexade/ui/lib/utils'
+import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 
 import { LifecycleBadge } from './extension-catalog-shared'
 import { ExtensionPrimaryAction, extensionCardMeta } from './extension-card'
@@ -18,6 +19,7 @@ export function ExtensionInstalledRow({
   onTogglePin,
   onToggle,
   onClearCache,
+  backend,
 }: {
   module: ModuleCatalogEntry
   cache?: ExtensionCacheStats
@@ -27,15 +29,16 @@ export function ExtensionInstalledRow({
   onTogglePin(): void
   onToggle(enabled: boolean): void
   onClearCache(): void
+  backend?: Pick<BackendDescriptor, 'id' | 'label' | 'connected'>
 }) {
-  const { accent, Icon } = extensionPresentation(module)
+  const { accent, Icon } = extensionPresentation(module, backend?.id)
   return (
     <article className="grid min-w-0 gap-2 border-b p-2.5 last:border-b-0 hover:bg-accent/20 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="flex min-w-0 items-center gap-2.5">
         <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg ring-1 ring-inset ring-white/5', accent.icon)}>
           <Icon className="size-4" />
         </span>
-        <ExtensionInstalledSummary module={module} cache={cache} pinned={pinned} />
+        <ExtensionInstalledSummary module={module} cache={cache} pinned={pinned} backend={backend} />
       </div>
       <ExtensionInstalledActions
         module={module}
@@ -46,6 +49,7 @@ export function ExtensionInstalledRow({
         onTogglePin={onTogglePin}
         onToggle={onToggle}
         onClearCache={onClearCache}
+        backendId={backend?.id}
       />
     </article>
   )
@@ -55,10 +59,12 @@ function ExtensionInstalledSummary({
   module,
   cache,
   pinned,
+  backend,
 }: {
   module: ModuleCatalogEntry
   cache?: ExtensionCacheStats
   pinned: boolean
+  backend?: Pick<BackendDescriptor, 'label' | 'connected'>
 }) {
   const summary = extensionCardMeta(module, cache) || 'No provider metadata'
   return (
@@ -70,6 +76,12 @@ function ExtensionInstalledSummary({
       </div>
       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{extensionDescription(module)}</p>
       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+        {backend ? (
+          <span className="inline-flex items-center gap-1">
+            <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
+            {backend.label}
+          </span>
+        ) : null}
         <span>v{module.version}</span>
         <span>{summary}</span>
       </p>
@@ -107,6 +119,7 @@ function ExtensionInstalledActions({
   onTogglePin,
   onToggle,
   onClearCache,
+  backendId,
 }: {
   module: ModuleCatalogEntry
   cache?: ExtensionCacheStats
@@ -116,13 +129,14 @@ function ExtensionInstalledActions({
   onTogglePin(): void
   onToggle(enabled: boolean): void
   onClearCache(): void
+  backendId?: string
 }) {
   const pinLabel = extensionPinLabel(module, pinned)
   const cacheDisabled = extensionCacheDisabled(cache, busy)
   const workspaceRoute = extensionWorkspaceRoute(module)
   const primaryAction =
     workspaceRoute || !module.enabled ? (
-      <ExtensionPrimaryAction module={module} busy={busy} onToggle={onToggle} />
+      <ExtensionPrimaryAction module={module} busy={busy} onToggle={onToggle} backendId={backendId} />
     ) : (
       <Button variant="outline" size="sm" onClick={onManage}>
         <Settings2 />

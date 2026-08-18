@@ -8,6 +8,11 @@ export type TimelineEvent = LogEvent & {
   duration_ms?: number
 }
 
+export type TimelinePlanStep = {
+  label: string
+  status: 'pending' | 'running' | 'completed'
+}
+
 function elapsed(startValue: string | null, endValue: string | null) {
   const start = dateValue(startValue)
   const end = dateValue(endValue)
@@ -38,6 +43,22 @@ function streamingMessage(previous: TimelineEvent | undefined, current: LogEvent
 
 type TimelineState = { timeline: TimelineEvent[]; actions: Map<string, number> }
 
+function normalizedEvent(event: LogEvent): LogEvent {
+  const actionKind = String(event.action_kind || '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+  if (event.kind !== 'action' || actionKind !== 'usermessage') return event
+  return {
+    ...event,
+    kind: 'message',
+    title: 'Assistant',
+    action_kind: undefined,
+    action_id: undefined,
+    status: undefined,
+    data: { ...event.data, presentation: 'plain_assistant_message' },
+  }
+}
+
 function replaceLatest(state: TimelineState, event: LogEvent, previous: TimelineEvent) {
   state.timeline[state.timeline.length - 1] = { ...previous, ...event, key: previous.key }
 }
@@ -67,14 +88,18 @@ function mergeKnownAction(state: TimelineState, event: LogEvent) {
     state.actions.set(event.action_id, state.timeline.length)
     return false
   }
-  state.timeline[actionIndex] = mergeAction(state.timeline[actionIndex]!, event)
+  state.timeline[actionIndex] = {
+    ...normalizedEvent(mergeAction(state.timeline[actionIndex]!, event)),
+    key: state.timeline[actionIndex]!.key,
+  }
   return true
 }
 
 function appendEvent(state: TimelineState, event: LogEvent, index: number) {
+  if (mergeKnownAction(state, event)) return
+  event = normalizedEvent(event)
   const previous = state.timeline.at(-1)
   if (mergePreviousEvent(state, event, previous)) return
-  if (mergeKnownAction(state, event)) return
   state.timeline.push({
     ...event,
     key: `${event.action_id || event.kind}-${event.time || index}-${index}`,
@@ -104,10 +129,60 @@ export function buildAgentTimeline(events: LogEvent[], state: AgentThreadState =
   events
     .filter((event) => event.kind !== 'message' || event.text.trim())
     .forEach((event, index) => appendEvent(timelineState, event, index))
-  const timeline = timelineState.timeline.map((event) => reconcileEvent(event, state))
+  const reconciled = timelineState.timeline.map((event) => reconcileEvent(event, state))
+  const latestPlan = reconciled.findLastIndex((event) => event.kind === 'plan')
+  const timeline = reconciled.filter((event, index) => event.kind !== 'plan' || index === latestPlan)
   if (state !== 'completed') return timeline
   const finalCompletion = timeline.findLastIndex((event) => event.kind === 'completed')
   return timeline.filter((event, index) => event.kind !== 'completed' || index === finalCompletion)
+}
+
+function planEntries(event: TimelineEvent) {
+  const plan = event.data?.plan
+  if (!plan || typeof plan !== 'object') return []
+  const value = plan as Record<string, unknown>
+  return Array.isArray(value.entries) ? value.entries : Array.isArray(value.steps) ? value.steps : []
+}
+
+function planStep(value: unknown): TimelinePlanStep | null {
+  if (!value || typeof value !== 'object') return null
+  const step = value as Record<string, unknown>
+  const label = planStepLabel(step)
+  if (!label) return null
+  return { label, status: planStepStatus(step.status) }
+}
+
+function planStepLabel(step: Record<string, unknown>) {
+  for (const field of ['content', 'step', 'title', 'description']) {
+    const label = String(step[field] || '').trim()
+    if (label) return label
+  }
+  return ''
+}
+
+function planStepStatus(value: unknown): TimelinePlanStep['status'] {
+  const status = String(value || '')
+    .toLowerCase()
+    .replace('-', '_')
+  if (['completed', 'complete', 'done'].includes(status)) return 'completed'
+  if (['in_progress', 'running', 'active'].includes(status)) return 'running'
+  return 'pending'
+}
+
+export function timelinePlan(events: TimelineEvent[], threadComplete = false) {
+  const event = events.findLast((candidate) => candidate.kind === 'plan')
+  const parsedSteps = event
+    ? planEntries(event)
+        .map(planStep)
+        .filter((step): step is TimelinePlanStep => step !== null)
+    : []
+  const steps = threadComplete ? parsedSteps.map((step) => ({ ...step, status: 'completed' as const })) : parsedSteps
+  const completed = steps.filter((step) => step.status === 'completed').length
+  return {
+    steps,
+    completed,
+    progress: steps.length ? Math.round((completed / steps.length) * 100) : null,
+  }
 }
 
 export function timelineSummary(events: TimelineEvent[], state: AgentThreadState = 'running') {

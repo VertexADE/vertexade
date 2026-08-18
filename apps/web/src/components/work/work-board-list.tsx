@@ -166,7 +166,7 @@ function WorkListOutcome({ item, pullRequestCount }: { item: WorkItem; pullReque
       </div>
       <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
         <strong className="shrink-0 font-mono font-semibold text-blue-400">{displayBackendKey(item, item.key)}</strong>
-        <BackendBadge source={item} />
+        <BackendBadge source={item} nameOnly />
         <span aria-hidden="true">·</span>
         <span className="min-w-0 truncate">{item.repository_names.join(', ') || 'Workspace work'}</span>
         <span aria-hidden="true">·</span>
@@ -382,7 +382,7 @@ function WorkCardHeader({ item }: { item: WorkItem }) {
       <div className="flex items-center justify-between gap-2 text-[11px]">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 text-blue-400">{displayBackendKey(item, item.key)}</span>
-          <BackendBadge source={item} />
+          <BackendBadge source={item} nameOnly />
           <span aria-hidden="true" className="hidden text-muted-foreground sm:inline">
             ·
           </span>

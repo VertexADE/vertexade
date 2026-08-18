@@ -114,6 +114,7 @@ import {
   runtimeWorkMemory as workMemory,
 } from './runtime-context.ts'
 import { persistDetectedThreadContext } from './thread-context-store.ts'
+import { pullRequestThreadTitle } from './pull-request-thread-title.ts'
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { jobs, pullRequests, repositories, reviewBatches, reviewSuggestions } from '../database/schema/tables.ts'
 import { jobRecord, pullRequestRecord, repositoryRecord, reviewBatchRecord } from '../database/contract-records.ts'
@@ -452,7 +453,7 @@ export async function launchJob(
       ? work.raw(Number(sourceWork || workItemId))
       : kind === 'review' || kind === 'review_handoff'
         ? work.ensurePullRequestReview(repo, pr)
-        : work.ensureRepositoryTask(repo, `Work on PR #${pr.number}: ${pr.title}`)
+        : work.ensureRepositoryTask(repo, pullRequestThreadTitle('task', pr))
   if (!workItem) throw new Error('Work item not found')
   if (kind !== 'review' && kind !== 'review_handoff') work.ensurePullRequestDelivery(workItem.id, repo, pr)
   let failedWorktree: string | null = null
@@ -510,7 +511,7 @@ export async function launchJob(
         agentReasoningEffort: reasoningEffort,
         reviewPhase: kind === 'review' ? 'details' : null,
         reviewPhaseStartedAt: sql`CURRENT_TIMESTAMP`,
-        taskTitle: kind === 'review' ? `Review PR #${pr.number}: ${pr.title}`.slice(0, 200) : null,
+        taskTitle: pullRequestThreadTitle(kind, pr),
         workItemId: workItem.id,
         ephemeral: ephemeral ? 1 : 0,
       })

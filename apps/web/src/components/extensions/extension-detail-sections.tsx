@@ -5,6 +5,7 @@ import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { SheetDescription, SheetHeader, SheetTitle } from '@vertexade/ui/components/ui/sheet'
 import { cn } from '@vertexade/ui/lib/utils'
+import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import { categoryLabel, LifecycleBadge } from './extension-catalog-shared'
 import { extensionEnableAction } from './extension-card'
 
@@ -15,6 +16,7 @@ export function ExtensionDetailsHeader({
   onTogglePin,
   icon: Icon,
   iconClass,
+  backend,
 }: {
   module: ModuleCatalogEntry
   workspaceRoute?: string | null
@@ -22,6 +24,7 @@ export function ExtensionDetailsHeader({
   onTogglePin(): void
   icon: React.ComponentType<{ className?: string }>
   iconClass: string
+  backend?: Pick<BackendDescriptor, 'label' | 'connected'>
 }) {
   return (
     <SheetHeader className="border-b p-4 pr-12 sm:p-6 sm:pr-14">
@@ -38,6 +41,12 @@ export function ExtensionDetailsHeader({
         <LifecycleBadge module={module} />
         <Badge variant="outline">v{module.version}</Badge>
         <Badge variant="outline">Platform API {module.platformApi}</Badge>
+        {backend ? (
+          <Badge variant="outline">
+            <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
+            {backend.label}
+          </Badge>
+        ) : null}
         {module.enabled && workspaceRoute && (
           <Button variant="outline" size="xs" onClick={onTogglePin}>
             <Pin className={cn(pinned && 'fill-current text-primary')} />
@@ -153,11 +162,13 @@ export function ExtensionConfiguration({
   busy,
   onToggle,
   onChanged,
+  backendId,
 }: {
   module: ModuleCatalogEntry
   busy: boolean
   onToggle(enabled: boolean): void
   onChanged(): void
+  backendId?: string
 }) {
   const enableAction = extensionEnableAction(module, busy)
   return (
@@ -179,7 +190,7 @@ export function ExtensionConfiguration({
           </Button>
         )}
       </div>
-      <ExtensionSettingsPanel module={module} onChanged={onChanged} />
+      <ExtensionSettingsPanel module={module} backendId={backendId} onChanged={onChanged} />
     </div>
   )
 }

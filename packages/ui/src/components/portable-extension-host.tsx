@@ -26,29 +26,35 @@ type PortableWorkspaceView = 'loading' | 'error' | 'setup' | 'detail' | 'missing
 export function PortableExtensionHost({
   module,
   detailId,
+  backendId,
   onDetailChange,
 }: {
   module: ModuleCatalogEntry
   detailId?: string | null
+  backendId?: string
   onDetailChange?(itemId: string | null): void
 }) {
   const surface = module.portable?.surfaces.find((candidate): candidate is PortableCollectionSurface => candidate.kind === 'collection')
   if (!surface) return null
-  return <PortableCollectionHost module={module} surface={surface} detailId={detailId} onDetailChange={onDetailChange} />
+  return (
+    <PortableCollectionHost module={module} surface={surface} detailId={detailId} backendId={backendId} onDetailChange={onDetailChange} />
+  )
 }
 
 function PortableCollectionHost({
   module,
   surface,
   detailId,
+  backendId,
   onDetailChange,
 }: {
   module: ModuleCatalogEntry
   surface: PortableCollectionSurface
   detailId?: string | null
+  backendId?: string
   onDetailChange?(itemId: string | null): void
 }) {
-  const state = usePortableCollectionWorkspace({ module, surface, detailId, onDetailChange })
+  const state = usePortableCollectionWorkspace({ module, surface, detailId, backendId, onDetailChange })
   return <PortableCollectionWorkspace state={state} />
 }
 

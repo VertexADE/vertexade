@@ -117,6 +117,7 @@ import {
 import { and, eq, sql } from 'drizzle-orm'
 import { jobs, repositories } from '../database/schema/tables.ts'
 import { jobRecord, repositoryRecord } from '../database/contract-records.ts'
+import { cancelFormForJob } from '../agents/form-requests.ts'
 import {
   runtimeDrainAutomaticReviewQueue as drainAutomaticReviewQueue,
   runtimeEnsureClone as ensureClone,
@@ -161,6 +162,11 @@ export function createJobProcessMonitor({
       .set({ latestActivity, activityAt: sql`CURRENT_TIMESTAMP` })
       .where(eq(jobs.id, jobId))
       .run()
+  }
+
+  function cancelDetachedForm(jobId: number, reason: string) {
+    if (!cancelFormForJob(jobId, reason)) return
+    db.update(jobs).set({ inputRequestId: null, inputQuestions: null, inputRequestedAt: null }).where(eq(jobs.id, jobId)).run()
   }
 
   function monitorJobProcess(child, jobId, log, runtimeAgent = child.runtimeAgent || agent) {
@@ -279,6 +285,7 @@ export function createJobProcessMonitor({
     child.on('error', (error) => {
       processErrored = true
       activeJobs.delete(jobId)
+      cancelDetachedForm(jobId, 'The agent process stopped before the form was answered')
       failReviewSummary(jobId, `Review details completed, but the summary could not start: ${error.message}`)
       jobLifecycle.markFailed(jobId, error.message)
       work.finishContextTransfers(jobId, false, null, error.message)
@@ -306,6 +313,7 @@ export function createJobProcessMonitor({
       if (processErrored) return
       processLine(stdoutBuffer)
       activeJobs.delete(jobId)
+      cancelDetachedForm(jobId, 'The agent connection closed before the form was answered')
       if (cancellingJobs.delete(jobId)) {
         jobLifecycle.markCancelled(jobId)
         work.finishContextTransfers(jobId, false, null, 'Stopped by user')

@@ -2,6 +2,7 @@ import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { resilientFetch } from '@vertexade/platform-server/effect'
 import { readResponseBody } from '@vertexade/platform-server/http'
+import { vertexFormFieldTypes, vertexFormInstructions, vertexMcpServerName } from './vertex-mcp-contract.ts'
 
 type JsonObject = Record<string, unknown>
 type JsonRpcRequest = {
@@ -13,13 +14,11 @@ type JsonRpcRequest = {
 
 export const modernProtocolVersion = '2026-07-28'
 const legacyProtocolVersion = '2025-06-18'
-const serverInfo = { name: 'vertexade-subagents', version: '0.0.1' }
+const serverInfo = { name: vertexMcpServerName, version: '0.0.1' }
 const cacheMetadata = { ttlMs: 60_000, cacheScope: 'private' as const }
 const formResourceUri = 'ui://vertexade/form/index.html'
 const appMimeType = 'text/html;profile=mcp-app'
 const maximumResponseBytes = 250_000
-const formInstructions =
-  'The form tool is available in every collaboration mode, including Default mode. When you need structured user input, prefer form for questionnaires, multiple questions, choices, or checklists instead of writing a questionnaire in chat. Ask only for information that cannot be inferred safely, keep the form concise, and continue normally when the user cancels it or sends a chat message instead.'
 
 function environment() {
   const apiUrl = String(process.env.VERTEXADE_SUBAGENT_API_URL || '').replace(/\/$/, '')
@@ -69,7 +68,7 @@ export const subagentTools = [
     name: 'form',
     title: 'Ask the user with a form',
     description:
-      'Show a form in the current VertexADE thread and wait for the user to submit or cancel it. This tool is available in every collaboration mode, including Default mode. Prefer it over a plain chat questionnaire whenever you need multiple questions, choices, checkboxes, or other structured user input that cannot be inferred safely. Choice fields automatically include an Other text input, so do not add an Other option yourself. The submitted values are returned as Markdown.',
+      'Show an inline Vertex Form in the current thread and wait for the user to submit or cancel it. This tool is available in every collaboration mode, including Default mode. You MUST use it when asking two or more questions and should use it for any answer with a natural structured type. Choose the narrowest correct type per field: select for one choice, checkbox for multiple choices, textarea for long text, and number, date, email, url, or password for those values. Choice fields automatically include an Other text input, so do not add an Other option yourself. The submitted values are returned as Markdown.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -85,7 +84,7 @@ export const subagentTools = [
               id: { type: 'string', description: 'Stable field identifier.' },
               label: { type: 'string', description: 'User-facing field label.' },
               description: { type: 'string', description: 'Optional help text.' },
-              type: { type: 'string', enum: ['text', 'select', 'checkbox'] },
+              type: { type: 'string', enum: vertexFormFieldTypes },
               required: { type: 'boolean', default: true },
               multiline: { type: 'boolean', default: false },
               options: {
@@ -273,27 +272,31 @@ function toolResult(value: JsonObject, isError = false) {
   return { content: [{ type: 'text', text }], structuredContent: value, isError }
 }
 
-function formElicitation(input: JsonObject) {
-  const fields = Array.isArray(input.fields)
-    ? input.fields.filter((field): field is JsonObject => Boolean(field && typeof field === 'object'))
+const typedElicitationSchemas: Record<string, JsonObject> = {
+  number: { type: 'number' },
+  date: { type: 'string', format: 'date' },
+  email: { type: 'string', format: 'email' },
+  url: { type: 'string', format: 'uri' },
+}
+
+function elicitationProperty(field: JsonObject) {
+  const options = Array.isArray(field.options)
+    ? field.options.filter((option): option is JsonObject => Boolean(option && typeof option === 'object'))
     : []
-  const properties = Object.fromEntries(
-    fields.map((field) => {
-      const options = Array.isArray(field.options)
-        ? field.options.filter((option): option is JsonObject => Boolean(option && typeof option === 'object'))
-        : []
-      const values = options.map((option) => String(option.value || option.label || '')).filter(Boolean)
-      const base = {
-        title: String(field.label || field.id || ''),
-        ...(field.description ? { description: String(field.description) } : {}),
-      }
-      if (field.type === 'checkbox' && values.length)
-        return [String(field.id), { ...base, type: 'array', items: { type: 'string', enum: values } }]
-      if (field.type === 'checkbox') return [String(field.id), { ...base, type: 'boolean' }]
-      if (field.type === 'select') return [String(field.id), { ...base, type: 'string', enum: values }]
-      return [String(field.id), { ...base, type: 'string' }]
-    }),
-  )
+  const values = options.map((option) => String(option.value || option.label || '')).filter(Boolean)
+  const base = {
+    title: String(field.label || field.id || ''),
+    ...(field.description ? { description: String(field.description) } : {}),
+  }
+  let schema: JsonObject = typedElicitationSchemas[String(field.type)] || { type: 'string' }
+  if (field.type === 'select') schema = { type: 'string', enum: values }
+  if (field.type === 'checkbox') schema = values.length ? { type: 'array', items: { type: 'string', enum: values } } : { type: 'boolean' }
+  return [String(field.id), { ...base, ...schema }]
+}
+
+function formElicitation(input: JsonObject) {
+  const fields = formFields(input)
+  const properties = Object.fromEntries(fields.map(elicitationProperty))
   return {
     resultType: 'input_required',
     inputRequests: {
@@ -317,11 +320,35 @@ function formElicitation(input: JsonObject) {
 function modernFormResponse(request: JsonRpcRequest) {
   if (request.params?.name !== 'form' || !requestProtocolVersion(request)) return null
   const responses = recordValue(request.params.inputResponses)
-  if (!Object.keys(responses).length) return modernResult(request, formElicitation(argumentsOf(request)))
+  const input = argumentsOf(request)
+  if (!Object.keys(responses).length) return modernResult(request, formElicitation(input))
   const response = recordValue(responses.form)
   const action = String(response.action || 'cancel')
   const content = recordValue(response.content)
-  return modernResult(request, toolResult(action === 'accept' ? content : { [action]: true }))
+  const result =
+    action === 'accept'
+      ? { status: 'submitted', markdown: elicitationResponseMarkdown(input, content) }
+      : { status: 'cancelled', reason: action === 'decline' ? 'The user declined the form' : 'The user cancelled the form' }
+  return modernResult(request, toolResult(result))
+}
+
+function elicitationResponseMarkdown(input: JsonObject, content: JsonObject) {
+  const lines = [`## ${String(input.title || 'Form response')}`, '']
+  for (const field of formFields(input)) {
+    const id = String(field.id || '')
+    const values = responseValues(content[id])
+    lines.push(`- **${String(field.label || id)}:** ${values.length ? values.join(', ') : '_Not provided_'}`)
+  }
+  return lines.join('\n')
+}
+
+function formFields(input: JsonObject) {
+  return Array.isArray(input.fields) ? input.fields.filter((field): field is JsonObject => Boolean(field && typeof field === 'object')) : []
+}
+
+function responseValues(value: unknown) {
+  if (value === undefined || value === null || value === '') return []
+  return (Array.isArray(value) ? value : [value]).map(String)
 }
 
 function recordValue(value: unknown): JsonObject {
@@ -364,8 +391,8 @@ export async function handleSubagentMcpRequest(request: JsonRpcRequest) {
     return {
       protocolVersion: String(request.params?.protocolVersion || legacyProtocolVersion),
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'vertexade-subagents', version: '0.0.1' },
-      instructions: formInstructions,
+      serverInfo,
+      instructions: vertexFormInstructions,
     }
   if (request.method === 'server/discover')
     return modernResult(request, {
@@ -375,7 +402,7 @@ export async function handleSubagentMcpRequest(request: JsonRpcRequest) {
         resources: { listChanged: false, subscribe: false },
         extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [appMimeType] } },
       },
-      instructions: formInstructions,
+      instructions: vertexFormInstructions,
       ...cacheMetadata,
     })
   const requestedVersion = requestProtocolVersion(request)

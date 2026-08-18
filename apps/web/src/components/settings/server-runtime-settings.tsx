@@ -10,7 +10,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/c
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import { platformQueryKey } from '@vertexade/ui/lib/platform-query'
 
 type ListenerStatus = {
@@ -110,16 +110,16 @@ function ListenerFields({
   )
 }
 
-function useServerRuntimeSettings() {
+function useServerRuntimeSettings(backendId: string) {
   const queryClient = useQueryClient()
-  const queryKey = platformQueryKey('/api/settings/server-runtime')
+  const queryKey = platformQueryKey('/api/settings/server-runtime', backendId)
   const statusQuery = useQuery({
     queryKey,
-    queryFn: ({ signal }) => api<ServerRuntimeStatus>('/api/settings/server-runtime', { signal }),
+    queryFn: ({ signal }) => backendApi<ServerRuntimeStatus>(backendId, '/api/settings/server-runtime', { signal }),
   })
   const mutation = useMutation({
     mutationFn: (configuration: ListenerValues) =>
-      api<ServerRuntimeStatus>('/api/settings/server-runtime', {
+      backendApi<ServerRuntimeStatus>(backendId, '/api/settings/server-runtime', {
         method: 'POST',
         body: JSON.stringify(configuration),
       }),
@@ -264,8 +264,8 @@ function SaveListenersButton({ ready, saving }: { ready: boolean; saving: boolea
   )
 }
 
-export function ServerRuntimeSettings() {
-  const settings = useServerRuntimeSettings()
+export function ServerRuntimeSettings({ backendId }: { backendId: string }) {
+  const settings = useServerRuntimeSettings(backendId)
   const value = runtimeSettingsValue(settings.status, settings.configuration)
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()

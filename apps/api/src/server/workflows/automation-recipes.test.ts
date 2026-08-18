@@ -64,6 +64,11 @@ function fixture(maximumSteps = 20, providedLauncher?: ThreadLauncher, maximumCo
 }
 
 describe('automation recipes', () => {
+  it.each(['null', 'undefined'])('rejects unusable automation names instead of exposing %s as a title', (name) => {
+    const { recipes } = fixture()
+    expect(() => recipes.save({ name, steps: [] })).toThrow('Automation recipes require a name')
+  })
+
   it('runs ordered queries, transforms, gates, actions, and evidence', async () => {
     const { registries, recipes } = fixture()
     const order: string[] = []
@@ -411,6 +416,7 @@ describe('automation recipes', () => {
 
     await vi.waitFor(() =>
       expect(launchThread).toHaveBeenCalledWith('work', expect.stringContaining('Implement the item and verify the result.'), event, {
+        automationName: 'Implement urgent work',
         agentId: 'codex',
         model: 'gpt-5.6-sol',
         reasoningEffort: 'high',

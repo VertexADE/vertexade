@@ -1,17 +1,18 @@
 import { mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { openDashboardDatabase, type DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
+import { jobs } from '../database/schema/tables.ts'
 import { AgentRegistry } from './registry.ts'
-import { SubagentHarness } from './subagent-harness.ts'
-import { resolveFormRequest } from './form-requests.ts'
+import { SubagentHarness, subagentJobRecord } from './subagent-harness.ts'
 
 let directory = ''
 let database: DrizzleDashboardDatabase
 
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'vertexade-subagents-'))
+  directory = await mkdtemp(join(tmpdir(), 'vertexade-subagent-harness-'))
   database = openDashboardDatabase(join(directory, 'dashboard.sqlite'))
   database.$client
     .prepare(`INSERT INTO repositories (id,full_name,clone_url,local_path)
@@ -51,14 +52,15 @@ function fixture() {
     }),
   })
   const startChild = vi.fn()
+  const activeJobs = new Map<number, { pid?: number; kill(signal?: NodeJS.Signals): boolean }>()
+  const discardWorkspace = vi.fn(async () => undefined)
   const integrateWorkspace = vi.fn(async () => ({ applied: true, files: ['src/cache.ts'] }))
   const harness = new SubagentHarness({
     database,
     agents,
-    activeJobs: new Map(),
+    activeJobs,
     cancellingJobs: new Set(),
     logsRoot: directory,
-    apiUrl: 'http://127.0.0.1:4174',
     notify: vi.fn(),
     resolveLaunch: async (_workItemId, prompt) => ({ prompt }),
     createWorkspace: async () => ({
@@ -68,142 +70,40 @@ function fixture() {
       baselineSha: 'baseline',
       branchName: 'feature/shared-work',
     }),
-    discardWorkspace: vi.fn(async () => undefined),
+    discardWorkspace,
     integrateWorkspace,
     startChild,
   })
-  const launch = harness.decorateLaunch(10, { allowSubagents: true, mcpServers: [] }) as {
-    mcpServers: Array<{ name: string; env: Record<string, string> }>
-  }
-  const token = launch.mcpServers[0]!.env.VERTEXADE_SUBAGENT_TOKEN
-  const request = (path: string, init: RequestInit = {}) =>
-    new Request(`http://localhost${path}`, {
-      ...init,
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        ...init.headers,
-      },
-    })
-  return { harness, integrateWorkspace, launch, request, startChild }
+  const storedParent = database.select().from(jobs).where(eq(jobs.id, 10)).get()
+  if (!storedParent) throw new Error('Expected seeded parent')
+  const parent = subagentJobRecord(storedParent, 'owner/repo')
+  return { activeJobs, discardWorkspace, harness, integrateWorkspace, parent, startChild }
 }
 
-describe('VertexADE sub-agent harness', () => {
-  it('persists a form and returns its submitted Markdown to the waiting tool call', async () => {
-    const { harness } = fixture()
-    const launch = harness.decorateLaunch(10, { allowSubagents: false, mcpServers: [] }) as {
-      mcpServers: Array<{ env: Record<string, string> }>
-    }
-    expect(launch.mcpServers[0]?.env.VERTEXADE_SUBAGENTS_ENABLED).toBe('0')
-    const request = (path: string, init: RequestInit = {}) =>
-      new Request(`http://localhost${path}`, {
-        ...init,
-        headers: {
-          authorization: `Bearer ${launch.mcpServers[0]?.env.VERTEXADE_SUBAGENT_TOKEN}`,
-          'content-type': 'application/json',
-        },
-      })
-    const response = harness.dispatch(
-      request('/api/internal/subagents/form', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: 'Project setup',
-          fields: [{ id: 'name', label: 'Project name', type: 'text' }],
-        }),
-      }),
-    )
-    let requestId = ''
-    await vi.waitFor(() => {
-      const stored = database.$client.prepare('SELECT input_request_id,input_questions FROM jobs WHERE id=10').get() as {
-        input_request_id: string
-        input_questions: string
-      }
-      requestId = JSON.parse(stored.input_request_id)
-      expect(requestId).toMatch(/^form:/)
-      expect(JSON.parse(stored.input_questions)).toMatchObject([{ id: 'name', type: 'text', formTitle: 'Project setup' }])
-    })
-    resolveFormRequest(requestId, { status: 'submitted', markdown: '## Project setup\n\n- **Project name:** VertexADE' })
-    await expect(response.then((value) => value?.json())).resolves.toEqual({
-      status: 'submitted',
-      markdown: '## Project setup\n\n- **Project name:** VertexADE',
-    })
-  })
-
-  it('injects a scoped built-in MCP server without exposing the token in storage', () => {
-    const { launch } = fixture()
-    expect(launch.mcpServers[0]).toMatchObject({
-      name: 'vertexade-subagents',
-      defaultEnabled: true,
-      env: {
-        VERTEXADE_SUBAGENT_API_URL: 'http://127.0.0.1:4174',
-        VERTEXADE_SUBAGENT_TOKEN: expect.stringMatching(/^10\./),
-      },
-    })
-    const stored = database.$client.prepare('SELECT allow_subagents,subagent_token_hash FROM jobs WHERE id=10').get()
-    expect(stored).toMatchObject({
-      allow_subagents: 1,
-      subagent_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
-    })
-    expect(stored.subagent_token_hash).not.toBe(launch.mcpServers[0]!.env.VERTEXADE_SUBAGENT_TOKEN)
-  })
-
-  it('always replaces a conflicting configured VertexADE MCP with the scoped built-in server', () => {
-    const { harness } = fixture()
-    const launch = harness.decorateLaunch(10, {
-      allowSubagents: false,
-      mcpServers: [
-        {
-          id: 'user-defined',
-          name: 'vertexade-subagents',
-          transport: 'stdio',
-          command: 'untrusted-command',
-          defaultEnabled: false,
-        },
-      ],
-    }) as { mcpServers: Array<{ id: string; name: string; command: string; defaultEnabled: boolean }> }
-
-    expect(launch.mcpServers.filter((server) => server.name === 'vertexade-subagents')).toHaveLength(1)
-    expect(launch.mcpServers[0]).toMatchObject({
-      id: 'vertexade:subagents',
-      name: 'vertexade-subagents',
-      command: process.execPath,
-      defaultEnabled: true,
-    })
-  })
-
+describe('SubagentHarness', () => {
   it('discovers models and launches one non-recursive child in the shared worktree', async () => {
-    const { harness, request, startChild } = fixture()
-    const agents = await harness.dispatch(request('/api/internal/subagents/agents'))
-    expect(await agents?.json()).toMatchObject({
-      parent_run_id: 10,
-      agents: [{ id: 'codex', models: [{ id: 'gpt-test' }] }],
-    })
+    const { harness, parent, startChild } = fixture()
 
-    const response = await harness.dispatch(
-      request('/api/internal/subagents/runs', {
-        method: 'POST',
-        body: JSON.stringify({
-          task: 'Improve the cache',
-          title: 'Cache improvements',
-          agent_id: 'codex',
-          model: 'gpt-test',
-          reasoning_effort: 'high',
-        }),
-      }),
-    )
-    expect(response?.status).toBe(202)
-    const child = await response?.json()
-    expect(child).toMatchObject({
-      parent_run_id: 10,
-      status: 'starting',
+    await expect(harness.availableAgents()).resolves.toMatchObject([{ id: 'codex', models: [{ id: 'gpt-test' }] }])
+    const child = await harness.spawn(parent, {
+      task: 'Improve the cache',
+      title: 'Cache improvements',
       agent_id: 'codex',
       model: 'gpt-test',
-      branch: 'feature/shared-work',
-      workspace: '/parent',
+      reasoning_effort: 'high',
+    })
+
+    expect(child).toMatchObject({
+      source_job_id: 10,
+      status: 'starting',
+      agent_id: 'codex',
+      agent_model: 'gpt-test',
+      branch_name: 'feature/shared-work',
+      worktree_path: '/parent',
     })
     expect(startChild).toHaveBeenCalledWith(
       expect.objectContaining({
-        jobId: child.run_id,
+        jobId: child.id,
         launch: expect.objectContaining({
           cwd: '/work-item-run',
           reviewMode: false,
@@ -215,67 +115,123 @@ describe('VertexADE sub-agent harness', () => {
   })
 
   it('rejects a second child while the shared worktree already has an active child', async () => {
-    const { harness, request } = fixture()
-    const first = await harness.dispatch(
-      request('/api/internal/subagents/runs', {
-        method: 'POST',
-        body: JSON.stringify({ task: 'First shared task', model: 'gpt-test' }),
-      }),
-    )
-    expect(first?.status).toBe(202)
+    const { harness, parent } = fixture()
+    await harness.spawn(parent, { task: 'First shared task', model: 'gpt-test' })
 
-    const second = await harness.dispatch(
-      request('/api/internal/subagents/runs', {
-        method: 'POST',
-        body: JSON.stringify({ task: 'Second shared task', model: 'gpt-test' }),
-      }),
-    )
-    expect(second?.status).toBe(409)
-    expect(await second?.json()).toEqual({ error: 'Wait for one of the 1 active child agents to finish' })
+    await expect(harness.spawn(parent, { task: 'Second shared task', model: 'gpt-test' })).rejects.toMatchObject({
+      message: 'Wait for one of the 1 active child agents to finish',
+      status: 409,
+    })
+  })
+
+  it('cancels an attached active child and records launch failures', async () => {
+    const { activeJobs, discardWorkspace, harness, parent, startChild } = fixture()
+    const child = await harness.spawn(parent, { task: 'Cancelable task', model: 'gpt-test' })
+    const kill = vi.fn(() => true)
+    activeJobs.set(child.id, { kill })
+
+    expect(harness.cancel(parent.id, child.id)).toMatchObject({ child: { id: child.id }, accepted: true })
+    expect(kill).toHaveBeenCalledWith('SIGTERM')
+
+    database.$client.prepare("UPDATE jobs SET status='completed' WHERE id=?").run(child.id)
+    startChild.mockImplementationOnce(() => {
+      throw new Error('Agent process failed to launch')
+    })
+    await expect(harness.spawn(parent, { task: 'Broken launch', model: 'gpt-test' })).rejects.toThrow('Agent process failed to launch')
+    const failed = database.$client.prepare("SELECT status,latest_activity FROM jobs WHERE task_title='Broken launch'").get()
+    expect(failed).toEqual({ status: 'failed', latest_activity: 'Agent process failed to launch' })
+    expect(discardWorkspace).toHaveBeenCalledOnce()
   })
 
   it('integrates only a completed child owned by the requesting parent', async () => {
-    const { harness, integrateWorkspace, request } = fixture()
-    const spawned = await harness.dispatch(
-      request('/api/internal/subagents/runs', {
-        method: 'POST',
-        body: JSON.stringify({ task: 'Implement the cache', model: 'gpt-test' }),
-      }),
-    )
-    const child = await spawned?.json()
-    database.$client.prepare("UPDATE jobs SET status='completed',finished_at=CURRENT_TIMESTAMP WHERE id=?").run(child.run_id)
+    const { harness, integrateWorkspace, parent } = fixture()
+    const child = await harness.spawn(parent, { task: 'Implement the cache', model: 'gpt-test' })
+    database.$client.prepare("UPDATE jobs SET status='completed',finished_at=CURRENT_TIMESTAMP WHERE id=?").run(child.id)
 
-    const integrated = await harness.dispatch(request(`/api/internal/subagents/runs/${child.run_id}/integrate`, { method: 'POST' }))
-    expect(await integrated?.json()).toEqual({
-      run_id: child.run_id,
-      integrated: true,
-      already_integrated: false,
-      applied: true,
-      files: ['src/cache.ts'],
-    })
+    const integrated = await harness.integrate(parent, child.id)
+    expect(integrated).toMatchObject({ alreadyIntegrated: false, result: { applied: true, files: ['src/cache.ts'] } })
     expect(integrateWorkspace).toHaveBeenCalledOnce()
 
-    const repeated = await harness.dispatch(request(`/api/internal/subagents/runs/${child.run_id}/integrate`, { method: 'POST' }))
-    expect(await repeated?.json()).toMatchObject({ integrated: true, already_integrated: true })
+    const repeated = await harness.integrate(parent, child.id)
+    expect(repeated).toMatchObject({ alreadyIntegrated: true, result: { files: [] } })
     expect(integrateWorkspace).toHaveBeenCalledOnce()
   })
 
-  it('rejects invalid capabilities and unavailable models', async () => {
-    const { harness, request } = fixture()
-    const unauthorized = await harness.dispatch(
-      new Request('http://localhost/api/internal/subagents/agents', {
-        headers: { authorization: 'Bearer 10.invalid' },
-      }),
-    )
-    expect(unauthorized?.status).toBe(401)
+  it('keeps legacy child status readable when only its integration baseline is missing', async () => {
+    const { harness, parent } = fixture()
+    database
+      .insert(jobs)
+      .values({
+        id: 20,
+        repoId: 1,
+        prNumber: 0,
+        prompt: 'legacy child',
+        worktreePath: '/parent',
+        sessionCwd: '/parent',
+        logPath: '/legacy-child.log',
+        status: 'completed',
+        baseRepoPath: '/repo',
+        headSha: 'abc',
+        kind: 'subagent',
+        sourceJobId: 10,
+        taskTitle: 'Legacy child',
+        agentId: 'codex',
+        workItemId: 7,
+        workspaceMode: 'combined',
+      })
+      .run()
 
-    const invalidModel = await harness.dispatch(
-      request('/api/internal/subagents/runs', {
-        method: 'POST',
-        body: JSON.stringify({ task: 'Try another model', model: 'missing' }),
-      }),
+    expect(harness.child(parent.id, 20)).toMatchObject({ id: 20, status: 'completed', subagent_base_sha: null })
+    await expect(harness.integrate(parent, 20)).rejects.toMatchObject({
+      message: 'Child agent workspace baseline is missing',
+      status: 409,
+    })
+  })
+
+  it('serializes concurrent integration attempts for the same child', async () => {
+    const { harness, integrateWorkspace, parent } = fixture()
+    const child = await harness.spawn(parent, { task: 'Integrate once', model: 'gpt-test' })
+    database.$client.prepare("UPDATE jobs SET status='completed' WHERE id=?").run(child.id)
+    let finishIntegration!: (result: { applied: boolean; files: string[] }) => void
+    integrateWorkspace.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishIntegration = resolve
+        }),
     )
-    expect(invalidModel?.status).toBe(400)
-    expect(await invalidModel?.json()).toEqual({ error: 'Model is not available for Codex' })
+
+    const first = harness.integrate(parent, child.id)
+    await vi.waitFor(() => expect(integrateWorkspace).toHaveBeenCalledOnce())
+    await expect(harness.integrate(parent, child.id)).rejects.toMatchObject({
+      message: 'The child agent is already being integrated',
+      status: 409,
+    })
+    finishIntegration({ applied: true, files: ['src/cache.ts'] })
+    await expect(first).resolves.toMatchObject({ alreadyIntegrated: false, result: { applied: true } })
+  })
+
+  it('rejects unavailable models before creating a child run', async () => {
+    const { harness, parent } = fixture()
+
+    await expect(harness.spawn(parent, { task: 'Try another model', model: 'missing' })).rejects.toMatchObject({
+      message: 'Model is not available for Codex',
+      status: 400,
+    })
+  })
+
+  it('rejects an unlisted reasoning level instead of passing it to the child provider', async () => {
+    const { harness, parent, startChild } = fixture()
+
+    await expect(
+      harness.spawn(parent, {
+        task: 'Try unsupported reasoning',
+        model: 'gpt-test',
+        reasoning_effort: 'ultra',
+      }),
+    ).rejects.toMatchObject({
+      message: 'Reasoning effort is not available for gpt-test',
+      status: 400,
+    })
+    expect(startChild).not.toHaveBeenCalled()
   })
 })

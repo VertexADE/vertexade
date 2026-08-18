@@ -4,6 +4,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Label } from '@vertexade/ui/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@vertexade/ui/components/ui/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { age } from '@vertexade/ui/lib/dashboard-api'
@@ -11,6 +12,15 @@ import type { InputQuestion, JobLog } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
 type Answers = Record<string, string>
+type QuestionControlProps = {
+  question: InputQuestion
+  answers: Answers
+  custom: Answers
+  setAnswers: Dispatch<SetStateAction<Answers>>
+  setCustom: Dispatch<SetStateAction<Answers>>
+  selections: Record<string, string[]>
+  setSelections: Dispatch<SetStateAction<Record<string, string[]>>>
+}
 
 export function ThreadInputRequestForm({
   job,
@@ -51,93 +61,16 @@ export function ThreadInputRequestForm({
       </div>
       {questions[0]?.formDescription ? <p className="text-sm text-muted-foreground">{questions[0].formDescription}</p> : null}
       {questions.map((question) => (
-        <fieldset key={question.id} className="space-y-2">
-          {question.header && !question.formTitle ? (
-            <legend className="font-mono text-xs uppercase text-muted-foreground">{question.header}</legend>
-          ) : null}
-          <p className="text-sm">{question.question}</p>
-          {question.description ? <p className="text-xs text-muted-foreground">{question.description}</p> : null}
-          {question.type === 'checkbox' ? (
-            <>
-              <div className="grid gap-1.5 sm:grid-cols-2">
-                {(question.options || []).map((option) => {
-                  const value = option.value || option.label
-                  const checked = selections[question.id]?.includes(value) || false
-                  return (
-                    <Label key={value} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) =>
-                          setSelections((current) => ({
-                            ...current,
-                            [question.id]: next
-                              ? [...(current[question.id] || []), value]
-                              : (current[question.id] || []).filter((candidate) => candidate !== value),
-                          }))
-                        }
-                        className="row-span-2 mt-0.5"
-                      />
-                      <span className="text-xs">{option.label}</span>
-                      <small className="text-xs text-muted-foreground">{option.description}</small>
-                    </Label>
-                  )
-                })}
-              </div>
-              <Input
-                type={question.isSecret ? 'password' : 'text'}
-                value={custom[question.id] || ''}
-                onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
-                placeholder="Other — enter your own answer"
-              />
-            </>
-          ) : question.options?.length ? (
-            <>
-              <RadioGroup
-                value={answers[question.id]}
-                onValueChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
-                className="grid gap-1.5 sm:grid-cols-2"
-              >
-                {question.options.map((option) => (
-                  <Label key={option.label} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
-                    <RadioGroupItem value={option.value || option.label} className="row-span-2 mt-0.5" />
-                    <span className="text-xs">{option.label}</span>
-                    <small className="text-xs text-muted-foreground">{option.description}</small>
-                  </Label>
-                ))}
-                <Label className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
-                  <RadioGroupItem value="__other__" className="row-span-2 mt-0.5" />
-                  <span className="text-xs">Other</span>
-                  <small className="text-xs text-muted-foreground">Enter your own answer</small>
-                </Label>
-              </RadioGroup>
-              <Input
-                type={question.isSecret ? 'password' : 'text'}
-                value={custom[question.id] || ''}
-                onFocus={() => setAnswers((current) => ({ ...current, [question.id]: '__other__' }))}
-                onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
-                placeholder="Other — enter your own answer"
-              />
-            </>
-          ) : question.isSecret ? (
-            <Input
-              type="password"
-              autoComplete="off"
-              value={answers[question.id] || ''}
-              onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
-            />
-          ) : question.multiline !== false ? (
-            <Textarea
-              className="min-h-20"
-              value={answers[question.id] || ''}
-              onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
-            />
-          ) : (
-            <Input
-              value={answers[question.id] || ''}
-              onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
-            />
-          )}
-        </fieldset>
+        <ThreadQuestion
+          key={question.id}
+          question={question}
+          answers={answers}
+          custom={custom}
+          setAnswers={setAnswers}
+          setCustom={setCustom}
+          selections={selections}
+          setSelections={setSelections}
+        />
       ))}
       <div className="flex justify-end gap-2">
         {onCancel ? (
@@ -152,4 +85,182 @@ export function ThreadInputRequestForm({
       </div>
     </form>
   )
+}
+
+function ThreadQuestion(props: QuestionControlProps) {
+  const { question } = props
+  return (
+    <fieldset className="space-y-2">
+      {question.header && !question.formTitle ? (
+        <legend className="font-mono text-xs uppercase text-muted-foreground">{question.header}</legend>
+      ) : null}
+      <p className="text-sm">{question.question}</p>
+      {question.description ? <p className="text-xs text-muted-foreground">{question.description}</p> : null}
+      <QuestionControl {...props} />
+    </fieldset>
+  )
+}
+
+function QuestionControl(props: QuestionControlProps) {
+  const { question } = props
+  if (question.type === 'checkbox') return <CheckboxQuestion {...props} />
+  if (question.type === 'select' && question.options?.length) return <SelectQuestion {...props} />
+  if (question.options?.length) return <ChoiceQuestion {...props} />
+  return <TextQuestion {...props} />
+}
+
+function CheckboxQuestion({ question, custom, setCustom, selections, setSelections }: QuestionControlProps) {
+  function toggle(value: string, checked: boolean) {
+    setSelections((current) => ({
+      ...current,
+      [question.id]: checked
+        ? [...(current[question.id] || []), value]
+        : (current[question.id] || []).filter((candidate) => candidate !== value),
+    }))
+  }
+  return (
+    <>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {(question.options || []).map((option) => {
+          const value = option.value || option.label
+          return (
+            <Label key={value} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+              <Checkbox
+                checked={selections[question.id]?.includes(value) || false}
+                onCheckedChange={(next) => toggle(value, Boolean(next))}
+                className="row-span-2 mt-0.5"
+              />
+              <span className="text-xs">{option.label}</span>
+              <small className="text-xs text-muted-foreground">{option.description}</small>
+            </Label>
+          )
+        })}
+      </div>
+      <OtherAnswer question={question} custom={custom} setCustom={setCustom} placeholder="Other — enter your own answer" />
+    </>
+  )
+}
+
+function SelectQuestion({ question, answers, custom, setAnswers, setCustom }: QuestionControlProps) {
+  return (
+    <>
+      <Select
+        required={question.required}
+        value={answers[question.id]}
+        onValueChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
+      >
+        <SelectTrigger className="w-full" aria-label={question.question}>
+          <SelectValue placeholder="Choose an answer" />
+        </SelectTrigger>
+        <SelectContent>
+          {question.options?.map((option) => (
+            <SelectItem key={option.value || option.label} value={option.value || option.label}>
+              {option.label}
+            </SelectItem>
+          ))}
+          <SelectItem value="__other__">Other</SelectItem>
+        </SelectContent>
+      </Select>
+      {answers[question.id] === '__other__' ? (
+        <OtherAnswer question={question} custom={custom} setCustom={setCustom} required placeholder="Enter your own answer" />
+      ) : null}
+    </>
+  )
+}
+
+function ChoiceQuestion({ question, answers, custom, setAnswers, setCustom }: QuestionControlProps) {
+  return (
+    <>
+      <RadioGroup
+        value={answers[question.id]}
+        onValueChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
+        className="grid gap-1.5 sm:grid-cols-2"
+      >
+        {question.options?.map((option) => (
+          <Label key={option.value || option.label} className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+            <RadioGroupItem value={option.value || option.label} className="row-span-2 mt-0.5" />
+            <span className="text-xs">{option.label}</span>
+            <small className="text-xs text-muted-foreground">{option.description}</small>
+          </Label>
+        ))}
+        <Label className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+          <RadioGroupItem value="__other__" className="row-span-2 mt-0.5" />
+          <span className="text-xs">Other</span>
+          <small className="text-xs text-muted-foreground">Enter your own answer</small>
+        </Label>
+      </RadioGroup>
+      <OtherAnswer
+        question={question}
+        custom={custom}
+        setCustom={setCustom}
+        required={answers[question.id] === '__other__'}
+        onFocus={() => setAnswers((current) => ({ ...current, [question.id]: '__other__' }))}
+        placeholder="Other — enter your own answer"
+      />
+    </>
+  )
+}
+
+function OtherAnswer({
+  question,
+  custom,
+  setCustom,
+  required = false,
+  onFocus,
+  placeholder,
+}: Pick<QuestionControlProps, 'question' | 'custom' | 'setCustom'> & {
+  required?: boolean
+  onFocus?(): void
+  placeholder: string
+}) {
+  return (
+    <Input
+      required={question.required && required}
+      aria-label={`Other answer for ${question.question}`}
+      type={question.isSecret ? 'password' : 'text'}
+      value={custom[question.id] || ''}
+      onFocus={onFocus}
+      onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
+      placeholder={placeholder}
+    />
+  )
+}
+
+function TextQuestion({ question, answers, setAnswers }: QuestionControlProps) {
+  const value = answers[question.id] || ''
+  const onChange = (next: string) => setAnswers((current) => ({ ...current, [question.id]: next }))
+  if (question.isSecret || question.type === 'password')
+    return (
+      <Input
+        required={question.required}
+        aria-label={question.question}
+        type="password"
+        autoComplete="off"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    )
+  if (question.type === 'textarea' || (question.type === undefined && question.multiline !== false))
+    return (
+      <Textarea
+        required={question.required}
+        aria-label={question.question}
+        className="min-h-20"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    )
+  return (
+    <Input
+      required={question.required}
+      aria-label={question.question}
+      type={typedInputType(question.type)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  )
+}
+
+function typedInputType(type: InputQuestion['type']) {
+  return type === 'number' || type === 'date' || type === 'email' || type === 'url' ? type : 'text'
 }

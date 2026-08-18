@@ -65,6 +65,9 @@ describe('dashboard database migrations', () => {
       { version: 45, name: 'local-directory-workspaces' },
       { version: 46, name: 'automation-schedule-execution-mode' },
       { version: 47, name: 'automation-agent-resources' },
+      { version: 48, name: 'thread-settle-and-snooze' },
+      { version: 49, name: 'thread-turn-started-at' },
+      { version: 50, name: 'work-agent-resource-overrides' },
     ])
     expect(nativeDatabase(database).prepare("SELECT name FROM presets WHERE name='pr'").get()).toEqual({
       name: 'pr',
@@ -75,6 +78,18 @@ describe('dashboard database migrations', () => {
         .all()
         .map((column) => column.name),
     ).toContain('pid_start_identity')
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(jobs)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['settled_at', 'snoozed_until', 'turn_started_at']))
+    expect(
+      nativeDatabase(database)
+        .prepare('PRAGMA table_info(work_agent_resource_overrides)')
+        .all()
+        .map((column) => column.name),
+    ).toEqual(expect.arrayContaining(['work_item_id', 'resource_kind', 'resource_id', 'enabled', 'updated_at']))
     expect(
       nativeDatabase(database)
         .prepare('PRAGMA table_info(jobs)')

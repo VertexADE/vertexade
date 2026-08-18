@@ -1,11 +1,21 @@
 type FormResolution = { status: 'submitted'; markdown: string } | { status: 'cancelled'; reason: string }
 
-const pending = new Map<string, { jobId: number; resolve(value: FormResolution): void }>()
+type PendingForm = {
+  jobId: number
+  resolve(value: FormResolution): void
+  signal?: AbortSignal
+  abort?: () => void
+}
 
-export function waitForFormResolution(requestId: string, jobId: number) {
+const pending = new Map<string, PendingForm>()
+
+export function waitForFormResolution(requestId: string, jobId: number, signal?: AbortSignal) {
   if (pending.has(requestId)) throw new Error('Form request is already active')
   return new Promise<FormResolution>((resolve) => {
-    pending.set(requestId, { jobId, resolve })
+    const abort = () => resolveFormRequest(requestId, { status: 'cancelled', reason: 'The agent stopped waiting for form input' })
+    pending.set(requestId, { jobId, resolve, signal, abort })
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
   })
 }
 
@@ -13,6 +23,7 @@ export function resolveFormRequest(requestId: string, resolution: FormResolution
   const request = pending.get(requestId)
   if (!request) return false
   pending.delete(requestId)
+  if (request.signal && request.abort) request.signal.removeEventListener('abort', request.abort)
   request.resolve(resolution)
   return true
 }

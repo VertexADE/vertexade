@@ -98,7 +98,7 @@ export function WorkDetailHeader({ item, onEdit }: { item: WorkItem; onEdit(): v
             {item.state}
           </Badge>
           <span className="hidden sm:inline-flex">
-            <BackendBadge source={item} />
+            <BackendBadge source={item} nameOnly />
           </span>
           {['high', 'urgent'].includes(item.priority) && (
             <Badge variant="secondary" className="hidden capitalize sm:inline-flex">

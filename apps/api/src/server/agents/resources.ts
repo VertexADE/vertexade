@@ -1,17 +1,29 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { AgentLaunchResources, AgentMcpServer, AgentSkill, CustomAgentProfile } from '@vertexade/platform-contracts'
+import { join } from 'node:path'
+import type {
+  AgentLaunchResources,
+  AgentMcpServer,
+  AgentPlugin,
+  AgentPluginDiagnostic,
+  AgentSkill,
+  CustomAgentProfile,
+} from '@vertexade/platform-contracts'
+import { vertexDataDirectory } from '@vertexade/platform-server/configuration'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { workAgentResourceOverrides } from '../database/schema/tables.ts'
 import type { SettingsStore } from '../settings/settings-store.ts'
+import { loadAgentPlugin, readPluginSkill, type AgentPluginStoredSkill, type LoadedAgentPlugin } from './agent-plugins.ts'
 
 type Runner = (command: string, args: string[]) => Promise<unknown>
 type ResourceKind = 'skill' | 'mcp'
+type StoredSkill = AgentSkill & Partial<Pick<AgentPluginStoredSkill, 'pluginRoot' | 'skillFile' | 'skillDirectory'>>
 type StoredResources = {
   selectionVersion: number
-  skills: AgentSkill[]
+  skills: StoredSkill[]
   mcpServers: AgentMcpServer[]
   profiles: CustomAgentProfile[]
+  plugins: AgentPlugin[]
 }
 type ResourceSelection = { skills: string[]; mcpServers: string[] }
 
@@ -22,8 +34,11 @@ const emptyResources: StoredResources = {
   skills: [],
   mcpServers: [],
   profiles: [],
+  plugins: [],
 }
 const ansi = /\u001b\[[0-9;]*m/g
+const stdioWorkingDirectoryLauncher =
+  "const{spawn}=require('node:child_process');const[cwd,command,...args]=process.argv.slice(1);const child=spawn(command,args,{cwd,env:process.env,stdio:'inherit'});for(const signal of['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));child.on('error',error=>{console.error(error.message);process.exit(1)});child.on('exit',code=>process.exit(code??1))"
 
 function text(value: unknown, maximum: number, label: string) {
   const result = String(value ?? '').trim()
@@ -38,20 +53,32 @@ function optionalText(value: unknown, maximum: number, label: string) {
   return result
 }
 
-function stringRecord(value: unknown, label: string) {
+function storedText(value: unknown, maximum: number, label: string, required = false) {
+  const result = String(value ?? '')
+  if ((required && !result) || result.length > maximum || result.includes('\0'))
+    throw new Error(`${label} ${required ? 'is required and ' : ''}must be under ${maximum} characters`)
+  return result
+}
+
+function stringRecord(value: unknown, label: string, maximumEntries = 100, maximumName = 200, maximumValue = 10_000, preserve = false) {
   if (value === undefined || value === null) return {}
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object`)
   const entries = Object.entries(value as Record<string, unknown>)
-  if (entries.length > 100) throw new Error(`${label} supports at most 100 entries`)
+  if (entries.length > maximumEntries) throw new Error(`${label} supports at most ${maximumEntries} entries`)
   return Object.fromEntries(
-    entries.map(([name, entry]) => [text(name, 200, `${label} name`), optionalText(entry, 10_000, `${label} value`)]),
+    entries.map(([name, entry]) => [
+      preserve ? storedText(name, maximumName, `${label} name`, true) : text(name, maximumName, `${label} name`),
+      preserve ? storedText(entry, maximumValue, `${label} value`) : optionalText(entry, maximumValue, `${label} value`),
+    ]),
   )
 }
 
-function stringList(value: unknown, label: string) {
+function stringList(value: unknown, label: string, maximumEntries = 100, maximumEntry = 5_000, preserve = false) {
   if (value === undefined || value === null) return []
-  if (!Array.isArray(value) || value.length > 100) throw new Error(`${label} must contain at most 100 entries`)
-  return value.map((entry) => optionalText(entry, 5_000, `${label} entry`))
+  if (!Array.isArray(value) || value.length > maximumEntries) throw new Error(`${label} must contain at most ${maximumEntries} entries`)
+  return value.map((entry) =>
+    preserve ? storedText(entry, maximumEntry, `${label} entry`) : optionalText(entry, maximumEntry, `${label} entry`),
+  )
 }
 
 function resourceIds(value: unknown, label: string) {
@@ -64,7 +91,19 @@ function resourceId(prefix: ResourceKind, identity: string) {
   return `${prefix}-${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`
 }
 
-function normalizeSkill(value: unknown): AgentSkill {
+function storedSkillMetadata(input: Record<string, unknown>, stored: boolean) {
+  if (!stored) return {}
+  const pluginId = optionalText(input.pluginId, 100, 'Agent Plugin ID')
+  const pluginRoot = optionalText(input.pluginRoot, 4_096, 'Agent Plugin root')
+  const skillFile = optionalText(input.skillFile, 4_096, 'Agent Plugin skill file')
+  const skillDirectory = optionalText(input.skillDirectory, 4_096, 'Agent Plugin skill directory')
+  return {
+    ...(pluginId ? { pluginId } : {}),
+    ...(pluginRoot && skillFile && skillDirectory ? { pluginRoot, skillFile, skillDirectory } : {}),
+  }
+}
+
+function normalizeSkill(value: unknown, stored = false): StoredSkill {
   const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const source = text(input.source, 500, 'Skill source')
   const skill = text(input.skill, 300, 'Skill name')
@@ -76,26 +115,50 @@ function normalizeSkill(value: unknown): AgentSkill {
     description: optionalText(input.description, 2_000, 'Skill description'),
     url: optionalText(input.url, 2_000, 'Skill URL') || `https://skills.sh/${source}/${skill}`,
     defaultEnabled: input.defaultEnabled === true,
+    ...storedSkillMetadata(input, stored),
   }
 }
 
-function normalizeMcpServer(value: unknown): AgentMcpServer {
-  const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-  const transport = input.transport === 'http' || input.transport === 'sse' ? input.transport : 'stdio'
-  const name = text(input.name, 200, 'MCP server name')
-  const id = optionalText(input.id, 100, 'MCP server ID') || `mcp-${randomUUID()}`
-  if (transport === 'stdio') {
-    return {
-      id,
-      name,
-      transport,
-      command: text(input.command, 1_000, 'MCP command'),
-      args: stringList(input.args, 'MCP arguments'),
-      env: stringRecord(input.env, 'MCP environment'),
-      defaultEnabled: input.defaultEnabled === true,
-    }
+function pluginReference(pluginId: string) {
+  return pluginId ? { pluginId } : {}
+}
+
+function pluginStringLimits(fromPlugin: boolean) {
+  return fromPlugin
+    ? { entries: 2_000, names: 1_000, values: 1_000_000, arguments: 10_000, argumentLength: 1_000_000 }
+    : { entries: 100, names: 200, values: 10_000, arguments: 100, argumentLength: 5_000 }
+}
+
+function normalizeStdioMcp(
+  input: Record<string, unknown>,
+  identity: { id: string; name: string; pluginId: string; fromPlugin: boolean },
+): AgentMcpServer {
+  const limits = pluginStringLimits(identity.fromPlugin)
+  const cwd = input.cwd
+    ? identity.fromPlugin
+      ? storedText(input.cwd, 4_096, 'MCP working directory', true)
+      : text(input.cwd, 4_096, 'MCP working directory')
+    : ''
+  return {
+    id: identity.id,
+    name: identity.name,
+    transport: 'stdio',
+    command: identity.fromPlugin ? storedText(input.command, 4_096, 'MCP command', true) : text(input.command, 1_000, 'MCP command'),
+    args: stringList(input.args, 'MCP arguments', limits.arguments, limits.argumentLength, identity.fromPlugin),
+    env: stringRecord(input.env, 'MCP environment', limits.entries, limits.names, limits.values, identity.fromPlugin),
+    ...(cwd ? { cwd } : {}),
+    defaultEnabled: input.defaultEnabled === true,
+    ...pluginReference(identity.pluginId),
   }
-  const url = text(input.url, 2_000, 'MCP HTTP URL')
+}
+
+function normalizeRemoteMcp(
+  input: Record<string, unknown>,
+  transport: 'http' | 'sse',
+  identity: { id: string; name: string; pluginId: string; fromPlugin: boolean },
+): AgentMcpServer {
+  const limits = pluginStringLimits(identity.fromPlugin)
+  const url = identity.fromPlugin ? storedText(input.url, 1_000_000, 'MCP HTTP URL', true) : text(input.url, 2_000, 'MCP HTTP URL')
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -104,12 +167,57 @@ function normalizeMcpServer(value: unknown): AgentMcpServer {
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('MCP HTTP URL must use HTTP or HTTPS')
   return {
-    id,
-    name,
+    id: identity.id,
+    name: identity.name,
     transport,
     url: parsed.toString(),
-    headers: stringRecord(input.headers, 'MCP headers'),
+    headers: stringRecord(input.headers, 'MCP headers', limits.entries, limits.names, limits.values, identity.fromPlugin),
     defaultEnabled: input.defaultEnabled === true,
+    ...pluginReference(identity.pluginId),
+  }
+}
+
+function normalizeMcpServer(value: unknown, stored = false): AgentMcpServer {
+  const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  const transport = input.transport === 'http' || input.transport === 'sse' ? input.transport : 'stdio'
+  const pluginId = stored ? optionalText(input.pluginId, 100, 'Agent Plugin ID') : ''
+  const identity = {
+    id: optionalText(input.id, 100, 'MCP server ID') || `mcp-${randomUUID()}`,
+    name: text(input.name, 200, 'MCP server name'),
+    pluginId,
+    fromPlugin: Boolean(pluginId),
+  }
+  return transport === 'stdio' ? normalizeStdioMcp(input, identity) : normalizeRemoteMcp(input, transport, identity)
+}
+
+function normalizeDiagnostic(value: unknown): AgentPluginDiagnostic {
+  const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  const component = ['manifest', 'skills', 'mcp'].includes(String(input.component))
+    ? (input.component as AgentPluginDiagnostic['component'])
+    : 'manifest'
+  return {
+    severity: input.severity === 'warning' ? 'warning' : 'error',
+    component,
+    ...(input.item ? { item: optionalText(input.item, 1_000, 'Agent Plugin diagnostic item') } : {}),
+    message: text(input.message, 4_000, 'Agent Plugin diagnostic message'),
+  }
+}
+
+function normalizePlugin(value: unknown): AgentPlugin {
+  const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return {
+    id: text(input.id, 100, 'Agent Plugin ID'),
+    name: text(input.name, 64, 'Agent Plugin name'),
+    version: optionalText(input.version, 1_000, 'Agent Plugin version'),
+    description: optionalText(input.description, 10_000, 'Agent Plugin description'),
+    root: text(input.root, 4_096, 'Agent Plugin root'),
+    homepage: optionalText(input.homepage, 10_000, 'Agent Plugin homepage'),
+    repository: optionalText(input.repository, 10_000, 'Agent Plugin repository'),
+    skillIds: resourceIds(input.skillIds, 'Agent Plugin skills'),
+    mcpServerIds: resourceIds(input.mcpServerIds, 'Agent Plugin MCP servers'),
+    diagnostics: Array.isArray(input.diagnostics) ? input.diagnostics.map(normalizeDiagnostic) : [],
+    installedAt: text(input.installedAt, 100, 'Agent Plugin installation time'),
+    updatedAt: text(input.updatedAt, 100, 'Agent Plugin update time'),
   }
 }
 
@@ -139,10 +247,16 @@ function normalizeStored(value: unknown): StoredResources {
   const input = value && typeof value === 'object' ? (value as Partial<StoredResources>) : {}
   return {
     selectionVersion: input.selectionVersion === SELECTION_VERSION ? SELECTION_VERSION : 1,
-    skills: Array.isArray(input.skills) ? input.skills.map(normalizeSkill) : [],
-    mcpServers: Array.isArray(input.mcpServers) ? input.mcpServers.map(normalizeMcpServer) : [],
+    skills: Array.isArray(input.skills) ? input.skills.map((skill) => normalizeSkill(skill, true)) : [],
+    mcpServers: Array.isArray(input.mcpServers) ? input.mcpServers.map((server) => normalizeMcpServer(server, true)) : [],
     profiles: Array.isArray(input.profiles) ? input.profiles.map(normalizeProfile) : [],
+    plugins: Array.isArray(input.plugins) ? input.plugins.map(normalizePlugin) : [],
   }
+}
+
+function publicSkill(skill: StoredSkill): AgentSkill {
+  const { pluginRoot: _pluginRoot, skillFile: _skillFile, skillDirectory: _skillDirectory, ...value } = skill
+  return value
 }
 
 function publicMcp(server: AgentMcpServer) {
@@ -198,6 +312,7 @@ export class AgentResourceService {
     private readonly settings: SettingsStore,
     private readonly run: Runner,
     private readonly agentExists: (id: string) => boolean = () => true,
+    private readonly pluginDataRoot = join(vertexDataDirectory(), 'agent-plugins'),
   ) {}
 
   initialize() {
@@ -236,9 +351,10 @@ export class AgentResourceService {
   catalog() {
     const value = this.read()
     return {
-      skills: value.skills,
+      skills: value.skills.map(publicSkill),
       mcpServers: value.mcpServers.map(publicMcp),
       profiles: value.profiles.filter((profile) => !profile.archived),
+      plugins: value.plugins,
     }
   }
 
@@ -270,6 +386,79 @@ export class AgentResourceService {
     value.skills = existing ? value.skills.map((item) => (item.id === skill.id ? { ...item, ...skill } : item)) : [...value.skills, skill]
     this.write(value)
     return skill
+  }
+
+  private installLoadedPlugin(loaded: LoadedAgentPlugin) {
+    const value = this.read()
+    const duplicate = value.plugins.find((plugin) => plugin.id !== loaded.plugin.id && plugin.name === loaded.plugin.name)
+    if (duplicate) throw new Error(`Agent Plugin ${loaded.plugin.name} is already loaded from ${duplicate.root}`)
+    const previous = value.plugins.find((plugin) => plugin.id === loaded.plugin.id)
+    const previousSkills = value.skills.filter((skill) => skill.pluginId === loaded.plugin.id)
+    const previousMcp = value.mcpServers.filter((server) => server.pluginId === loaded.plugin.id)
+    const skillDefaults = new Map(previousSkills.map((skill) => [skill.id, skill.defaultEnabled]))
+    const mcpDefaults = new Map(previousMcp.map((server) => [server.id, server.defaultEnabled]))
+    const skills = loaded.skills.map((skill) => ({ ...skill, defaultEnabled: skillDefaults.get(skill.id) ?? false }))
+    const mcpServers = loaded.mcpServers.map((server) => ({ ...server, defaultEnabled: mcpDefaults.get(server.id) ?? false }))
+    const plugin = {
+      ...loaded.plugin,
+      installedAt: previous?.installedAt || loaded.plugin.installedAt,
+      skillIds: skills.map((skill) => skill.id),
+      mcpServerIds: mcpServers.map((server) => server.id),
+    }
+    const removedSkillIds = previousSkills.map((skill) => skill.id).filter((resourceId) => !plugin.skillIds.includes(resourceId))
+    const removedMcpIds = previousMcp.map((server) => server.id).filter((resourceId) => !plugin.mcpServerIds.includes(resourceId))
+    value.skills = [...value.skills.filter((skill) => skill.pluginId !== plugin.id), ...skills]
+    value.mcpServers = [...value.mcpServers.filter((server) => server.pluginId !== plugin.id), ...mcpServers]
+    value.plugins = previous
+      ? value.plugins.map((candidate) => (candidate.id === plugin.id ? plugin : candidate))
+      : [...value.plugins, plugin]
+    value.profiles = cleanProfiles(value.profiles, removedSkillIds, removedMcpIds)
+    this.writeWithOverrideCleanup(value, removedSkillIds, removedMcpIds)
+    for (const skill of [...previousSkills, ...skills]) this.skillCache.delete(skill.id)
+    return plugin
+  }
+
+  async installPlugin(input: unknown) {
+    const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
+    const root = text(value.path, 4_096, 'Agent Plugin path')
+    return this.installLoadedPlugin(await loadAgentPlugin(root, this.pluginDataRoot))
+  }
+
+  async reloadPlugin(id: string) {
+    const plugin = this.read().plugins.find((candidate) => candidate.id === id)
+    if (!plugin) throw new Error('Agent Plugin not found')
+    return this.installLoadedPlugin(await loadAgentPlugin(plugin.root, this.pluginDataRoot))
+  }
+
+  removePlugin(id: string) {
+    const value = this.read()
+    const plugin = value.plugins.find((candidate) => candidate.id === id)
+    if (!plugin) throw new Error('Agent Plugin not found')
+    const skillIds = value.skills.filter((skill) => skill.pluginId === id).map((skill) => skill.id)
+    const mcpServerIds = value.mcpServers.filter((server) => server.pluginId === id).map((server) => server.id)
+    value.skills = value.skills.filter((skill) => skill.pluginId !== id)
+    value.mcpServers = value.mcpServers.filter((server) => server.pluginId !== id)
+    value.plugins = value.plugins.filter((candidate) => candidate.id !== id)
+    value.profiles = cleanProfiles(value.profiles, skillIds, mcpServerIds)
+    this.writeWithOverrideCleanup(value, skillIds, mcpServerIds)
+    for (const skillId of skillIds) this.skillCache.delete(skillId)
+    return { plugin, mcpServerIds }
+  }
+
+  private writeWithOverrideCleanup(value: StoredResources, skillIds: string[], mcpServerIds: string[]) {
+    this.db.transaction((transaction) => {
+      for (const id of skillIds)
+        transaction
+          .delete(workAgentResourceOverrides)
+          .where(and(eq(workAgentResourceOverrides.resourceKind, 'skill'), eq(workAgentResourceOverrides.resourceId, id)))
+          .run()
+      for (const id of mcpServerIds)
+        transaction
+          .delete(workAgentResourceOverrides)
+          .where(and(eq(workAgentResourceOverrides.resourceKind, 'mcp'), eq(workAgentResourceOverrides.resourceId, id)))
+          .run()
+      this.write(value)
+    })
   }
 
   upsertMcpServer(input: unknown) {
@@ -318,6 +507,8 @@ export class AgentResourceService {
 
   remove(kind: ResourceKind, id: string) {
     const value = this.read()
+    const resource = (kind === 'skill' ? value.skills : value.mcpServers).find((candidate) => candidate.id === id)
+    if (resource?.pluginId) throw new Error('Remove Agent Plugin resources from the Agent Plugins view')
     if (kind === 'skill') value.skills = value.skills.filter((item) => item.id !== id)
     else value.mcpServers = value.mcpServers.filter((item) => item.id !== id)
     value.profiles = value.profiles.map((profile) =>
@@ -328,11 +519,7 @@ export class AgentResourceService {
             mcpServerIds: profile.mcpServerIds.filter((resourceId) => resourceId !== id),
           },
     )
-    this.write(value)
-    this.db
-      .delete(workAgentResourceOverrides)
-      .where(and(eq(workAgentResourceOverrides.resourceKind, kind), eq(workAgentResourceOverrides.resourceId, id)))
-      .run()
+    this.writeWithOverrideCleanup(value, kind === 'skill' ? [id] : [], kind === 'mcp' ? [id] : [])
   }
 
   selection(workItemId?: number | null) {
@@ -354,7 +541,7 @@ export class AgentResourceService {
     const selected = (kind: ResourceKind, resource: { id: string; defaultEnabled: boolean }) =>
       overrides.get(`${kind}:${resource.id}`) ?? resource.defaultEnabled
     return {
-      skills: value.skills.map((skill) => ({ ...skill, enabled: selected('skill', skill) })),
+      skills: value.skills.map((skill) => ({ ...publicSkill(skill), enabled: selected('skill', skill) })),
       mcpServers: value.mcpServers.map((server) => ({
         ...publicMcp(server),
         enabled: selected('mcp', server),
@@ -390,11 +577,13 @@ export class AgentResourceService {
     return this.selection(workItemId)
   }
 
-  private async skillInstructions(skill: AgentSkill) {
+  private async skillInstructions(skill: StoredSkill) {
     const cached = this.skillCache.get(skill.id)
     if (cached) return cached
-    const instructions = String(await this.run('npx', ['--yes', 'skills', 'use', `${skill.source}@${skill.skill}`])).trim()
-    if (!instructions || instructions.length > 500_000) throw new Error(`Skill ${skill.name} returned invalid instructions`)
+    const instructions = skill.pluginId
+      ? await readPluginSkill(skill as AgentPluginStoredSkill)
+      : String(await this.run('npx', ['--yes', 'skills', 'use', `${skill.source}@${skill.skill}`])).trim()
+    if (!instructions || instructions.length > 1_000_000) throw new Error(`Skill ${skill.name} returned invalid instructions`)
     this.skillCache.set(skill.id, instructions)
     return instructions
   }
@@ -412,7 +601,31 @@ export class AgentResourceService {
         .filter((skill) => enabledSkills.has(skill.id))
         .map(async (skill) => ({ ...skill, instructions: await this.skillInstructions(skill) })),
     )
-    return { skills, mcpServers: value.mcpServers.filter((server) => enabledMcp.has(server.id)) }
+    return {
+      skills: skills.map(({ pluginRoot: _pluginRoot, skillFile: _skillFile, skillDirectory: _skillDirectory, ...skill }) => skill),
+      mcpServers: value.mcpServers.filter((server) => enabledMcp.has(server.id)).map(launchMcpServer),
+    }
+  }
+}
+
+function cleanProfiles(profiles: CustomAgentProfile[], skillIds: string[], mcpServerIds: string[]) {
+  const removedSkills = new Set(skillIds)
+  const removedMcp = new Set(mcpServerIds)
+  return profiles.map((profile) => ({
+    ...profile,
+    skillIds: profile.skillIds.filter((id) => !removedSkills.has(id)),
+    mcpServerIds: profile.mcpServerIds.filter((id) => !removedMcp.has(id)),
+  }))
+}
+
+function launchMcpServer(server: AgentMcpServer): AgentMcpServer {
+  if (server.transport !== 'stdio' || !server.cwd) return server
+  const { cwd, command, args, ...configuration } = server
+  return {
+    ...configuration,
+    transport: 'stdio',
+    command: process.execPath,
+    args: ['-e', stdioWorkingDirectoryLauncher, cwd, command, ...args],
   }
 }
 

@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileText, MessageSquareText } from 'lucide-react'
 import { LazyBoundary } from '@vertexade/ui/components/lazy-boundary'
 import { WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { Button } from '@vertexade/ui/components/ui/button'
@@ -24,8 +24,10 @@ const LazyThreadPanel = lazy(() =>
 
 function ThreadDetailPage() {
   const { threadId } = Route.useParams()
+  const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const jobId = Number(threadId)
+  const details = search.view === 'details'
 
   return (
     <WorkspacePage className="h-[calc(100svh-6.25rem-env(safe-area-inset-bottom))] min-h-0 px-0 py-0 md:h-[calc(100svh-3.25rem)] md:p-4">
@@ -34,16 +36,22 @@ function ThreadDetailPage() {
           <Button asChild variant="ghost" size="sm" className="px-2">
             <Link to="/threads">
               <ArrowLeft />
-              Agents
+              Threads
             </Link>
           </Button>
           <span className="ml-auto font-mono text-[10px] text-muted-foreground">Thread #{localBackendId(jobId)}</span>
+          <Button asChild variant="ghost" size="sm" className="ml-1 px-2">
+            <Link to="/threads/$threadId" params={{ threadId }} search={details ? {} : { view: 'details' }}>
+              {details ? <MessageSquareText /> : <FileText />}
+              {details ? 'Conversation' : 'Details'}
+            </Link>
+          </Button>
         </div>
         <LazyBoundary label="thread conversation" resetKey={threadId}>
           <LazyThreadPanel
             jobId={jobId}
-            activityOnly
-            showCompactHeader
+            activityOnly={!details}
+            showCompactHeader={!details}
             onClose={() => void navigate({ to: '/threads' })}
             onForked={(job) => void navigate({ to: '/threads/$threadId', params: { threadId: String(job.id) } })}
             onReviewStarted={(job) => void navigate({ to: '/threads/$threadId', params: { threadId: String(job.id) } })}

@@ -34,16 +34,38 @@ export type AgentSkill = {
   description: string
   url: string
   defaultEnabled: boolean
+  pluginId?: string
 }
 export type AgentResolvedSkill = AgentSkill & { instructions: string }
 export type AgentMcpServer = {
   id: string
   name: string
   defaultEnabled: boolean
+  pluginId?: string
 } & (
-  | { transport: 'stdio'; command: string; args: string[]; env: Record<string, string> }
+  | { transport: 'stdio'; command: string; args: string[]; env: Record<string, string>; cwd?: string }
   | { transport: 'http' | 'sse'; url: string; headers: Record<string, string> }
 )
+export type AgentPluginDiagnostic = {
+  severity: 'warning' | 'error'
+  component: 'manifest' | 'skills' | 'mcp'
+  item?: string
+  message: string
+}
+export type AgentPlugin = {
+  id: string
+  name: string
+  version: string
+  description: string
+  root: string
+  homepage: string
+  repository: string
+  skillIds: string[]
+  mcpServerIds: string[]
+  diagnostics: AgentPluginDiagnostic[]
+  installedAt: string
+  updatedAt: string
+}
 export type AgentLaunchResources = { skills: AgentResolvedSkill[]; mcpServers: AgentMcpServer[] }
 export type AgentSubagentOrchestration = 'native' | 'harness'
 export type AgentWorkspaceContext =

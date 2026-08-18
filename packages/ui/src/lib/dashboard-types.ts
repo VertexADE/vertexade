@@ -70,6 +70,7 @@ export type Job = BackendAttributed & {
   head_sha: string | null
   latest_activity: string | null
   activity_at: string | null
+  turn_started_at?: string | null
   created_at: string
   finished_at: string | null
   diff_files: string | null
@@ -88,6 +89,8 @@ export type Job = BackendAttributed & {
   linked_pr_number: number | null
   linked_pr_url: string | null
   archived_at: string | null
+  settled_at?: string | null
+  snoozed_until?: string | null
   pr_merged_at: string | null
   pr_closed_at: string | null
   review_phase: 'details' | 'summary' | 'complete' | 'summary_failed' | null
@@ -250,7 +253,7 @@ export type {
 
 export type Preset = { id: number; name: string; prompt: string }
 export type HighlightRule = { id: number; text: string; color: string }
-export type Notification = {
+export type Notification = BackendAttributed & {
   id: number
   kind: string
   title: string
@@ -445,7 +448,7 @@ export type InputQuestion = {
   question: string
   isSecret?: boolean
   description?: string
-  type?: 'text' | 'select' | 'checkbox'
+  type?: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date' | 'email' | 'url' | 'password'
   required?: boolean
   multiline?: boolean
   formTitle?: string

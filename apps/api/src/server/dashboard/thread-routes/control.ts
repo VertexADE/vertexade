@@ -257,7 +257,7 @@ async function submitInput(request: Request, _url: URL, match: RegExpMatchArray)
   if (!job.input_request_id || !job.input_questions) rejectThreadRoute(409, 'This run is not waiting for input')
   const input = await body(request)
   const answers = input.answers && typeof input.answers === 'object' ? input.answers : null
-  const questions = JSON.parse(job.input_questions)
+  const questions = JSON.parse(job.input_questions) as StoredInputQuestion[]
   const requestId = JSON.parse(job.input_request_id)
   if (typeof requestId === 'string' && requestId.startsWith('form:')) {
     if (!answers || questions.some((question) => question.required !== false && missingAnswer(answers, question.id))) {
@@ -318,12 +318,46 @@ function missingAnswer(answers: Record<string, { answers?: unknown[] }>, questio
   return !Array.isArray(answers[questionId]?.answers) || answers[questionId].answers.length === 0
 }
 
-export function invalidFormAnswer(question: any, answers: Record<string, { answers?: unknown[] }>) {
+type StoredInputQuestion = {
+  id: string
+  type?: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date' | 'email' | 'url' | 'password'
+  required?: boolean
+  options?: Array<{ label?: unknown; value?: unknown }>
+}
+
+const scalarFormValidators: Partial<Record<NonNullable<StoredInputQuestion['type']>, (value: string) => boolean>> = {
+  number: (value) => Number.isFinite(Number(value)),
+  date: validDate,
+  email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+  url: validHttpUrl,
+}
+
+function validDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+function validHttpUrl(value: string) {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
+export function invalidFormAnswer(question: StoredInputQuestion, answers: Record<string, { answers?: unknown[] }>) {
   const values = Array.isArray(answers[question.id]?.answers) ? answers[question.id].answers.map(String) : []
   if (values.some((value) => !value.trim() || value.length > 20_000)) return true
-  if (question.type === 'text') return values.length > 1
-  if (question.type === 'select') return values.length > 1
-  const allowed = new Set((Array.isArray(question.options) ? question.options : []).map((option) => String(option.value || option.label)))
+  if (question.type !== 'checkbox' && values.length > 1) return true
+  const validator = question.type ? scalarFormValidators[question.type] : undefined
+  if (validator && values.some((value) => !validator(value))) return true
+  if (question.type !== 'checkbox') return false
+  const allowed = new Set((question.options || []).map((option) => String(option.value || option.label)))
   return values.filter((value) => !allowed.has(value)).length > 1
 }
 

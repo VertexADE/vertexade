@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { HttpError, readRequestBody, readResponseBody } from '@vertexade/platform-server/http'
@@ -8,6 +8,7 @@ import { browserPairingHeader, type BrowserPairedServer } from './browser-pairin
 import { browserCredential, browserSessionAuthorization } from './browser-pairing-session'
 import { migrateBrowserPairings, redeemBrowserPairing, revokeBrowserCredential } from './api-proxy-browser-pairing'
 import { hasMixedBackendBatch, requestPairedServers } from './api-proxy-request-validation'
+import { createRequestRuntimeState, type BackendRuntime, type FederationRuntime } from './api-proxy-runtime'
 import {
   denormalizePayload,
   federatedId,
@@ -28,57 +29,32 @@ import {
   type ReadModelResponse,
 } from './dashboard-cache-model'
 
-type BackendRuntime = BackendStatus & {
-  snapshot: ReadModelResponse | null
-}
-
 const MAX_PROXY_JSON_REQUEST_BYTES = 100_000
 const MAX_PROMPT_IMAGE_REQUEST_BYTES = 28 * 1024 * 1024
 const MAX_BACKEND_READ_MODEL_RESPONSE_BYTES = 32 * 1024 * 1024
 const MAX_NORMALIZED_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
 
-type RequestBackendContext = { backends: ApiBackend[]; paired: Map<string, BrowserPairedServer>; outbound: OutboundRequestPolicy | null }
+type RequestBackendContext = {
+  backends: ApiBackend[]
+  paired: Map<string, BrowserPairedServer>
+  outbound: OutboundRequestPolicy | null
+  runtimes: Map<string, BackendRuntime>
+  federation: FederationRuntime
+}
 const backendContext = new AsyncLocalStorage<RequestBackendContext>()
 const activeBackends = () => backendContext.getStore()?.backends || configuredBackends
 const pairedSessionCache = new Map<string, number>()
 
 type ClientIdentity = 'unrestricted' | 'local' | 'mobile' | 'public'
 
-const runtimeById = new Map<string, BackendRuntime>(
-  configuredBackends.map((backend) => [
-    backend.id,
-    {
-      id: backend.id,
-      label: backend.label,
-      namespace: backend.namespace,
-      isDefault: backend.isDefault,
-      connected: false,
-      lastConnectedAt: null,
-      error: null,
-      snapshot: null,
-    },
-  ]),
-)
-const federationInstanceId = `federated-${randomUUID()}`
-let federationDigest = ''
-let federationVersion = 0
+function runtimeForId(id: string) {
+  const runtime = backendContext.getStore()?.runtimes.get(id)
+  if (!runtime) throw new Error(`Backend runtime ${id} is unavailable outside its request context`)
+  return runtime
+}
 
-function syncRuntime(backends: ApiBackend[]) {
-  const context = backendContext.getStore()
-  if (context) context.backends = backends
-  for (const backend of backends) {
-    if (runtimeById.has(backend.id)) continue
-    runtimeById.set(backend.id, {
-      id: backend.id,
-      label: backend.label,
-      namespace: backend.namespace,
-      isDefault: backend.isDefault,
-      connected: false,
-      lastConnectedAt: null,
-      error: null,
-      snapshot: null,
-    })
-  }
+function runtimeFor(backend: Pick<ApiBackend, 'id'>) {
+  return runtimeForId(backend.id)
 }
 
 const crossBackendCredentialHeaders = ['authorization', 'cookie', 'proxy-authorization'] as const
@@ -210,7 +186,7 @@ function publicBackend(runtime: BackendRuntime) {
 }
 
 function publicBackends() {
-  return activeBackends().map((backend) => publicBackend(runtimeById.get(backend.id)!))
+  return activeBackends().map((backend) => publicBackend(runtimeFor(backend)))
 }
 
 function nextAvailableNamespace() {
@@ -311,8 +287,8 @@ function selectedBackend(source: URL, request: Request) {
   if (explicit) return explicit
   const requested = request.headers.get('x-vertexade-backend')
   const headerBackend = requested ? activeBackends().find((backend) => backend.id === requested) : undefined
-  // Entity ownership is authoritative. A global UI selection is only a
-  // default for routes that do not identify their owning backend.
+  // Entity ownership is authoritative. Explicit headers are reserved for
+  // page-local server scopes such as Settings and extension workspaces.
   const backend = backendFromPath(source.pathname) || headerBackend || activeBackends()[0]
   return { backend, pathname: source.pathname }
 }
@@ -353,7 +329,7 @@ async function fetchBackend(request: Request, source: URL, backend: ApiBackend, 
     signal: request.signal,
   }
   if (body) init.duplex = 'half'
-  const runtime = runtimeById.get(backend.id)!
+  const runtime = runtimeFor(backend)
   try {
     const backendFetch = paired ? backendContext.getStore()?.outbound?.fetch || fetch : fetch
     const response = await backendFetch(target, init)
@@ -389,7 +365,7 @@ function runtimeReadModel(runtime: BackendRuntime): FederatedModel | null {
 }
 
 async function readBackendModel(request: Request, source: URL, backend: ApiBackend, maxResponseBytes: number, identity: ClientIdentity) {
-  const runtime = runtimeById.get(backend.id)!
+  const runtime = runtimeFor(backend)
   try {
     const target = new URL('/api/read-model?since=0', backend.url)
     const paired = backendContext.getStore()?.paired.get(backend.id)
@@ -422,22 +398,24 @@ function modelEntries(payload: ReadModelResponse, collection: DashboardCollectio
 type FederatedModel = { backend: BackendStatus; payload: ReadModelResponse }
 
 function nextFederationVersion(backends: ApiBackend[]) {
+  const federation = backendContext.getStore()?.federation
+  if (!federation) throw new Error('Federation runtime is unavailable outside its request context')
   const versionIdentity = JSON.stringify(
     backends.map((backend) => {
-      const runtime = runtimeById.get(backend.id)!
+      const runtime = runtimeFor(backend)
       return [backend.id, runtime.connected, runtime.snapshot?.instanceId, runtime.snapshot?.version, runtime.error]
     }),
   )
   const nextDigest = createHash('sha256').update(versionIdentity).digest('hex')
-  if (nextDigest !== federationDigest) {
-    federationDigest = nextDigest
-    federationVersion = Math.max(Date.now(), federationVersion + 1)
+  if (nextDigest !== federation.digest) {
+    federation.digest = nextDigest
+    federation.version = Math.max(Date.now(), federation.version + 1)
   }
-  return federationVersion
+  return federation.version
 }
 
 function mergedReadModel(models: FederatedModel[], backends: ApiBackend[], version: number) {
-  const statuses = backends.map((backend) => publicBackend(runtimeById.get(backend.id)!))
+  const statuses = backends.map((backend) => publicBackend(runtimeFor(backend)))
   const updates = Object.fromEntries(
     dashboardCollections.map((collection) => {
       const entries =
@@ -456,7 +434,9 @@ function mergedReadModel(models: FederatedModel[], backends: ApiBackend[], versi
       ]
     }),
   ) as ReadModelResponse['updates']
-  return { instanceId: federationInstanceId, version, updates }
+  const instanceId = backendContext.getStore()?.federation.instanceId
+  if (!instanceId) throw new Error('Federation runtime is unavailable outside its request context')
+  return { instanceId, version, updates }
 }
 
 function responseBytes(payload: ReadModelResponse) {
@@ -469,11 +449,9 @@ function modelsWithinAggregateBudget(models: FederatedModel[], backends: ApiBack
     const probe = mergedReadModel(accepted, backends, Number.MAX_SAFE_INTEGER)
     if (responseBytes(probe) <= maxFederatedReadModelResponseBytes) break
     const rejected = accepted.pop()!
-    const runtime = runtimeById.get(rejected.backend.id)
-    if (runtime) {
-      runtime.connected = false
-      runtime.error = 'Normalized read model exceeds the federated response budget'
-    }
+    const runtime = runtimeForId(rejected.backend.id)
+    runtime.connected = false
+    runtime.error = 'Normalized read model exceeds the federated response budget'
   }
   return accepted
 }
@@ -517,7 +495,7 @@ async function boundedJsonResponse(response: Response, service: string, maxBytes
 
 async function normalizeResponse(response: Response, backend: ApiBackend, signal: AbortSignal) {
   if (activeBackends().length === 1 || !response.headers.get('content-type')?.includes('application/json')) return response
-  const runtime = runtimeById.get(backend.id)!
+  const runtime = runtimeFor(backend)
   const body = normalizeEntity(await boundedJsonResponse(response, 'Backend API', MAX_NORMALIZED_JSON_RESPONSE_BYTES, signal), runtime)
   const headers = new Headers(response.headers)
   headers.delete('content-length')
@@ -583,7 +561,7 @@ function record(value: unknown): Record<string, unknown> | null {
 async function backendJson(request: Request, source: URL, backend: ApiBackend, identity: ClientIdentity) {
   const response = await fetchBackend(request, source, backend, source.pathname, identity)
   if (!response.ok) {
-    const runtime = runtimeById.get(backend.id)!
+    const runtime = runtimeFor(backend)
     runtime.connected = false
     runtime.error = `HTTP ${response.status}`
     throw new Error(`${backend.label}: HTTP ${response.status}`)
@@ -724,10 +702,11 @@ function pairedRequestContext(request: Request): RequestBackendContext {
     ...configuredBackends.map(({ id, label, url, namespace }) => ({ id, label, url, namespace })),
     ...pairedServers.map((server) => ({ id: server.id, label: server.name, url: server.serviceUrl, namespace: server.namespace })),
   ])
-  syncRuntime(backends)
+  const runtime = createRequestRuntimeState(request, backends, paired)
   return {
     backends,
     paired,
+    ...runtime,
     outbound: pairedServers.length
       ? new OutboundRequestPolicy({ allowedOrigins: pairedServers.map(({ serviceUrl }) => serviceUrl) })
       : null,

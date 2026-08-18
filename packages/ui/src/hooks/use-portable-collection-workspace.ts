@@ -25,7 +25,7 @@ import {
   type PortableSourceData,
   type PortableViewMode,
 } from '../components/portable-extension-model'
-import { eventReason, platformClient, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
+import { eventReason, platformClientForBackend, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
 import { usePortableSourceRefresh } from '@vertexade/ui/lib/portable-source-refresh'
 import { usePortableBoardPreferences } from './use-portable-board-preferences'
 import { usePortableDetail } from './use-portable-detail'
@@ -243,14 +243,16 @@ export function usePortableCollectionWorkspace({
   module,
   surface,
   detailId,
+  backendId,
   onDetailChange,
 }: {
   module: ModuleCatalogEntry
   surface: PortableCollectionSurface
   detailId?: string | null
+  backendId?: string
   onDetailChange?(itemId: string | null): void
 }) {
-  const extension = useMemo(() => platformClient.extension(module.id), [module.id])
+  const extension = useMemo(() => platformClientForBackend(backendId).extension(module.id), [backendId, module.id])
   const source = usePortableSource(module.id, extension, surface)
   const items = useMemo(() => projectPortableCollection(source.data, surface), [source.data, surface])
   const controls = usePortableControls(surface)

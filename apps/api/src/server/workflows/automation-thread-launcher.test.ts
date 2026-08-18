@@ -59,6 +59,23 @@ describe('automation thread launcher', () => {
     )
   })
 
+  it('uses the automation name when a trigger provides an undefined title', async () => {
+    const { launch, launchWork } = fixture()
+
+    await launch(
+      'work',
+      'Run maintenance.',
+      { data: { entityType: 'repository', entityId: 1, entity: { title: 'undefined' } } },
+      { automationName: 'Nightly maintenance' },
+    )
+
+    expect(launchWork).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Nightly maintenance' }),
+      'Run maintenance.',
+      expect.any(Object),
+    )
+  })
+
   it('starts repository-free Work in a managed general workspace', async () => {
     const { work, launch, launchWork } = fixture()
     const item = work.create({ title: 'Investigate operations' })

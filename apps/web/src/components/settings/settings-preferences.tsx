@@ -9,7 +9,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@v
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { HighlightRule, Preset } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
@@ -134,12 +134,12 @@ function PresetList({
   )
 }
 
-export function Presets({ presets }: { presets: Preset[] }) {
+export function Presets({ presets, backendId }: { presets: Preset[]; backendId: string }) {
   const queryClient = useQueryClient()
   const [editingId, setEditingId] = useState<number | null>(null)
   const mutation = useMutation({
     mutationFn: ({ id, name, prompt }: { id: number | null; name: string; prompt: string }) =>
-      api(id ? `/api/presets/${id}` : '/api/presets', {
+      backendApi(backendId, id ? `/api/presets/${id}` : '/api/presets', {
         method: 'POST',
         body: JSON.stringify({ name, prompt }),
       }),
@@ -168,7 +168,7 @@ export function Presets({ presets }: { presets: Preset[] }) {
   }
   async function remove(id: number) {
     try {
-      await api(`/api/presets/${id}`, { method: 'DELETE' })
+      await backendApi(backendId, `/api/presets/${id}`, { method: 'DELETE' })
       await queryClient.invalidateQueries({ queryKey: ['platform'] })
       toast.success('Preset deleted')
       if (editingId === id) reset()
@@ -205,10 +205,11 @@ export function Presets({ presets }: { presets: Preset[] }) {
   )
 }
 
-export function Highlights({ rules }: { rules: HighlightRule[] }) {
+export function Highlights({ rules, backendId }: { rules: HighlightRule[]; backendId: string }) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
-    mutationFn: (value: { text: string; color: string }) => api('/api/highlights', { method: 'POST', body: JSON.stringify(value) }),
+    mutationFn: (value: { text: string; color: string }) =>
+      backendApi(backendId, '/api/highlights', { method: 'POST', body: JSON.stringify(value) }),
   })
   const form = useForm({
     defaultValues: { text: '', color: highlightColors[0]! },
@@ -226,7 +227,7 @@ export function Highlights({ rules }: { rules: HighlightRule[] }) {
   const values = useStore(form.store, (state) => state.values)
   async function remove(rule: HighlightRule) {
     try {
-      await api(`/api/highlights/${rule.id}`, { method: 'DELETE' })
+      await backendApi(backendId, `/api/highlights/${rule.id}`, { method: 'DELETE' })
       await queryClient.invalidateQueries({ queryKey: ['platform'] })
       toast.success(`Removed “${rule.text}”`)
     } catch (error) {

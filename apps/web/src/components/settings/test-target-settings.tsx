@@ -72,7 +72,7 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
   const endpoint = repositoryId ? `/api/repositories/${repositoryId}/test-target-overrides` : null
 
   useEffect(() => {
-    if (!repositoryId && repositories[0]) setRepositoryId(repositories[0].id)
+    if (!repositories.some((repository) => repository.id === repositoryId)) setRepositoryId(repositories[0]?.id || null)
   }, [repositories, repositoryId])
 
   const load = useCallback(async () => {

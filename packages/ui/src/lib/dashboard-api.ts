@@ -1,9 +1,9 @@
 import { createPlatformClient, type ApiClient } from '@vertexade/platform-client'
 import { parsePlatformEvent, type PlatformConnectionState, type PlatformEventMessage } from '@vertexade/platform-client/reactive'
-import { BehaviorSubject, debounceTime, filter, Subject } from 'rxjs'
-import { activeBackendId, backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
+import { auditTime, BehaviorSubject, filter, Subject } from 'rxjs'
+import { backendApiPath, loadBackendRegistry, namespaceBackendId, type BackendDescriptor } from './backend-registry'
 import { agentLaunchOptions } from './agent-launch-store'
-import { browserPairedServersRequestHeaders } from './browser-paired-servers'
+import { browserPairedServersRequestHeaders, browserPairedServersStorageKey } from './browser-paired-servers'
 
 export type { ApiClient } from '@vertexade/platform-client'
 export { isPlatformApiError } from '@vertexade/platform-client'
@@ -16,21 +16,30 @@ export {
   type AgentLaunchOptions,
 } from './agent-launch-store'
 
-export const platformClient = createPlatformClient({
-  headers: () => {
-    const agent = agentLaunchOptions()
-    const backendId = activeBackendId()
-    return {
-      ...browserPairedServersRequestHeaders(),
-      ...(backendId ? { 'x-vertexade-backend': backendId } : {}),
-      ...(agent.agentId ? { 'x-agent-provider': agent.agentId } : {}),
-      ...(agent.model ? { 'x-agent-model': agent.model } : {}),
-      ...(agent.reasoningEffort ? { 'x-agent-reasoning-effort': agent.reasoningEffort } : {}),
-      ...(agent.agentId === 'codex' && agent.serviceTier ? { 'x-agent-service-tier': agent.serviceTier } : {}),
-      'x-agent-subagents': agent.allowSubagents ? 'true' : 'false',
-    }
-  },
-})
+function platformRequestHeaders(backendId = '') {
+  const agent = agentLaunchOptions()
+  return {
+    ...browserPairedServersRequestHeaders(),
+    ...(backendId ? { 'x-vertexade-backend': backendId } : {}),
+    ...(agent.agentId ? { 'x-agent-provider': agent.agentId } : {}),
+    ...(agent.model ? { 'x-agent-model': agent.model } : {}),
+    ...(agent.reasoningEffort ? { 'x-agent-reasoning-effort': agent.reasoningEffort } : {}),
+    ...(agent.agentId === 'codex' && agent.serviceTier ? { 'x-agent-service-tier': agent.serviceTier } : {}),
+    'x-agent-subagents': agent.allowSubagents ? 'true' : 'false',
+  }
+}
+
+export const platformClient = createPlatformClient({ headers: () => platformRequestHeaders() })
+const backendPlatformClients = new Map<string, ReturnType<typeof createPlatformClient>>()
+
+export function platformClientForBackend(backendId?: string | null) {
+  if (!backendId) return platformClient
+  const current = backendPlatformClients.get(backendId)
+  if (current) return current
+  const client = createPlatformClient({ headers: () => platformRequestHeaders(backendId) })
+  backendPlatformClients.set(backendId, client)
+  return client
+}
 
 const initialConnection: PlatformConnectionState = {
   connected: false,
@@ -62,16 +71,7 @@ function createFederatedEventStream() {
   const connection = new BehaviorSubject<PlatformConnectionState>(initialConnection)
   const sources: AbortController[] = []
   let closed = false
-  let primaryBackend: BackendDescriptor = {
-    id: 'primary',
-    label: 'Primary',
-    namespace: 0,
-    isDefault: true,
-    connected: false,
-    lastConnectedAt: null,
-    error: null,
-    apiPath: '/api',
-  }
+  let generation = 0
 
   const setBackendConnected = (id: string, connected: boolean, error: string | null = null) => {
     const next = backendState.value.map((backend) =>
@@ -106,35 +106,60 @@ function createFederatedEventStream() {
     events.next({ data, raw: event })
   }
 
-  const openSource = (url: string, backend: () => BackendDescriptor) => {
+  const openSource = (url: string, backend: () => BackendDescriptor, currentGeneration: number) => {
     const controller = new AbortController()
     sources.push(controller)
     void reconnectingEventStream(
       url,
       controller.signal,
-      (raw) => receive(raw, backend()),
-      (error) => setBackendConnected(backend().id, false, error),
+      (raw) => {
+        if (currentGeneration === generation) receive(raw, backend())
+      },
+      (error) => {
+        if (currentGeneration === generation) setBackendConnected(backend().id, false, error)
+      },
+      () => {
+        if (currentGeneration === generation) setBackendConnected(backend().id, true)
+      },
     )
   }
 
-  void loadBackendRegistry()
-    .then(({ backends }) => {
-      primaryBackend = backends.find((backend) => backend.isDefault) || backends[0] || primaryBackend
+  const reloadBackends = async () => {
+    const currentGeneration = ++generation
+    sources.splice(0).forEach((source) => source.abort())
+    try {
+      const { backends } = await loadBackendRegistry()
+      if (closed || currentGeneration !== generation) return
       backendState.next(backends)
       connection.next({ ...connection.value, connected: backends.some((backend) => backend.connected) })
       for (const backend of backends.filter((candidate) => candidate.realtime !== false))
-        openSource(backend.isDefault ? '/api/events' : `${backend.apiPath}/events`, () => backend)
-    })
-    .catch((error) => {
+        openSource(backend.isDefault ? '/api/events' : `${backend.apiPath}/events`, () => backend, currentGeneration)
+    } catch (error) {
+      if (closed || currentGeneration !== generation) return
       connection.next({ ...connection.value, connected: false, error: error instanceof Error ? error.message : String(error) })
-    })
+    }
+  }
+  const pairingChanged = () => void reloadBackends()
+  const pairingStorageChanged = (event: StorageEvent) => {
+    if (event.key === browserPairedServersStorageKey) void reloadBackends()
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('vertexade:paired-servers', pairingChanged)
+    window.addEventListener('storage', pairingStorageChanged)
+  }
+  void reloadBackends()
 
   return {
     events$: events.asObservable(),
     connection$: connection.asObservable(),
     close() {
       closed = true
+      generation += 1
       sources.forEach((source) => source.abort())
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('vertexade:paired-servers', pairingChanged)
+        window.removeEventListener('storage', pairingStorageChanged)
+      }
       events.complete()
       connection.next({ ...connection.value, connected: false })
       connection.complete()
@@ -147,11 +172,15 @@ async function reconnectingEventStream(
   signal: AbortSignal,
   receive: (event: Event) => void,
   disconnected: (error: string) => void,
+  connected: () => void,
 ) {
   let attempt = 0
   while (!signal.aborted) {
     try {
-      await streamEvents(url, signal, receive)
+      await streamEvents(url, signal, receive, () => {
+        attempt = 0
+        connected()
+      })
       if (!signal.aborted) disconnected('Realtime connection ended')
     } catch (error) {
       if (signal.aborted) return
@@ -176,13 +205,14 @@ function abortableDelay(duration: number, signal: AbortSignal) {
   })
 }
 
-async function streamEvents(url: string, signal: AbortSignal, receive: (event: Event) => void) {
+async function streamEvents(url: string, signal: AbortSignal, receive: (event: Event) => void, connected: () => void) {
   const response = await fetch(url, {
     headers: { accept: 'text/event-stream', ...browserPairedServersRequestHeaders() },
     signal,
   })
   if (!response.ok) throw new Error(`Realtime connection failed with HTTP ${response.status}`)
   if (!response.body) throw new Error('Realtime connection returned no stream')
+  connected()
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -292,7 +322,7 @@ export function subscribeToDashboardEvents(listener: () => void, accepts: (event
   const subscription = platformEventMessages()
     .pipe(
       filter((message: PlatformEventMessage) => accepts(message.raw)),
-      debounceTime(120),
+      auditTime(120),
     )
     .subscribe(listener)
   return () => subscription.unsubscribe()
