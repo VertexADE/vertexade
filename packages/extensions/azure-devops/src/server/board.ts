@@ -1,7 +1,14 @@
 import { Effect } from 'effect'
 import type { WorkManagementProvider } from '@vertexade/platform-contracts'
 import { runApiEffect } from '@vertexade/platform-server/effect'
-import { AzureDevOpsClient, type AzureConfig } from './client.ts'
+import {
+  AZURE_BACKLOG_WORK_ITEM_TYPES,
+  AZURE_BOARD_WORK_ITEM_TYPES,
+  azureBoardWorkItemTypes,
+  AzureDevOpsClient,
+  isAzureBacklogWorkItemType,
+  type AzureConfig,
+} from './client.ts'
 import { azureRequestEffect } from './effect.ts'
 
 type AzureProvider = WorkManagementProvider<AzureConfig, AzureDevOpsClient>
@@ -33,13 +40,19 @@ function selectedIterationPath(iterations: any[], requested: string) {
   return current[0]?.path || iterations[0]?.path || ''
 }
 
-async function loadIterationItems(client: any, path: string, signal?: AbortSignal) {
-  return path ? client.sprintItems(path, signal) : []
+async function loadIterationItems(client: any, path: string, workItemTypes: readonly string[], signal?: AbortSignal) {
+  return path ? client.sprintItems(path, signal, workItemTypes) : []
 }
 
-export async function selectAzureIterationItems(client: any, iterations: any[], requestedPath: string, signal?: AbortSignal) {
+export async function selectAzureIterationItems(
+  client: any,
+  iterations: any[],
+  requestedPath: string,
+  signal?: AbortSignal,
+  workItemTypes: readonly string[] = AZURE_BOARD_WORK_ITEM_TYPES,
+) {
   const selectedPath = selectedIterationPath(iterations, requestedPath)
-  const items = await loadIterationItems(client, selectedPath, signal)
+  const items = await loadIterationItems(client, selectedPath, workItemTypes, signal)
   if (items.length) return { selectedPath, items, loadedPath: selectedPath }
 
   const selectedIteration = iterations.find((iteration) => iteration.path === selectedPath)
@@ -50,7 +63,7 @@ export async function selectAzureIterationItems(client: any, iterations: any[], 
     )
     .sort((left, right) => right.path.split('\\').length - left.path.split('\\').length)
   for (const iteration of activeAncestors) {
-    const fallbackItems = await loadIterationItems(client, iteration.path, signal)
+    const fallbackItems = await loadIterationItems(client, iteration.path, workItemTypes, signal)
     if (fallbackItems.length) return { selectedPath, items: fallbackItems, loadedPath: iteration.path }
   }
   return { selectedPath, items, loadedPath: selectedPath }
@@ -146,7 +159,7 @@ function moveColumnAction(item: any, taskboard: AzureTaskboardContext) {
 }
 
 function prepareSubtasksAction(item: any) {
-  if (!['User Story', 'Product Backlog Item'].includes(item.type)) return null
+  if (!isAzureBacklogWorkItemType(item.type)) return null
   return {
     id: 'prepare-subtasks',
     label: 'Prepare subtasks',
@@ -294,9 +307,7 @@ export function portableAzureDetail(item: any, children: any[]) {
 }
 
 function storyType(types: string[]) {
-  if (types.includes('User Story')) return 'User Story'
-  if (types.includes('Product Backlog Item')) return 'Product Backlog Item'
-  return 'User Story'
+  return AZURE_BACKLOG_WORK_ITEM_TYPES.find((type) => types.includes(type)) ?? AZURE_BACKLOG_WORK_ITEM_TYPES[0]
 }
 
 export function azurePortableGroupOrder(statesByType: Record<string, string[]>, preferredStoryType: string, taskboardColumns: any[] = []) {
@@ -319,28 +330,34 @@ export function azurePortableGroupOrder(statesByType: Record<string, string[]>, 
 
 export async function loadAzureBoardData(provider: AzureProvider, config: AzureConfig, iterationPath: string) {
   const client = provider.createClient(config)
-  const [iterations, features, types] = await runApiEffect(
+  const [iterations, types] = await runApiEffect(
     Effect.all(
       [
         azureRequestEffect('iterations', (signal) => client.iterations(signal)),
-        azureRequestEffect('features', (signal) => client.features(signal)),
         azureRequestEffect('work-item-types', (signal) => client.workItemTypes(signal)),
       ],
       { concurrency: 'unbounded' },
     ),
   )
-  const supportedTypes = ['User Story', 'Product Backlog Item', 'Task'].filter((type) => types.includes(type))
-  const stateEntries = await runApiEffect(
-    Effect.forEach(
-      supportedTypes,
-      (type) => azureRequestEffect('work-item-states', async (signal) => [type, await client.workItemStates(type, signal)] as const),
+  const supportedTypes = azureBoardWorkItemTypes(types)
+  const [features, stateEntries, iteration] = await runApiEffect(
+    Effect.all(
+      [
+        azureRequestEffect('features', (signal) => client.features(signal, types)),
+        Effect.forEach(
+          supportedTypes,
+          (type) => azureRequestEffect('work-item-states', async (signal) => [type, await client.workItemStates(type, signal)] as const),
+          { concurrency: 'unbounded' },
+        ),
+        azureRequestEffect('iteration-items', (signal) =>
+          selectAzureIterationItems(client, iterations, iterationPath, signal, supportedTypes),
+        ),
+      ],
       { concurrency: 'unbounded' },
     ),
   )
   const statesByType = Object.fromEntries(stateEntries)
-  const { selectedPath, items, loadedPath } = await runApiEffect(
-    azureRequestEffect('iteration-items', (signal) => selectAzureIterationItems(client, iterations, iterationPath, signal)),
-  )
+  const { selectedPath, items, loadedPath } = iteration
   const selectedIteration = iterations.find((item: any) => item.path === selectedPath)
   const taskboard = await loadTaskboard(client, selectedIteration, selectedPath)
   decorateBoardItems(items, taskboard.items)
@@ -352,7 +369,7 @@ export async function loadAzureBoardData(provider: AzureProvider, config: AzureC
       allowed_type: preferredStoryType,
     })),
     ...items
-      .filter((item: any) => ['User Story', 'Product Backlog Item'].includes(item.type))
+      .filter((item: any) => isAzureBacklogWorkItemType(item.type))
       .map((item: any) => ({
         id: String(item.id),
         name: `${item.type} #${item.id}: ${item.title}`,
@@ -408,9 +425,8 @@ export async function loadAzureBoardData(provider: AzureProvider, config: AzureC
           },
           {
             name: 'parent_id',
-            label: 'Parent feature or story',
+            label: 'Parent feature or story (required for tasks)',
             type: 'select',
-            required: true,
             optionsPath: 'portable_parents',
             optionValuePath: 'id',
             optionLabelPath: 'name',

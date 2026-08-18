@@ -275,13 +275,34 @@ describe('Azure DevOps client', () => {
     }
   })
 
-  it('uses process-independent fields in the sprint WIQL query', async () => {
+  it('uses only project-supported work item types in the sprint WIQL query', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ workItems: [] }) })
     const client = new AzureDevOpsClient(azureConfig({ url: 'https://dev.azure.com/acme', project: 'VertexADE', pat: 'secret' }), fetchMock)
-    await client.sprintItems('VertexADE\\Sprint 1')
+    await client.sprintItems('VertexADE\\Sprint 1', undefined, ['Product Backlog Item', 'Task', 'Bug'])
     const query = JSON.parse(fetchMock.mock.calls[0][1].body).query
     expect(query).toContain('ORDER BY [System.ChangedDate] DESC')
+    expect(query).toContain("IN ('Product Backlog Item', 'Task')")
+    expect(query).not.toContain('User Story')
+    expect(query).not.toContain('Bug')
     expect(query).not.toContain('System.BacklogPriority')
+  })
+
+  it('supports the backlog item type from every built-in Azure process', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ workItems: [] }) })
+    const client = new AzureDevOpsClient(azureConfig({ url: 'https://dev.azure.com/acme', project: 'VertexADE', pat: 'secret' }), fetchMock)
+
+    await client.sprintItems('VertexADE\\Sprint 1', undefined, ['Requirement', 'Issue', 'Task'])
+
+    const query = JSON.parse(fetchMock.mock.calls[0][1].body).query
+    expect(query).toContain("IN ('Requirement', 'Issue', 'Task')")
+  })
+
+  it('does not query features when the project process has no Feature type', async () => {
+    const fetchMock = vi.fn()
+    const client = new AzureDevOpsClient(azureConfig({ url: 'https://dev.azure.com/acme', project: 'VertexADE', pat: 'secret' }), fetchMock)
+
+    await expect(client.features(undefined, ['Issue', 'Task'])).resolves.toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('adds a timeout signal and preserves non-JSON upstream errors', async () => {
