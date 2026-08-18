@@ -20,7 +20,9 @@ describe('appearance preferences', () => {
     const setProperty = vi.fn()
     const dispatchEvent = vi.fn()
     vi.stubGlobal('window', { localStorage: { setItem }, dispatchEvent })
-    vi.stubGlobal('document', { documentElement: { dataset: {}, style: { setProperty } } })
+    vi.stubGlobal('document', {
+      documentElement: { dataset: {}, style: { setProperty } },
+    })
     vi.stubGlobal(
       'CustomEvent',
       class {
@@ -47,17 +49,26 @@ describe('appearance preferences', () => {
   it('applies independent interface and code font presets', () => {
     const setProperty = vi.fn()
     const dataset = {} as Record<string, string>
-    vi.stubGlobal('document', { documentElement: { dataset, style: { setProperty } } })
+    vi.stubGlobal('document', {
+      documentElement: { dataset, style: { setProperty } },
+    })
 
     applyAppearancePreferences({
       ...defaultAppearancePreferences,
-      themePreset: 'forest',
+      themePreset: 'black',
+      messageBubblePreset: 'graphite',
       interfaceFont: 'serif',
       codeFont: 'system',
+      threadFont: 'custom',
+      customThreadFont: 'Avenir; color: red',
+      threadFontSize: 'large',
     })
 
-    expect(dataset.themePreset).toBe('forest')
+    expect(dataset.themePreset).toBe('black')
+    expect(dataset.messageBubblePreset).toBe('graphite')
     expect(setProperty).toHaveBeenCalledWith('--font-interface', expect.stringContaining('Charter'))
     expect(setProperty).toHaveBeenCalledWith('--font-code', expect.stringContaining('Segoe UI'))
+    expect(setProperty).toHaveBeenCalledWith('--thread-font-family', 'Avenir color: red')
+    expect(setProperty).toHaveBeenCalledWith('--thread-font-size', '0.9375rem')
   })
 })

@@ -29,7 +29,6 @@ import { ThreadPanelActions } from '@vertexade/ui/components/thread-panel-action
 import { ThreadPanelTabs } from '@vertexade/ui/components/thread-panel-tabs'
 import { useThreadPanelActions } from '@vertexade/ui/hooks/use-thread-panel-actions'
 import { useThreadPanelData } from '@vertexade/ui/hooks/use-thread-panel-data'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@vertexade/ui/components/ui/dialog'
 
 export type ThreadViewCallbacks = {
   onHandoff?: (job: JobLog) => void
@@ -225,25 +224,9 @@ function ThreadRelatedMenu({ job }: { job: JobLog | null }) {
 function ThreadInputSection({ workspace }: { workspace: ThreadPanelWorkspace }) {
   const { data, actions, presentation, questions } = workspace
   if (!presentation.needsInput || !data.job) return null
-  const title = questions[0]?.formTitle || `${data.job.agent_name} needs your input`
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) void actions.cancelForm()
-      }}
-    >
-      <DialogContent
-        aria-describedby="thread-input-request-description"
-        className="sm:max-w-2xl"
-        onInteractOutside={(event) => event.preventDefault()}
-      >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription id="thread-input-request-description">
-            {questions[0]?.formDescription || 'Your response is sent directly to the waiting agent turn.'}
-          </DialogDescription>
-        </DialogHeader>
+    <div className="shrink-0 border-b border-primary/15 bg-primary/[.025] px-3 py-3 sm:px-5" aria-live="polite">
+      <div className="mx-auto w-full max-w-[760px]">
         <ThreadInputRequestForm
           job={data.job}
           questions={questions}
@@ -255,10 +238,10 @@ function ThreadInputSection({ workspace }: { workspace: ThreadPanelWorkspace }) 
           setSelections={actions.setSelections}
           onSubmit={actions.submitAnswers}
           onCancel={questions.some((question) => question.formTitle) ? actions.cancelForm : undefined}
-          className="m-0 max-h-[min(65dvh,42rem)] border-0 bg-transparent p-0 sm:m-0"
+          className="m-0 max-h-[min(55dvh,38rem)] border-primary/25 bg-background/85 shadow-sm sm:m-0"
         />
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }
 

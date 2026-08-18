@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AutomationAuditEvent, AutomationFlowRun, AutomationRecipe, CapabilityExecution } from '@vertexade/platform-contracts'
-import { toast } from 'sonner'
 import { automationCapabilities, automationTemplates } from '../components/automation-recipes-model'
 import {
   eventIsAutomation,
@@ -39,10 +38,6 @@ export function useAutomationOverview() {
   useEffect(() => {
     if (query.data) setRuntime(query.data.runtimeResult)
   }, [query.data])
-  useEffect(() => {
-    if (query.error) toast.error(query.error.message)
-  }, [query.error])
-
   const projection = useMemo(() => {
     if (!query.data)
       return {
@@ -63,5 +58,14 @@ export function useAutomationOverview() {
     }
   }, [query.data])
 
-  return { ...projection, runtime, setRuntime, load: query.refresh }
+  return {
+    ...projection,
+    runtime,
+    setRuntime,
+    load: query.refresh,
+    loading: query.loading,
+    error: query.error,
+    ready: query.ready,
+    updatedAt: query.updatedAt,
+  }
 }

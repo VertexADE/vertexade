@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ExternalLink, PlugZap, Search, Sparkles, Trash2 } from 'lucide-react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { ExternalLink, PackageOpen, PlugZap, RefreshCw, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { api, backendApi } from '@vertexade/ui/lib/dashboard-api'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
@@ -13,6 +13,7 @@ import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { CustomAgentSettings, type CustomAgentProfile } from '@vertexade/ui/components/custom-agent-settings'
 import { useConfirm } from '@vertexade/ui/components/confirm-provider'
 import { McpAppFrame, type McpAppCallResult, type McpAppFrameDescriptor } from '@vertexade/ui/components/mcp-app-frame'
+import { mcpResourceDescription, safeAgentPluginLink } from '@vertexade/ui/lib/agent-resource-presentation'
 
 type Skill = {
   id: string
@@ -22,6 +23,7 @@ type Skill = {
   description: string
   url: string
   defaultEnabled: boolean
+  pluginId?: string
 }
 type Mcp = {
   id: string
@@ -33,8 +35,27 @@ type Mcp = {
   defaultEnabled: boolean
   env?: { name: string }[]
   headers?: { name: string }[]
+  pluginId?: string
 }
-type Catalog = { skills: Skill[]; mcpServers: Mcp[]; profiles: CustomAgentProfile[] }
+type AgentPluginDiagnostic = {
+  severity: 'warning' | 'error'
+  component: 'manifest' | 'skills' | 'mcp'
+  item?: string
+  message: string
+}
+type AgentPlugin = {
+  id: string
+  name: string
+  version: string
+  description: string
+  root: string
+  homepage: string
+  repository: string
+  skillIds: string[]
+  mcpServerIds: string[]
+  diagnostics: AgentPluginDiagnostic[]
+}
+type Catalog = { skills: Skill[]; mcpServers: Mcp[]; profiles: CustomAgentProfile[]; plugins: AgentPlugin[] }
 type SkillResult = { source: string; skill: string; name: string; installs: string; url: string }
 type McpRegistryResult = {
   id: string
@@ -49,7 +70,13 @@ type McpRegistryResult = {
   url?: string
   requiredInputs: string[]
 }
-const emptyCatalog: Catalog = { skills: [], mcpServers: [], profiles: [] }
+const emptyCatalog: Catalog = { skills: [], mcpServers: [], profiles: [], plugins: [] }
+type ResourceRequest = typeof api
+const ResourceRequestContext = createContext<ResourceRequest>(api)
+
+function useResourceRequest() {
+  return useContext(ResourceRequestContext)
+}
 
 function pairs(value: string) {
   return Object.fromEntries(
@@ -65,22 +92,26 @@ function pairs(value: string) {
   )
 }
 
-type AgentResourceSection = 'all' | 'agents' | 'context' | 'skills' | 'mcp'
+type AgentResourceSection = 'all' | 'agents' | 'context' | 'skills' | 'mcp' | 'plugins'
 
-export function AgentResourceSettings({ section = 'all' }: { section?: AgentResourceSection }) {
+export function AgentResourceSettings({ section = 'all', backendId }: { section?: AgentResourceSection; backendId?: string }) {
   const confirmAction = useConfirm()
   const [catalog, setCatalog] = useState(emptyCatalog)
+  const request = useMemo<ResourceRequest>(
+    () => (backendId ? <T,>(path: string, options?: RequestInit) => backendApi<T>(backendId, path, options) : api),
+    [backendId],
+  )
   const load = useCallback(
     () =>
-      void api<Catalog>('/api/agent-resources')
+      void request<Catalog>('/api/agent-resources')
         .then(setCatalog)
         .catch((error) => toast.error(error.message)),
-    [],
+    [request],
   )
   useEffect(load, [load])
   async function setDefault(kind: 'skill' | 'mcp', id: string, enabled: boolean) {
     try {
-      await api(`/api/agent-resources/${kind}/${encodeURIComponent(id)}/default`, {
+      await request(`/api/agent-resources/${kind}/${encodeURIComponent(id)}/default`, {
         method: 'POST',
         body: JSON.stringify({ enabled }),
       })
@@ -98,7 +129,7 @@ export function AgentResourceSettings({ section = 'all' }: { section?: AgentReso
     })
     if (!confirmed) return
     try {
-      await api(`/api/agent-resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      await request(`/api/agent-resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE' })
       toast.success(`${name} removed`)
       load()
     } catch (error) {
@@ -106,19 +137,226 @@ export function AgentResourceSettings({ section = 'all' }: { section?: AgentReso
     }
   }
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-3">
-      {['all', 'context', 'skills'].includes(section) && (
-        <SkillSettings skills={catalog.skills} reload={load} onDefault={setDefault} onRemove={remove} />
-      )}
-      {['all', 'context', 'mcp'].includes(section) && (
-        <McpSettings servers={catalog.mcpServers} reload={load} onDefault={setDefault} onRemove={remove} />
-      )}
-      {['all', 'agents'].includes(section) && (
-        <div className="col-span-full min-w-0">
-          <CustomAgentSettings profiles={catalog.profiles} skills={catalog.skills} mcpServers={catalog.mcpServers} reload={load} />
+    <ResourceRequestContext.Provider value={request}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-3">
+        {['all', 'context', 'skills'].includes(section) && (
+          <SkillSettings skills={catalog.skills} reload={load} onDefault={setDefault} onRemove={remove} />
+        )}
+        {['all', 'context', 'mcp'].includes(section) && (
+          <McpSettings servers={catalog.mcpServers} reload={load} onDefault={setDefault} onRemove={remove} />
+        )}
+        {['all', 'plugins'].includes(section) && <PluginSettings plugins={catalog.plugins} reload={load} />}
+        {['all', 'agents'].includes(section) && (
+          <div className="col-span-full min-w-0">
+            <CustomAgentSettings
+              profiles={catalog.profiles}
+              skills={catalog.skills}
+              mcpServers={catalog.mcpServers}
+              reload={load}
+              request={request}
+              backendId={backendId}
+            />
+          </div>
+        )}
+      </div>
+    </ResourceRequestContext.Provider>
+  )
+}
+
+function PluginSettings({ plugins, reload }: { plugins: AgentPlugin[]; reload(): void }) {
+  const request = useResourceRequest()
+  const confirmAction = useConfirm()
+  const [path, setPath] = useState('')
+  const [busy, setBusy] = useState('')
+
+  async function install(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy('install')
+    try {
+      const plugin = await request<AgentPlugin>('/api/agent-resources/plugins', {
+        method: 'POST',
+        body: JSON.stringify({ path: path.trim() }),
+      })
+      setPath('')
+      toast.success(`${plugin.name} loaded`)
+      reload()
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function refresh(plugin: AgentPlugin) {
+    setBusy(`refresh:${plugin.id}`)
+    try {
+      const updated = await request<AgentPlugin>(`/api/agent-resources/plugins/${encodeURIComponent(plugin.id)}/reload`, {
+        method: 'POST',
+      })
+      toast.success(`${updated.name} reloaded`)
+      reload()
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function remove(plugin: AgentPlugin) {
+    const confirmed = await confirmAction({
+      title: `Remove ${plugin.name}?`,
+      description: 'Its Skills and MCP servers are removed from defaults, Work items, and custom agents. Plugin data is preserved.',
+      confirmLabel: 'Remove plugin',
+      destructive: true,
+    })
+    if (!confirmed) return
+    setBusy(`remove:${plugin.id}`)
+    try {
+      await request(`/api/agent-resources/plugins/${encodeURIComponent(plugin.id)}`, { method: 'DELETE' })
+      toast.success(`${plugin.name} removed`)
+      reload()
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <Card className="col-span-full gap-0 overflow-hidden py-0">
+      <CardHeader className="border-b p-4">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <PackageOpen className="size-4 text-cyan-400" />
+          Agent Plugins
+        </CardTitle>
+        <CardDescription>
+          Load an Agent Plugins 1.0 directory or a repository containing one plugin under plugins/ from this server. Valid Skills and MCP
+          servers join the same resource catalog and stay off by default until you enable them.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4">
+        <form onSubmit={install} className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            required
+            value={path}
+            onChange={(event) => setPath(event.target.value)}
+            placeholder="Absolute plugin or repository directory on this server"
+            className="font-mono text-xs"
+          />
+          <Button disabled={busy === 'install'}>
+            <PackageOpen />
+            {busy === 'install' ? 'Loading…' : 'Load plugin'}
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground">
+          Loading a plugin allows its selected Skills to guide agents and its selected local MCP servers to execute package code.
+        </p>
+        {plugins.length ? (
+          <div className="space-y-2">
+            {plugins.map((plugin) => (
+              <PluginRow key={plugin.id} plugin={plugin} busy={busy} onRefresh={refresh} onRemove={remove} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">No Agent Plugins loaded yet.</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function PluginRow({
+  plugin,
+  busy,
+  onRefresh,
+  onRemove,
+}: {
+  plugin: AgentPlugin
+  busy: string
+  onRefresh(plugin: AgentPlugin): void
+  onRemove(plugin: AgentPlugin): void
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <PluginIdentity plugin={plugin} />
+          {plugin.description ? <p className="mt-1 text-xs text-muted-foreground">{plugin.description}</p> : null}
+          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={plugin.root}>
+            {plugin.root}
+          </p>
         </div>
-      )}
+        <PluginSourceLink plugin={plugin} />
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          disabled={Boolean(busy)}
+          aria-label={`Reload ${plugin.name}`}
+          onClick={() => onRefresh(plugin)}
+        >
+          <RefreshCw className={busy === `refresh:${plugin.id}` ? 'animate-spin' : ''} />
+        </Button>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="text-red-400"
+          disabled={Boolean(busy)}
+          aria-label={`Remove ${plugin.name}`}
+          onClick={() => onRemove(plugin)}
+        >
+          <Trash2 />
+        </Button>
+      </div>
+      <PluginDiagnostics plugin={plugin} />
     </div>
+  )
+}
+
+function PluginIdentity({ plugin }: { plugin: AgentPlugin }) {
+  const diagnostics = plugin.diagnostics.length
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <strong className="text-sm">{plugin.name}</strong>
+      {plugin.version ? <Badge variant="outline">v{plugin.version}</Badge> : null}
+      <Badge variant="secondary">{plugin.skillIds.length} Skills</Badge>
+      <Badge variant="secondary">{plugin.mcpServerIds.length} MCP</Badge>
+      {diagnostics ? (
+        <Badge variant="outline" className="gap-1 text-amber-500">
+          <TriangleAlert className="size-3" /> {diagnostics}
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
+
+function PluginSourceLink({ plugin }: { plugin: AgentPlugin }) {
+  const link = safeAgentPluginLink(plugin.repository || plugin.homepage)
+  if (!link) return null
+  return (
+    <Button type="button" size="icon-xs" variant="ghost" asChild>
+      <a href={link} target="_blank" rel="noreferrer" aria-label={`Open ${plugin.name} source`}>
+        <ExternalLink />
+      </a>
+    </Button>
+  )
+}
+
+function PluginDiagnostics({ plugin }: { plugin: AgentPlugin }) {
+  if (!plugin.diagnostics.length) return null
+  return (
+    <details className="rounded-md bg-muted/40 px-2.5 py-2 text-xs">
+      <summary className="cursor-pointer font-medium">Load diagnostics</summary>
+      <ul className="mt-2 space-y-1 text-muted-foreground">
+        {plugin.diagnostics.map((entry, index) => (
+          <li key={`${entry.component}:${entry.item || ''}:${index}`}>
+            <span className={entry.severity === 'error' ? 'text-red-400' : 'text-amber-500'}>{entry.component}</span>
+            {entry.item ? ` · ${entry.item}` : ''}: {entry.message}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
@@ -128,6 +366,7 @@ type ResourceActions = {
 }
 
 function SkillSettings({ skills, reload, ...actions }: { skills: Skill[]; reload(): void } & ResourceActions) {
+  const request = useResourceRequest()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SkillResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -135,7 +374,9 @@ function SkillSettings({ skills, reload, ...actions }: { skills: Skill[]; reload
     event.preventDefault()
     setSearching(true)
     try {
-      setResults((await api<{ results: SkillResult[] }>(`/api/agent-resources/skills/search?query=${encodeURIComponent(query)}`)).results)
+      setResults(
+        (await request<{ results: SkillResult[] }>(`/api/agent-resources/skills/search?query=${encodeURIComponent(query)}`)).results,
+      )
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
@@ -144,7 +385,7 @@ function SkillSettings({ skills, reload, ...actions }: { skills: Skill[]; reload
   }
   async function add(skill: SkillResult) {
     try {
-      await api('/api/agent-resources/skills', {
+      await request('/api/agent-resources/skills', {
         method: 'POST',
         body: JSON.stringify({ ...skill, defaultEnabled: false }),
       })
@@ -209,6 +450,7 @@ function SkillResultRow({ item, installed, onAdd }: { item: SkillResult; install
 }
 
 function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload(): void } & ResourceActions) {
+  const request = useResourceRequest()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<McpRegistryResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -223,7 +465,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
     event.preventDefault()
     setSearching(true)
     try {
-      const result = await api<{ results: McpRegistryResult[] }>(`/api/agent-resources/mcp/search?query=${encodeURIComponent(query)}`)
+      const result = await request<{ results: McpRegistryResult[] }>(`/api/agent-resources/mcp/search?query=${encodeURIComponent(query)}`)
       setResults(result.results)
     } catch (error) {
       toast.error((error as Error).message)
@@ -243,7 +485,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
   async function save(event: React.FormEvent) {
     event.preventDefault()
     try {
-      await api('/api/agent-resources/mcp', {
+      await request('/api/agent-resources/mcp', {
         method: 'POST',
         body: JSON.stringify(mcpInput({ name, transport, endpoint, args, secrets, defaultEnabled })),
       })
@@ -343,6 +585,7 @@ function McpSettings({ servers, reload, ...actions }: { servers: Mcp[]; reload()
 type McpToolSummary = { name: string; title?: string; description?: string; appResourceUri?: string | null }
 
 function McpAppExplorer({ servers }: { servers: Mcp[] }) {
+  const request = useResourceRequest()
   const [serverId, setServerId] = useState('')
   const [tools, setTools] = useState<McpToolSummary[]>([])
   const [app, setApp] = useState<McpAppFrameDescriptor | null>(null)
@@ -353,7 +596,7 @@ function McpAppExplorer({ servers }: { servers: Mcp[] }) {
     if (!id) return setTools([])
     setLoading(true)
     try {
-      const result = await api<{ tools: McpToolSummary[] }>(`/api/agent-resources/mcp/${encodeURIComponent(id)}/tools`)
+      const result = await request<{ tools: McpToolSummary[] }>(`/api/agent-resources/mcp/${encodeURIComponent(id)}/tools`)
       setTools(result.tools)
     } catch (error) {
       toast.error((error as Error).message)
@@ -364,7 +607,9 @@ function McpAppExplorer({ servers }: { servers: Mcp[] }) {
   const open = async (tool: McpToolSummary) => {
     try {
       setApp(
-        await api<McpAppFrameDescriptor>(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/apps/${encodeURIComponent(tool.name)}`),
+        await request<McpAppFrameDescriptor>(
+          `/api/agent-resources/mcp/${encodeURIComponent(serverId)}/apps/${encodeURIComponent(tool.name)}`,
+        ),
       )
     } catch (error) {
       toast.error((error as Error).message)
@@ -372,12 +617,12 @@ function McpAppExplorer({ servers }: { servers: Mcp[] }) {
   }
   const callTool = useCallback(
     (name: string, args: Record<string, unknown>, signal?: AbortSignal) =>
-      api<McpAppCallResult>(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(name)}`, {
+      request<McpAppCallResult>(`/api/agent-resources/mcp/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(name)}`, {
         method: 'POST',
         body: JSON.stringify({ arguments: args }),
         signal,
       }),
-    [serverId],
+    [request, serverId],
   )
   if (!servers.length) return null
   return (
@@ -513,7 +758,7 @@ function ResourceList({ items, kind, onDefault, onRemove }: { items: Array<Skill
 }
 
 function ResourceRow({ item, kind, onDefault, onRemove }: { item: Skill | Mcp; kind: 'skill' | 'mcp' } & ResourceActions) {
-  const detail = 'transport' in item ? mcpDescription(item) : `${item.source}@${item.skill}`
+  const detail = 'transport' in item ? mcpResourceDescription(item) : `${item.source}@${item.skill}`
   const defaultAction = item.defaultEnabled ? 'Disable default' : 'Default on'
   return (
     <div className="flex min-h-11 items-center gap-2 rounded-lg border p-2.5">
@@ -522,25 +767,24 @@ function ResourceRow({ item, kind, onDefault, onRemove }: { item: Skill | Mcp; k
         <span className="block truncate font-mono text-xs text-muted-foreground">{detail}</span>
       </div>
       <DefaultBadge enabled={item.defaultEnabled} />
+      {item.pluginId ? <Badge variant="outline">Plugin</Badge> : null}
       <Button type="button" size="xs" variant="ghost" onClick={() => onDefault(kind, item.id, !item.defaultEnabled)}>
         {defaultAction}
       </Button>
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
-        className="text-red-400"
-        aria-label={`Remove ${item.name}`}
-        onClick={() => onRemove(kind, item.id, item.name)}
-      >
-        <Trash2 />
-      </Button>
+      {item.pluginId ? null : (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="text-red-400"
+          aria-label={`Remove ${item.name}`}
+          onClick={() => onRemove(kind, item.id, item.name)}
+        >
+          <Trash2 />
+        </Button>
+      )}
     </div>
   )
-}
-
-function mcpDescription(item: Mcp) {
-  return item.transport === 'stdio' ? `${item.command} ${(item.args || []).join(' ')}` : item.url
 }
 
 function DefaultBadge({ enabled }: { enabled: boolean }) {

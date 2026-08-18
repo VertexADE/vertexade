@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@vert
 import { extensionPresentation } from '@vertexade/ui/lib/extension-presentation'
 import { extensionWorkspaceRoute } from '@vertexade/ui/lib/extension-workspace'
 import { cn } from '@vertexade/ui/lib/utils'
+import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 
 import { LifecycleBadge } from './extension-catalog-shared'
 export function ExtensionCard({
@@ -16,6 +17,7 @@ export function ExtensionCard({
   onManage,
   onTogglePin,
   onToggle,
+  backend,
 }: {
   module: ModuleCatalogEntry
   cache?: ExtensionCacheStats
@@ -24,8 +26,9 @@ export function ExtensionCard({
   onManage(): void
   onTogglePin(): void
   onToggle(enabled: boolean): void
+  backend?: Pick<BackendDescriptor, 'id' | 'label' | 'connected'>
 }) {
-  const { accent, Icon } = extensionPresentation(module)
+  const { accent, Icon } = extensionPresentation(module, backend?.id)
   return (
     <Card className={cn('gap-0 overflow-hidden py-0', accent.panel)}>
       <CardHeader className="gap-2 p-3 pb-2">
@@ -43,6 +46,12 @@ export function ExtensionCard({
           <CardDescription className="mt-0.5 line-clamp-2 min-h-8 text-xs leading-snug">
             {module.catalog?.tagline || module.description}
           </CardDescription>
+          {backend ? (
+            <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
+              {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
+            </span>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="flex min-h-28 flex-col px-3 pb-3">
@@ -63,7 +72,7 @@ export function ExtensionCard({
               <Settings2 />
               Configure
             </Button>
-            <ExtensionPrimaryAction module={module} busy={busy} onToggle={onToggle} />
+            <ExtensionPrimaryAction module={module} busy={busy} onToggle={onToggle} backendId={backend?.id} />
           </div>
         </div>
       </CardContent>
@@ -128,12 +137,14 @@ export function ExtensionPrimaryAction({
   module,
   busy,
   onToggle,
+  backendId,
 }: {
   module: ModuleCatalogEntry
   busy: boolean
   onToggle(enabled: boolean): void
+  backendId?: string
 }) {
-  const workspaceRoute = extensionWorkspaceRoute(module)
+  const workspaceRoute = extensionWorkspaceRoute(module, backendId)
   if (module.pending) {
     const desired = module.desiredEnabled ?? !module.enabled
     return (

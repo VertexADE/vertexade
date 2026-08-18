@@ -7,7 +7,7 @@ function jobDatabase(status = 'starting') {
   const database = new DatabaseSync(':memory:')
   database.exec(`CREATE TABLE jobs (
     id INTEGER PRIMARY KEY, status TEXT NOT NULL, pid INTEGER, agent_id TEXT, pid_start_identity TEXT,
-    exit_code INTEGER, latest_activity TEXT, activity_at TEXT, finished_at TEXT, result_text TEXT,
+    exit_code INTEGER, latest_activity TEXT, activity_at TEXT, turn_started_at TEXT, finished_at TEXT, result_text TEXT,
     input_request_id TEXT, input_questions TEXT, input_requested_at TEXT
   )`)
   database.prepare('INSERT INTO jobs (id,status,result_text) VALUES (1,?,?)').run(status, 'result')
@@ -22,11 +22,12 @@ describe('JobLifecycle', () => {
     lifecycle.markRunning(1, { pid: 42, agentId: 'codex' })
     lifecycle.markFinished(1, 0, '')
 
-    expect(database.prepare('SELECT status,pid,agent_id,exit_code FROM jobs WHERE id=1').get()).toEqual({
+    expect(database.prepare('SELECT status,pid,agent_id,exit_code,turn_started_at FROM jobs WHERE id=1').get()).toEqual({
       status: 'completed',
       pid: 42,
       agent_id: 'codex',
       exit_code: 0,
+      turn_started_at: expect.any(String),
     })
   })
 

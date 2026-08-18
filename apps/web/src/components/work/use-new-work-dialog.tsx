@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { useAgentResourceSelection } from '@vertexade/ui/components/agent-resource-picker'
+import type { ScmRepositorySearchPage } from '@vertexade/platform-contracts'
+import { useAgentResourceSelection, type AgentResourceSelection } from '@vertexade/ui/components/agent-resource-picker'
 import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import { loadBackendRegistry, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import type { WorkBoardData, WorkItem, WorkReferenceSelection } from '@vertexade/ui/lib/dashboard-types'
@@ -11,15 +12,21 @@ import {
   clearNewWorkDraft,
   launchCreatedWork,
   notifyWorkCreated,
-  notifyWorkLaunchRecovery,
   readNewWorkDraft,
   readWorkLaunchPreferences,
   rememberWorkLaunchPreferences,
   requestGeneratedWorkTitle,
-  resourceSelectionPayload,
   suggestedWorkRepositories,
   writeNewWorkDraft,
 } from './new-work-service'
+import {
+  capableWorkBackends,
+  mergeWorkRepositories,
+  normalizeSelectedRepositoryIds,
+  unifiedWorkRepositories,
+  withDiscoveredWorkCapabilities,
+  workLaunchPlans,
+} from './work-targets'
 
 type NewWorkValues = {
   title: string
@@ -36,6 +43,22 @@ type NewWorkValues = {
 type CreateWorkMutation = {
   backendId: string
   body: Record<string, unknown>
+}
+
+async function compatibleResourceSelection(backendId: string, selection: AgentResourceSelection | null) {
+  if (!selection) return {}
+  const catalog = await backendApi<{
+    skills: Array<{ id: string }>
+    mcpServers: Array<{ id: string }>
+  }>(backendId, '/api/agent-resources/selection')
+  const skills = new Set(catalog.skills.map((item) => item.id))
+  const mcpServers = new Set(catalog.mcpServers.map((item) => item.id))
+  return {
+    resource_selection: {
+      skills: selection.skills.filter((id) => skills.has(id)),
+      mcpServers: selection.mcpServers.filter((id) => mcpServers.has(id)),
+    },
+  }
 }
 
 export function useNewWorkDialog({
@@ -57,7 +80,19 @@ export function useNewWorkDialog({
   const [uploadingImages, setUploadingImages] = useState(false)
   const [resourceSelection, setResourceSelection] = useAgentResourceSelection()
   const [backends, setBackends] = useState<BackendDescriptor[]>([])
-  const [backendId, setBackendId] = useState('')
+  const [addedRepositories, setAddedRepositories] = useState<WorkBoardData['repositories']>([])
+  const [targetBackendIds, setTargetBackendIds] = useState<string[]>([])
+  const [discoveredCapabilities, setDiscoveredCapabilities] = useState<
+    Array<{ identity: string; backendId: string; backendName: string; repository: string }>
+  >([])
+  const [discoveringCapabilities, setDiscoveringCapabilities] = useState(false)
+  const initializedOpen = useRef(false)
+  const allRepositories = useMemo(() => mergeWorkRepositories(data.repositories, addedRepositories), [addedRepositories, data.repositories])
+  const registeredRepositories = useMemo(() => unifiedWorkRepositories(allRepositories, backends), [allRepositories, backends])
+  const repositoriesByProject = useMemo(
+    () => withDiscoveredWorkCapabilities(registeredRepositories, discoveredCapabilities),
+    [discoveredCapabilities, registeredRepositories],
+  )
   const createWork = useMutation({
     mutationFn: ({ backendId: targetBackendId, body }: CreateWorkMutation) =>
       backendApi<WorkItem>(targetBackendId, '/api/work-items', {
@@ -72,30 +107,52 @@ export function useNewWorkDialog({
       kind: 'implementation',
       priority: 'normal',
       repositories: [],
-      startThread: false,
+      startThread: true,
       createPr: true,
       splitWorkItem: false,
       references: [],
     } as NewWorkValues,
     onSubmit: async ({ value }) => {
       try {
-        const resolvedTitle = value.title.trim() || (await requestGeneratedWorkTitle(value.description, value.kind, backendId))
+        const plans = workLaunchPlans(repositoriesByProject, value.repositories, targetBackendIds, backends)
+        if (!plans.length) throw new Error('Choose at least one connected server that can access every selected project')
+        const resolvedTitle = value.title.trim() || (await requestGeneratedWorkTitle(value.description, value.kind, plans[0]!.backend.id))
         form.setFieldValue('title', resolvedTitle)
-        const resources = resourceSelectionPayload(resourceSelection)
-        const item = await createWork.mutateAsync({
-          backendId,
-          body: {
-            title: resolvedTitle,
-            description: value.description,
-            kind: value.kind,
-            priority: value.priority,
-            repository_ids: value.repositories,
-            references: value.references,
-            split_work_item: value.splitWorkItem,
-            ...resources,
-          },
-        })
-        await finishCreatedItem(item, resolvedTitle, resources, value)
+        const outcomes = await Promise.allSettled(
+          plans.map(async (plan) => {
+            const resources = await compatibleResourceSelection(plan.backend.id, resourceSelection)
+            const addedRepositories = await Promise.all(
+              plan.repositoriesToAdd.map((repository) =>
+                backendApi<{ repo: WorkBoardData['repositories'][number] }>(plan.backend.id, '/api/repositories', {
+                  method: 'POST',
+                  body: JSON.stringify({ repository }),
+                }),
+              ),
+            )
+            const resolvedPlan = {
+              ...plan,
+              repositoryIds: [...plan.repositoryIds, ...addedRepositories.map(({ repo }) => repo.id)],
+              repositoriesToAdd: [],
+            }
+            const item = await createWork.mutateAsync({
+              backendId: plan.backend.id,
+              body: {
+                title: resolvedTitle,
+                description: value.description,
+                kind: value.kind,
+                priority: value.priority,
+                repository_ids: resolvedPlan.repositoryIds,
+                references: value.references,
+                split_work_item: value.splitWorkItem,
+                ...resources,
+              },
+            })
+            return { item, plan: resolvedPlan, resources }
+          }),
+        )
+        const created = outcomes.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : []))
+        if (!created.length) throw new Error(outcomes.map((outcome) => (outcome.status === 'rejected' ? outcome.reason : '')).join(' · '))
+        await finishCreatedItems(created, outcomes, resolvedTitle, value)
       } catch (error) {
         toast.error((error as Error).message)
       }
@@ -104,42 +161,126 @@ export function useNewWorkDialog({
   const formValues = useStore(form.store, (state) => state.values)
   const busy = useStore(form.store, (state) => state.isSubmitting)
   const { title, description, kind, priority, repositories, startThread, createPr, splitWorkItem, references } = formValues
+  const capableBackends = useMemo(
+    () => capableWorkBackends(repositoriesByProject, repositories, backends),
+    [backends, repositories, repositoriesByProject],
+  )
+  const primaryBackendId = targetBackendIds[0] || capableBackends[0]?.id || ''
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      initializedOpen.current = false
+      setAddedRepositories([])
+      return
+    }
+    setDiscoveredCapabilities([])
     void loadBackendRegistry()
       .then(({ backends: available }) => {
         setBackends(available)
-        setBackendId((current) => current || available.find((backend) => backend.isDefault)?.id || available[0]?.id || '')
       })
       .catch((error) => toast.error((error as Error).message))
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !backends.length) return
+    const controller = new AbortController()
+    const probes = registeredRepositories
+      .filter((repository) => repositories.includes(repository.id))
+      .flatMap((repository) => {
+        if (repository.source_kind !== 'git') return []
+        const registered = new Set(repository.capabilities.map((capability) => capability.backendId))
+        return backends
+          .filter((backend) => !backend.connected || !registered.has(backend.id))
+          .map(async (backend) => {
+            const query = new URLSearchParams({ q: repository.full_name, limit: '20' })
+            const page = await backendApi<ScmRepositorySearchPage>(backend.id, `/api/scm/repositories?${query}`, {
+              signal: controller.signal,
+            })
+            const match = page.repositories.find(
+              (candidate) => candidate.source === 'authenticated' && candidate.id.toLowerCase() === repository.full_name.toLowerCase(),
+            )
+            return {
+              capability:
+                match && !registered.has(backend.id)
+                  ? {
+                      identity: repository.identity,
+                      backendId: backend.id,
+                      backendName: backend.label,
+                      repository: match.id,
+                    }
+                  : null,
+              verifiedBackendId: match ? backend.id : null,
+            }
+          })
+      })
+    setDiscoveringCapabilities(Boolean(probes.length))
+    void Promise.allSettled(probes).then((outcomes) => {
+      if (controller.signal.aborted) return
+      setDiscoveredCapabilities(
+        outcomes.flatMap((outcome) => (outcome.status === 'fulfilled' && outcome.value.capability ? [outcome.value.capability] : [])),
+      )
+      const verified = new Set(
+        outcomes.flatMap((outcome) =>
+          outcome.status === 'fulfilled' && outcome.value.verifiedBackendId ? [outcome.value.verifiedBackendId] : [],
+        ),
+      )
+      if (verified.size)
+        setBackends((current) => {
+          let changed = false
+          const next = current.map((backend) => {
+            if (!verified.has(backend.id) || backend.connected) return backend
+            changed = true
+            return { ...backend, connected: true, error: null }
+          })
+          return changed ? next : current
+        })
+      setDiscoveringCapabilities(false)
+    })
+    return () => {
+      controller.abort()
+      setDiscoveringCapabilities(false)
+    }
+  }, [backends, open, registeredRepositories, repositories])
+
+  useEffect(() => {
+    if (!open || !backends.length || initializedOpen.current) return
+    initializedOpen.current = true
     const draft = readNewWorkDraft()
     const preferences = readWorkLaunchPreferences()
-    const hasDraft = Boolean(draft.title || draft.description)
-    const suggestedRepositories = suggestedWorkRepositories(data, draft.repositories, preferences.repositories)
+    const suggestedRepositories = normalizeSelectedRepositoryIds(
+      repositoriesByProject,
+      suggestedWorkRepositories({ ...data, repositories: allRepositories }, draft.repositories, preferences.repositories),
+    )
     const supportsPullRequests =
       suggestedRepositories.length > 0 &&
-      suggestedRepositories.every((repositoryId) => repositorySupportsPullRequests(data.repositories, repositoryId))
+      suggestedRepositories.every((repositoryId) => repositorySupportsPullRequests(allRepositories, repositoryId))
     form.reset({
       title: draft.title || '',
       description: draft.description || '',
       kind: draft.kind || 'implementation',
       priority: draft.priority || 'normal',
       repositories: suggestedRepositories,
-      startThread: initialStartThread ?? (hasDraft && draft.startThread !== undefined ? draft.startThread : true),
+      startThread: initialStartThread ?? true,
       createPr: supportsPullRequests && (draft.createPr ?? preferences.createPr),
       splitWorkItem: draft.splitWorkItem ?? preferences.splitWorkItem,
       references: [],
     })
     setResourceSelection(null)
-  }, [data.repositories, initialStartThread, open, setResourceSelection])
+  }, [allRepositories, backends.length, data, initialStartThread, open, registeredRepositories, setResourceSelection])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !backends.length) return
+    setTargetBackendIds((current) => {
+      const capableIds = new Set(capableBackends.map((backend) => backend.id))
+      const retained = current.filter((backendId) => capableIds.has(backendId))
+      if (retained.length) return retained
+      const preferred = capableBackends.find((backend) => backend.isDefault) || capableBackends[0]
+      return preferred ? [preferred.id] : []
+    })
+  }, [capableBackends, open])
+
+  useEffect(() => {
+    if (!open || !backends.length) return
     writeNewWorkDraft({
       title,
       description,
@@ -150,12 +291,13 @@ export function useNewWorkDialog({
       createPr,
       splitWorkItem,
     })
-  }, [createPr, description, kind, open, priority, repositories, splitWorkItem, startThread, title])
+  }, [backends.length, createPr, description, kind, open, priority, repositories, splitWorkItem, startThread, title])
 
   async function generateTitle() {
     setGeneratingTitle(true)
     try {
-      const generatedTitle = await requestGeneratedWorkTitle(description, kind, backendId)
+      if (!primaryBackendId) throw new Error('Connect a server before generating a Work title')
+      const generatedTitle = await requestGeneratedWorkTitle(description, kind, primaryBackendId)
       form.setFieldValue('title', generatedTitle)
       toast.success('Outcome generated from your context')
     } catch (error) {
@@ -174,10 +316,15 @@ export function useNewWorkDialog({
   }
 
   async function addRepositoryInput(input: Record<string, unknown>) {
-    const result = await backendApi<{ repo: WorkBoardData['repositories'][number] }>(backendId, '/api/repositories', {
+    if (!primaryBackendId) {
+      toast.error('Connect a server before adding a repository')
+      return null
+    }
+    const result = await backendApi<{ repo: WorkBoardData['repositories'][number] }>(primaryBackendId, '/api/repositories', {
       method: 'POST',
       body: JSON.stringify(input),
     })
+    setAddedRepositories((current) => mergeWorkRepositories(current, [result.repo]))
     form.setFieldValue('repositories', [...new Set([...form.getFieldValue('repositories'), result.repo.id])])
     await queryClient.invalidateQueries({ queryKey: ['platform'] })
     onCreated()
@@ -185,24 +332,44 @@ export function useNewWorkDialog({
     return result.repo.id
   }
 
-  async function finishCreatedItem(
-    item: WorkItem,
+  async function finishCreatedItems(
+    created: Array<{ item: WorkItem; plan: ReturnType<typeof workLaunchPlans>[number]; resources: object }>,
+    creationOutcomes: PromiseSettledResult<{
+      item: WorkItem
+      plan: ReturnType<typeof workLaunchPlans>[number]
+      resources: object
+    }>[],
     resolvedTitle: string,
-    resources: ReturnType<typeof resourceSelectionPayload>,
     value: NewWorkValues,
   ) {
     try {
-      const result = await launchCreatedWork(item, {
-        startThread: value.startThread,
-        repositories: value.repositories,
-        description: value.description.trim() || resolvedTitle,
-        createPr: value.createPr,
-        splitWorkItem: value.splitWorkItem,
-        resources,
-      })
-      notifyWorkCreated(item, result)
-    } catch {
-      notifyWorkLaunchRecovery(item)
+      const launches = await Promise.allSettled(
+        created.map(({ item, plan, resources }) =>
+          launchCreatedWork(item, {
+            startThread: value.startThread,
+            repositories: plan.repositoryIds,
+            description: value.description.trim() || resolvedTitle,
+            createPr: value.createPr,
+            splitWorkItem: value.splitWorkItem,
+            resources,
+          }),
+        ),
+      )
+      const creationFailures = creationOutcomes.filter((outcome) => outcome.status === 'rejected').length
+      const launchFailures = launches.filter(
+        (outcome) => outcome.status === 'rejected' || (outcome.value && outcome.value.status !== 'started'),
+      ).length
+      if (!creationFailures && !launchFailures) {
+        if (created.length === 1) notifyWorkCreated(created[0]!.item, launches[0]!.status === 'fulfilled' ? launches[0]!.value : null)
+        else
+          toast.success(
+            value.startThread ? `Work created and started on ${created.length} servers` : `Work created on ${created.length} servers`,
+          )
+      } else {
+        toast.warning(
+          `Work initialized on ${created.length}/${creationOutcomes.length} servers; ${creationFailures + launchFailures} targets need attention`,
+        )
+      }
     } finally {
       rememberWorkLaunchPreferences({
         repositories: value.repositories,
@@ -213,7 +380,7 @@ export function useNewWorkDialog({
       await queryClient.invalidateQueries({ queryKey: ['platform'] })
       onOpenChange(false)
       onCreated()
-      void navigate({ to: '/work/$workKey', params: { workKey: item.key } })
+      void navigate({ to: '/work/$workKey', params: { workKey: created[0]!.item.key } })
     }
   }
 
@@ -236,7 +403,7 @@ export function useNewWorkDialog({
     setRepositories: (value: number[]) => {
       form.setFieldValue('repositories', value)
       const supportsPullRequests =
-        value.length > 0 && value.every((repositoryId) => repositorySupportsPullRequests(data.repositories, repositoryId))
+        value.length > 0 && value.every((repositoryId) => repositorySupportsPullRequests(allRepositories, repositoryId))
       if (!supportsPullRequests) form.setFieldValue('createPr', false)
     },
     startThread,
@@ -254,17 +421,19 @@ export function useNewWorkDialog({
     resourceSelection,
     setResourceSelection,
     backends,
-    backendId,
-    setBackendId: (next: string) => {
-      setBackendId(next)
+    unifiedRepositories: repositoriesByProject,
+    capableBackends,
+    discoveringCapabilities,
+    targetBackendIds,
+    primaryBackendId,
+    toggleTargetBackend: (backendId: string, selected: boolean) => {
+      if (!selected && targetBackendIds.length === 1 && targetBackendIds[0] === backendId) return
+      setTargetBackendIds((current) => {
+        const next = selected ? [...new Set([...current, backendId])] : current.filter((candidate) => candidate !== backendId)
+        return next.length ? next : current
+      })
       form.setFieldValue('references', [])
       setResourceSelection(null)
-      form.setFieldValue(
-        'repositories',
-        form
-          .getFieldValue('repositories')
-          .filter((repositoryId) => data.repositories.find((repository) => repository.id === repositoryId)?.backend_id === next),
-      )
     },
     generateTitle,
     addRepository,

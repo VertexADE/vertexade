@@ -1,6 +1,9 @@
 import {
   Archive,
   ArchiveRestore,
+  CheckCheck,
+  CircleCheck,
+  CircleDashed,
   Clock3,
   CopyPlus,
   ExternalLink,
@@ -10,8 +13,10 @@ import {
   GitCommitHorizontal,
   MessageSquareText,
   MoreHorizontal,
+  TimerReset,
   Trash2,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AgentAvatar, AgentContextBadges } from '@vertexade/ui/components/agent-identity'
 import { BackendBadge } from '@vertexade/ui/components/backend-badge'
@@ -27,17 +32,37 @@ import {
   DropdownMenuTrigger,
 } from '@vertexade/ui/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@vertexade/ui/components/ui/tooltip'
 import { activityPreview } from '@vertexade/ui/lib/activity-preview'
 import { agentIsWorking, agentThreadLabel, agentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import { age, api, duration, parseJson } from '@vertexade/ui/lib/dashboard-api'
 import type { Job } from '@vertexade/ui/lib/dashboard-types'
 import { displayBackendId, localBackendId } from '@vertexade/ui/lib/backend-registry'
 import { threadPriority, type ThreadSort } from '@vertexade/ui/lib/thread-priority'
+import { threadTitle } from '@vertexade/ui/lib/thread-title'
 import { cn } from '@vertexade/ui/lib/utils'
 
-export type StatusFilter = 'all' | 'attention' | 'active' | 'input' | 'action' | 'queued' | 'completed' | 'failed' | 'resumable'
+export type StatusFilter =
+  | 'all'
+  | 'attention'
+  | 'active'
+  | 'input'
+  | 'action'
+  | 'queued'
+  | 'completed'
+  | 'failed'
+  | 'resumable'
+  | 'settled'
+  | 'snoozed'
 
-export function matchesStatus(thread: Job, filter: StatusFilter) {
+export function threadIsSnoozed(thread: Job, now = Date.now()) {
+  return Boolean(thread.snoozed_until && Date.parse(thread.snoozed_until) > now)
+}
+
+export function matchesStatus(thread: Job, filter: StatusFilter, now = Date.now()) {
+  if (filter === 'settled') return Boolean(thread.settled_at)
+  if (filter === 'snoozed') return threadIsSnoozed(thread, now)
+  if (thread.settled_at || threadIsSnoozed(thread, now)) return false
   if (filter === 'all') return true
   const priority = threadPriority(thread)
   if (filter === 'attention') return ['input', 'action'].includes(priority)
@@ -49,16 +74,6 @@ export function matchesStatus(thread: Job, filter: StatusFilter) {
   return thread.status === filter
 }
 
-function threadTitle(job: Job) {
-  const id = displayBackendId(job, job.id)
-  if (job.kind === 'subagent') return job.task_title || `Child agent #${id}`
-  if (job.kind === 'pre_pr') return job.task_title || `Task #${id}`
-  if (job.kind === 'work_review') return job.task_title || 'Worktree code review'
-  if (job.kind === 'stack_analysis') return 'PR stack analysis'
-  if (job.kind === 'review') return job.task_title || `Review PR #${job.pr_number}`
-  return job.task_title || (job.pr_number ? `PR #${job.pr_number}` : `Run #${id}`)
-}
-
 async function setThreadArchived(job: Job, archived: boolean, onChanged: () => void) {
   try {
     await api(`/api/agent-threads/${job.id}/archive`, { method: 'POST', body: JSON.stringify({ archived }) })
@@ -67,6 +82,30 @@ async function setThreadArchived(job: Job, archived: boolean, onChanged: () => v
   } catch (error) {
     toast.error((error as Error).message)
   }
+}
+
+async function setThreadSettled(job: Job, settled: boolean, onChanged: () => void) {
+  try {
+    await api(`/api/agent-threads/${job.id}/settle`, { method: 'POST', body: JSON.stringify({ settled }) })
+    toast.success(settled ? 'Thread settled' : 'Thread returned to the Threads overview')
+    onChanged()
+  } catch (error) {
+    toast.error((error as Error).message)
+  }
+}
+
+async function setThreadSnoozed(job: Job, until: string | null, onChanged: () => void) {
+  try {
+    await api(`/api/agent-threads/${job.id}/snooze`, { method: 'POST', body: JSON.stringify({ until }) })
+    toast.success(until ? `Thread snoozed until ${new Date(until).toLocaleString()}` : 'Thread returned to the Threads overview')
+    onChanged()
+  } catch (error) {
+    toast.error((error as Error).message)
+  }
+}
+
+function snoozeUntil(hours: number) {
+  return new Date(Date.now() + hours * 60 * 60 * 1_000).toISOString()
 }
 
 async function applyDirectoryChanges(job: Job, confirmAction: ReturnType<typeof useConfirm>, onChanged: () => void) {
@@ -143,7 +182,7 @@ function ThreadRunMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-xs" className="absolute right-2 top-2" aria-label={`Actions for ${threadTitle(job)}`}>
+        <Button variant="ghost" size="icon-xs" aria-label={`Actions for ${threadTitle(job)}`}>
           <MoreHorizontal />
         </Button>
       </DropdownMenuTrigger>
@@ -169,6 +208,30 @@ function ThreadRunMenu({
           {job.archived_at ? <ArchiveRestore /> : <Archive />}
           {job.archived_at ? 'Restore run' : 'Archive run'}
         </DropdownMenuItem>
+        {job.status === 'completed' && (
+          <>
+            <DropdownMenuSeparator />
+            {job.settled_at || threadIsSnoozed(job) ? (
+              <DropdownMenuItem
+                onSelect={() => void (job.settled_at ? setThreadSettled(job, false, onChanged) : setThreadSnoozed(job, null, onChanged))}
+              >
+                <TimerReset />
+                Return to overview
+              </DropdownMenuItem>
+            ) : (
+              <>
+                <DropdownMenuItem onSelect={() => void setThreadSettled(job, true, onChanged)}>
+                  <CheckCheck />
+                  Settle thread
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void setThreadSnoozed(job, snoozeUntil(24), onChanged)}>
+                  <Clock3 />
+                  Snooze for 1 day
+                </DropdownMenuItem>
+              </>
+            )}
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" disabled={busy} onSelect={remove}>
           <Trash2 />
@@ -252,6 +315,8 @@ export function ThreadFilters({
           <SelectItem value="completed">Completed</SelectItem>
           <SelectItem value="failed">Failed</SelectItem>
           <SelectItem value="resumable">Ready to resume</SelectItem>
+          <SelectItem value="settled">Settled</SelectItem>
+          <SelectItem value="snoozed">Snoozed</SelectItem>
         </SelectContent>
       </Select>
       <Select value={agent} onValueChange={onAgent}>
@@ -304,6 +369,7 @@ export function ThreadRailItem({
   const priority = threadPriority(job)
   const busy = ['starting', 'running'].includes(job.status)
   const fileCount = job.diff_file_count ?? parseJson<unknown[]>(job.diff_files, []).length
+  const lastMessage = activityPreview(job.latest_activity)
   return (
     <article
       data-agent-provider={job.agent_id}
@@ -311,73 +377,120 @@ export function ThreadRailItem({
       data-thread-priority={priority}
       data-thread-id={job.id}
       className={cn(
-        'relative mb-px min-w-0 overflow-hidden rounded-md border border-transparent transition-colors hover:bg-accent/35',
+        'group/thread relative mb-px min-w-0 overflow-hidden rounded-md border border-transparent transition-colors hover:bg-accent/35',
         priority === 'input' && 'border-l-amber-400/70',
         priority === 'action' && 'border-l-red-400/70',
         selected && 'border-primary/20 bg-primary/[.07] shadow-[inset_3px_0_0_color-mix(in_srgb,var(--primary)_65%,transparent)]',
       )}
     >
-      <button type="button" className="block w-full min-w-0 p-2 pr-9 text-left" onClick={onSelect}>
-        <span className="flex min-w-0 items-start gap-2">
-          <span className="relative">
-            <AgentAvatar id={job.agent_id} name={job.agent_name} size="sm" />
-            <span
-              className={cn(
-                'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-background bg-muted-foreground',
-                state === 'completed' && 'bg-emerald-500',
-                agentIsWorking(state) && 'bg-blue-400',
-                priority === 'input' && 'bg-amber-400',
-                priority === 'action' && 'bg-red-500',
-                priority === 'queued' && 'bg-violet-400',
-              )}
-            />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <strong className="min-w-0 flex-1 truncate text-xs">{threadTitle(job)}</strong>
-              <ThreadStateLabel state={state} queued={priority === 'queued'} />
-            </span>
-            <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
-              <FolderGit2 className="size-3 shrink-0" />
-              <span title={job.full_name} className="max-w-28 truncate font-medium text-foreground/70">
-                {job.full_name.split('/').at(-1)}
-              </span>
-              <BackendBadge source={job} />
-              <span className="min-w-0 flex-1 truncate font-mono">{job.branch_name || `run #${displayBackendId(job, job.id)}`}</span>
-            </span>
-          </span>
+      <button type="button" className="block w-full min-w-0 p-2 text-left" onClick={onSelect}>
+        <span className={cn('flex min-w-0 items-center gap-1.5', state === 'completed' ? 'pr-28' : 'pr-7')}>
+          <strong className="min-w-0 flex-1 truncate text-xs">{threadTitle(job)}</strong>
+          {state !== 'completed' && <ThreadStateLabel job={job} state={state} queued={priority === 'queued'} />}
         </span>
-        <span className="mt-1 block truncate text-[11px] leading-4 text-muted-foreground" title={activityPreview(job.latest_activity)}>
-          {activityPreview(job.latest_activity)}
+        <span className="mt-0.5 block truncate text-[10px] leading-4 text-muted-foreground" title={lastMessage}>
+          {lastMessage || 'No message yet'}
         </span>
-        <span className="mt-1 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="truncate">
-            {job.agent_name}
-            {job.kind === 'subagent' && job.source_job_id ? ` · child of #${localBackendId(job.source_job_id)}` : ''} ·{' '}
-            {age(job.activity_at || job.created_at)}
-          </span>
+        <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-foreground/70">
+          <span className="min-w-0 flex-1 truncate">{job.branch_name || `run #${displayBackendId(job, job.id)}`}</span>
           {fileCount > 0 && (
-            <span className="ml-auto flex shrink-0 items-center gap-1">
-              <span className="text-emerald-500">+{job.diff_additions}</span>
-              <span className="text-red-500">−{job.diff_deletions}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="text-success">+{job.diff_additions}</span>
+              <span className="text-destructive">−{job.diff_deletions}</span>
             </span>
           )}
         </span>
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
+          <BackendBadge source={job} nameOnly className="h-4 max-w-20 px-1 text-[9px]" />
+          <span aria-hidden="true" className="text-border">
+            ·
+          </span>
+          <span title={job.full_name} className="min-w-0 flex-1 truncate font-medium text-foreground/70">
+            {job.full_name.split('/').at(-1)}
+          </span>
+          <span className="shrink-0 tabular-nums">{age(job.activity_at || job.created_at)}</span>
+          <AgentAvatar id={job.agent_id} name={job.agent_name} size="xs" className="size-4 rounded text-[7px]" />
+        </span>
       </button>
-      <ThreadRunMenu
-        job={job}
-        busy={busy}
-        onDetails={onDetails}
-        onFork={onFork}
-        onChanged={onChanged}
-        onDeleting={onDeleting}
-        onDeleteFailed={onDeleteFailed}
-      />
+      <span className="group/actions absolute right-1.5 top-1.5 z-10 flex h-6 items-center gap-0.5 rounded-md transition-colors hover:bg-muted/40">
+        {state === 'completed' && <CompletedThreadActions job={job} onChanged={onChanged} />}
+        <ThreadRunMenu
+          job={job}
+          busy={busy}
+          onDetails={onDetails}
+          onFork={onFork}
+          onChanged={onChanged}
+          onDeleting={onDeleting}
+          onDeleteFailed={onDeleteFailed}
+        />
+      </span>
     </article>
   )
 }
 
-function ThreadStateLabel({ state, queued = false }: { state: ReturnType<typeof agentThreadState>; queued?: boolean }) {
+function CompletedThreadActions({ job, onChanged }: { job: Job; onChanged(): void }) {
+  const snoozed = threadIsSnoozed(job)
+  const settled = Boolean(job.settled_at)
+  const returnToOverview = () => void (settled ? setThreadSettled(job, false, onChanged) : setThreadSnoozed(job, null, onChanged))
+  return (
+    <span className="relative flex h-6 min-w-20 items-center justify-end text-[11px]">
+      <span className="flex items-center gap-1.5 text-success transition-opacity group-hover/actions:pointer-events-none group-hover/actions:opacity-0 group-focus-within/actions:pointer-events-none group-focus-within/actions:opacity-0">
+        {settled ? <CheckCheck className="size-3.5" /> : snoozed ? <TimerReset className="size-3.5" /> : <CircleCheck className="size-4" />}
+        {settled ? 'Settled' : snoozed ? 'Snoozed' : 'Done'}
+      </span>
+      <span className="pointer-events-none absolute right-0 flex items-center gap-1 opacity-0 transition-opacity group-hover/actions:pointer-events-auto group-hover/actions:opacity-100 group-focus-within/actions:pointer-events-auto group-focus-within/actions:opacity-100">
+        {settled || snoozed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="ghost" size="icon-xs" aria-label="Return thread to overview" onClick={returnToOverview}>
+                <TimerReset />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Return to overview</TooltipContent>
+          </Tooltip>
+        ) : (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Settle thread"
+                  onClick={() => void setThreadSettled(job, true, onChanged)}
+                >
+                  <CheckCheck data-icon="inline-start" />
+                  Settle
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Settle thread</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Snooze thread">
+                      <Clock3 />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Snooze thread</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel>Snooze thread</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => void setThreadSnoozed(job, snoozeUntil(1), onChanged)}>For 1 hour</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void setThreadSnoozed(job, snoozeUntil(24), onChanged)}>For 1 day</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void setThreadSnoozed(job, snoozeUntil(168), onChanged)}>For 1 week</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+      </span>
+    </span>
+  )
+}
+
+function ThreadStateLabel({ job, state, queued = false }: { job: Job; state: ReturnType<typeof agentThreadState>; queued?: boolean }) {
   if (queued) {
     return (
       <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-violet-400">
@@ -386,12 +499,30 @@ function ThreadStateLabel({ state, queued = false }: { state: ReturnType<typeof 
       </span>
     )
   }
+  if (state === 'completed') {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-success">
+        <CircleCheck className="size-4" />
+        Done
+      </span>
+    )
+  }
+  if (state === 'waiting') {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-amber-400">
+        <Clock3 className="size-3.5" />
+        Waiting for input
+      </span>
+    )
+  }
+  if (agentIsWorking(state)) {
+    return <WorkingThreadLabel startedAt={job.turn_started_at || job.created_at} />
+  }
   const tones = {
     running: 'text-blue-400',
     starting: 'text-blue-400',
     waiting: 'text-amber-400',
     failed: 'text-red-400',
-    completed: 'text-muted-foreground',
     resumable: 'text-amber-400',
     interrupted: 'text-amber-400',
     cancelled: 'text-muted-foreground',
@@ -401,6 +532,20 @@ function ThreadStateLabel({ state, queued = false }: { state: ReturnType<typeof 
     <span className={cn('inline-flex shrink-0 items-center gap-1 text-[11px]', tones[state])}>
       <span className="size-1.5 rounded-full bg-current" />
       {agentThreadLabel(state)}
+    </span>
+  )
+}
+
+function WorkingThreadLabel({ startedAt }: { startedAt: string }) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((current) => current + 1), 1_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-sky-400">
+      <CircleDashed className="size-4 animate-spin [animation-duration:2.5s]" />
+      Working {duration(startedAt)}
     </span>
   )
 }
@@ -428,6 +573,7 @@ export function ThreadRow({
   const fileCount = job.diff_file_count ?? parseJson<unknown[]>(job.diff_files, []).length
   const title = threadTitle(job)
   const busy = ['starting', 'running'].includes(job.status)
+  const elapsedStart = agentIsWorking(state) ? job.turn_started_at || job.created_at : job.created_at
   const canApplyDirectory = !busy && ['copy', 'move'].includes(job.directory_workspace_strategy || '')
   return (
     <article
@@ -462,13 +608,13 @@ export function ThreadRow({
             <button type="button" onClick={onChat} className="block min-h-10 w-full text-left sm:min-h-0">
               <span className="flex items-start justify-between gap-2">
                 <strong className="line-clamp-2 text-sm leading-5 sm:truncate">{title}</strong>
-                <ThreadStateLabel state={state} queued={priority === 'queued'} />
+                <ThreadStateLabel job={job} state={state} queued={priority === 'queued'} />
               </span>
               <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate font-mono text-[11px] text-muted-foreground">
                 <span className="truncate">
                   {job.branch_name ? `${job.full_name} · ${job.branch_name}` : `${job.full_name} · run #${displayBackendId(job, job.id)}`}
                 </span>
-                <BackendBadge source={job} />
+                <BackendBadge source={job} nameOnly />
               </span>
             </button>
             <div className="mt-1 hidden flex-wrap items-center gap-1.5 sm:flex">
@@ -482,7 +628,7 @@ export function ThreadRow({
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Clock3 className="size-3" />
-              {duration(job.created_at, job.finished_at)} · {age(job.activity_at || job.created_at)}
+              {duration(elapsedStart, job.finished_at)} · {age(job.activity_at || job.created_at)}
             </span>
             {fileCount > 0 && (
               <span className="inline-flex items-center gap-1">

@@ -8,11 +8,13 @@ import {
   isNotificationEvent,
   isThreadEvent,
   isWorkBoardEvent,
+  platformBackendState,
   platformClient,
+  platformClientForBackend,
   saveAgentLaunchOptions,
   subscribeToDashboardEvents,
 } from './dashboard-api.ts'
-import { activeBackendStorageKey } from './backend-registry.ts'
+import { agentLaunchOptionsStore } from './agent-launch-store.ts'
 
 function browserStorage(initial = '') {
   let value = initial
@@ -61,7 +63,7 @@ describe('dashboard API client', () => {
     expect(fetch).toHaveBeenCalledWith('/api/backends/team/work-items', expect.objectContaining({ method: 'POST' }))
   })
 
-  it('targets ordinary requests at the independently selected server', async () => {
+  it('keeps ordinary requests federated even when an obsolete active-server preference exists', async () => {
     browserStorage('team')
     const fetch = vi.fn().mockResolvedValue(Response.json({ ok: true }))
     vi.stubGlobal('fetch', fetch)
@@ -69,17 +71,17 @@ describe('dashboard API client', () => {
     await expect(api('/api/settings/system-configuration')).resolves.toEqual({ ok: true })
 
     const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers)
-    expect(headers.get('x-vertexade-backend')).toBe('team')
-    expect(activeBackendStorageKey).toBe('vertexade.active-backend')
+    expect(headers.has('x-vertexade-backend')).toBe(false)
   })
 
-  it('keeps extension catalog, settings, and mutations on the selected server', async () => {
+  it('keeps extension catalog, settings, and mutations on an explicitly scoped plugin server', async () => {
     browserStorage('team')
     const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ modules: [], configured: true }))
     vi.stubGlobal('fetch', fetch)
-    const extension = platformClient.extension('linear')
+    const scopedClient = platformClientForBackend('team')
+    const extension = scopedClient.extension('linear')
 
-    await platformClient.modules.list()
+    await scopedClient.modules.list()
     await extension.request('/settings')
     await extension.request('/settings', { method: 'POST', body: '{}' })
 
@@ -109,6 +111,14 @@ describe('dashboard API client', () => {
       serviceTier: '',
       allowSubagents: false,
     })
+  })
+
+  it('keeps agent preference reads side-effect-free for request header generation', () => {
+    const currentStoreState = agentLaunchOptionsStore.state
+    browserStorage(JSON.stringify({ agentId: 'codex', model: 'pure-read', reasoningEffort: 'medium' }))
+
+    expect(agentLaunchOptions()).toMatchObject({ agentId: 'codex', model: 'pure-read', reasoningEffort: 'medium' })
+    expect(agentLaunchOptionsStore.state).toBe(currentStoreState)
   })
 
   it('stores model and reasoning preferences independently for every agent', () => {
@@ -225,7 +235,7 @@ describe('dashboard API client', () => {
     expect(isThreadEvent(new MessageEvent('change', { data: 'invalid' }), 42)).toBe(false)
   })
 
-  it('debounces accepted dashboard events over the shared stream', async () => {
+  it('audits accepted dashboard events so a continuous agent stream keeps updating', async () => {
     vi.useFakeTimers()
     const encoder = new TextEncoder()
     let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
@@ -238,7 +248,7 @@ describe('dashboard API client', () => {
               label: 'Primary',
               namespace: 0,
               isDefault: true,
-              connected: true,
+              connected: false,
               lastConnectedAt: null,
               error: null,
               apiPath: '/api',
@@ -261,19 +271,26 @@ describe('dashboard API client', () => {
       )
     })
     vi.stubGlobal('fetch', fetch)
+    const states: boolean[] = []
+    const backendSubscription = platformBackendState().subscribe((backends) => {
+      if (backends[0]) states.push(backends[0].connected)
+    })
     const listener = vi.fn()
     const cleanup = subscribeToDashboardEvents(listener, isNotificationEvent)
     await vi.waitFor(() => expect(streamController).toBeDefined())
+    await vi.waitFor(() => expect(states.at(-1)).toBe(true))
 
     streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"job"}\n\n'))
     streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"notification"}\n\n'))
+    await vi.advanceTimersByTimeAsync(100)
     streamController!.enqueue(encoder.encode('event: change\ndata: {"reason":"notification_dismissed"}\n\n'))
-    await vi.advanceTimersByTimeAsync(120)
+    await vi.advanceTimersByTimeAsync(20)
 
     expect(listener).toHaveBeenCalledOnce()
     streamController!.close()
     await vi.advanceTimersByTimeAsync(1_000)
     await vi.waitFor(() => expect(fetch.mock.calls.filter(([input]) => String(input) === '/api/events')).toHaveLength(2))
     cleanup()
+    backendSubscription.unsubscribe()
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { auditTime, BehaviorSubject, filter } from 'rxjs'
+import { auditTime, BehaviorSubject, filter, merge } from 'rxjs'
 import { platformClient, platformConnectionState, platformEventMessages } from '@vertexade/ui/lib/dashboard-api'
+import { browserPairedServersStorageKey, hasBrowserPairedServers } from '@vertexade/ui/lib/browser-paired-servers'
 import {
   dashboardCollections,
   maxFederatedReadModelResponseBytes,
@@ -35,6 +36,20 @@ let visibilityListenerInstalled = false
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let retryDelay = 1_000
 let pairedServerPoll: ReturnType<typeof setInterval> | undefined
+let pairedServerListenerInstalled = false
+
+const summaryDashboardEvents = new Set([
+  'action_started',
+  'action_updated',
+  'action_completed',
+  'thread_context_updated',
+  'agent_message',
+  'diff',
+])
+
+export function dashboardEventSyncLane(reason: string): 'immediate' | 'summary' | null {
+  return summaryDashboardEvents.has(reason) ? 'summary' : 'immediate'
+}
 
 function storage() {
   storagePromise ??= import('./rxdb-dashboard-storage')
@@ -107,19 +122,30 @@ function scheduleSync() {
   })
 }
 
+function updatePairedServerPoll() {
+  if (hasBrowserPairedServers()) {
+    pairedServerPoll ??= setInterval(() => {
+      if (!document.hidden) scheduleSync()
+    }, 5_000)
+    return
+  }
+  if (pairedServerPoll) clearInterval(pairedServerPoll)
+  pairedServerPoll = undefined
+}
+
 function startDashboardSync() {
   if (typeof window === 'undefined' || eventSubscription !== undefined) return
-  eventSubscription = platformEventMessages()
-    .pipe(
-      filter(
-        ({ data }) =>
-          !['action_started', 'action_updated', 'action_completed', 'agent_message', 'diff', 'thread_context_updated'].includes(
-            data.reason,
-          ),
-      ),
+  const events = platformEventMessages()
+  eventSubscription = merge(
+    events.pipe(
+      filter(({ data }) => dashboardEventSyncLane(data.reason) === 'immediate'),
       auditTime(120),
-    )
-    .subscribe(() => scheduleSync())
+    ),
+    events.pipe(
+      filter(({ data }) => dashboardEventSyncLane(data.reason) === 'summary'),
+      auditTime(500),
+    ),
+  ).subscribe(() => scheduleSync())
   platformConnectionState().subscribe((state) => {
     if (!state.connected) {
       connectionState.next({
@@ -135,11 +161,20 @@ function startDashboardSync() {
     })
     visibilityListenerInstalled = true
   }
-  if (!pairedServerPoll && localStorage.getItem('vertexade.web.paired-servers.v1')) {
-    pairedServerPoll = setInterval(() => {
-      if (!document.hidden) scheduleSync()
-    }, 5_000)
+  if (!pairedServerListenerInstalled) {
+    window.addEventListener('vertexade:paired-servers', () => {
+      updatePairedServerPoll()
+      scheduleSync()
+    })
+    window.addEventListener('storage', (event) => {
+      if (event.key === browserPairedServersStorageKey) {
+        updatePairedServerPoll()
+        scheduleSync()
+      }
+    })
+    pairedServerListenerInstalled = true
   }
+  updatePairedServerPoll()
   scheduleSync()
 }
 

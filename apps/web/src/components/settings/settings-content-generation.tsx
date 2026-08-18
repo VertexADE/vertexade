@@ -8,7 +8,7 @@ import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { Status, StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
-import { api, type AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi, type AgentLaunchOptions } from '@vertexade/ui/lib/dashboard-api'
 import type { ContentGenerationSettings } from './settings-types'
 
 const generationLaunchOptions = (settings: ContentGenerationSettings): AgentLaunchOptions => ({
@@ -22,14 +22,16 @@ const generationLaunchOptions = (settings: ContentGenerationSettings): AgentLaun
 export function ContentGenerationDefaults({
   value,
   onSaved,
+  backendId,
 }: {
   value: ContentGenerationSettings
   onSaved: (value: ContentGenerationSettings) => void
+  backendId: string
 }) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: (options: AgentLaunchOptions) =>
-      api<ContentGenerationSettings>('/api/settings/content-generation', {
+      backendApi<ContentGenerationSettings>(backendId, '/api/settings/content-generation', {
         method: 'POST',
         body: JSON.stringify({
           agentId: options.agentId,
@@ -80,7 +82,9 @@ export function ContentGenerationDefaults({
       >
         <CardContent className="flex flex-col gap-4">
           <form.Field name="options">
-            {(field) => <AgentOptionsPicker nativeOnly readOnlyOnly value={field.state.value} onChange={field.handleChange} />}
+            {(field) => (
+              <AgentOptionsPicker backendId={backendId} nativeOnly readOnlyOnly value={field.state.value} onChange={field.handleChange} />
+            )}
           </form.Field>
           <StatusPanel tone="success">
             <ShieldCheck />

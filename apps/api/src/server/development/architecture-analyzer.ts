@@ -11,7 +11,7 @@ import type {
 import type { ImpactCommandRunner } from './impact-analyzer.ts'
 import { buildRepositorySourceGraph, type RepositorySourceGraph } from './repository-source-graph.ts'
 
-export const architectureIndexVersion = '1.2.0'
+export const architectureIndexVersion = '1.3.0'
 
 const maximumTrackedFiles = 100_000
 const maximumIndexedDocuments = 500
@@ -410,27 +410,126 @@ function decisionConflicts(decisions: ArchitectureDecision[], warnings: ImpactWa
 }
 
 function mermaidLabel(value: string) {
-  return value.replaceAll('"', "'").replace(/\s+/g, ' ').trim()
+  return value
+    .replaceAll('"', "'")
+    .replace(/[<>{}\[\]]/g, (character) => `(${character})`)
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-function architectureMermaidDiagram(nodes: ArchitectureNode[], relations: ArchitectureRelation[], decisions: ArchitectureDecision[]) {
-  const identifiers = new Map(nodes.map((node, index) => [node.key, `node${index}`]))
-  const lines = ['flowchart LR']
-  for (const node of nodes) lines.push(`  ${identifiers.get(node.key)}["${mermaidLabel(node.label)} (${node.kind})"]`)
-  for (const relation of relations) {
-    const from = identifiers.get(relation.from)
-    const to = identifiers.get(relation.to)
-    if (from && to) lines.push(`  ${from} -->|"${mermaidLabel(relation.relation.replaceAll('_', ' '))}"| ${to}`)
+type DiagramGroup = {
+  id: string
+  label: string
+  kinds: ArchitectureNodeKind[]
+  limit: number
+  className: 'runtime' | 'contract' | 'delivery'
+}
+
+const diagramGroups: DiagramGroup[] = [
+  { id: 'runtime', label: 'Applications and packages', kinds: ['service', 'package'], limit: 18, className: 'runtime' },
+  { id: 'contracts', label: 'Contracts and data', kinds: ['api', 'event', 'datastore'], limit: 18, className: 'contract' },
+  { id: 'delivery', label: 'Delivery and extensions', kinds: ['deployment', 'extension'], limit: 12, className: 'delivery' },
+]
+
+function diagramNodePriority(node: ArchitectureNode, relations: ArchitectureRelation[]): number {
+  return relations.filter(
+    (relation) =>
+      relation.relation !== 'contains' && relation.relation !== 'documents' && (relation.from === node.key || relation.to === node.key),
+  ).length
+}
+
+function diagramGroupNodes(group: DiagramGroup, nodes: ArchitectureNode[], relations: ArchitectureRelation[]) {
+  return nodes
+    .filter((node) => group.kinds.includes(node.kind))
+    .sort(
+      (left, right) =>
+        diagramNodePriority(right, relations) - diagramNodePriority(left, relations) ||
+        left.kind.localeCompare(right.kind) ||
+        left.label.localeCompare(right.label),
+    )
+}
+
+function uniqueDiagramRelations(relations: ArchitectureRelation[]) {
+  const seen = new Set<string>()
+  return relations.filter((relation) => {
+    if (relation.relation === 'contains' || relation.relation === 'documents') return false
+    const key = `${relation.from}:${relation.relation}:${relation.to}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function architectureMermaidDiagram(
+  repositoryName: string,
+  nodes: ArchitectureNode[],
+  relations: ArchitectureRelation[],
+  decisions: ArchitectureDecision[],
+) {
+  const repository = nodes.find((node) => node.kind === 'repository')
+  const selectedGroups = diagramGroups.map((group) => {
+    const candidates = diagramGroupNodes(group, nodes, relations)
+    return { group, candidates, selected: candidates.slice(0, group.limit) }
+  })
+  const selectedNodes = selectedGroups.flatMap(({ selected }) => selected)
+  const identifiers = new Map(selectedNodes.map((node, index) => [node.key, `node${index}`]))
+  if (repository) identifiers.set(repository.key, 'repository')
+
+  const lines = [
+    'flowchart LR',
+    `  accTitle: ${mermaidLabel(repositoryName)} architecture`,
+    '  accDescr: Source-backed system boundaries, contracts, delivery paths, and architecture decisions',
+  ]
+  if (repository) lines.push(`  repository["${mermaidLabel(repository.label)}"]`)
+
+  for (const { group, candidates, selected } of selectedGroups) {
+    if (!candidates.length) continue
+    lines.push(`  subgraph ${group.id}["${group.label}"]`, '    direction TB')
+    for (const node of selected) lines.push(`    ${identifiers.get(node.key)}["${mermaidLabel(node.label)}"]`)
+    if (candidates.length > selected.length) {
+      lines.push(`    ${group.id}More["+${candidates.length - selected.length} more in evidence"]`)
+    }
+    lines.push('  end')
+    const ids = selected.map((node) => identifiers.get(node.key)).filter(Boolean)
+    if (ids.length) lines.push(`  class ${ids.join(',')} ${group.className}`)
+    if (candidates.length > selected.length) lines.push(`  class ${group.id}More condensed`)
+    if (repository) lines.push(`  repository -.-> ${group.id}`)
   }
-  decisions.forEach((decision, index) => {
+
+  const visibleRelations = uniqueDiagramRelations(relations).filter(
+    (relation) => identifiers.has(relation.from) && identifiers.has(relation.to),
+  )
+  const diagramRelationLimit = 64
+  for (const relation of visibleRelations.slice(0, diagramRelationLimit)) {
+    lines.push(
+      `  ${identifiers.get(relation.from)} -->|"${mermaidLabel(relation.relation.replaceAll('_', ' '))}"| ${identifiers.get(relation.to)}`,
+    )
+  }
+  if (visibleRelations.length > diagramRelationLimit && repository) {
+    lines.push(`  relationSummary["+${visibleRelations.length - diagramRelationLimit} relations in evidence"]`)
+    lines.push('  repository -.-> relationSummary', '  class relationSummary condensed')
+  }
+
+  decisions.slice(0, 8).forEach((decision, index) => {
     const decisionId = `decision${index}`
-    lines.push(`  ${decisionId}{"${mermaidLabel(decision.title)} (${decision.status})"}`)
-    const targets = decision.rule?.nodeKeys.length ? decision.rule.nodeKeys : [nodes.find((node) => node.kind === 'repository')?.key]
+    lines.push(`  ${decisionId}{"${mermaidLabel(decision.title)} · ${decision.status}"}`, `  class ${decisionId} decision`)
+    const targets = decision.rule?.nodeKeys.length ? decision.rule.nodeKeys : repository ? [repository.key] : []
     for (const target of targets) {
-      const targetId = target ? identifiers.get(target) : null
-      if (targetId) lines.push(`  ${decisionId} -.->|"governs"| ${targetId}`)
+      const targetId = identifiers.get(target)
+      if (targetId) lines.push(`  ${decisionId} -. "governs" .-> ${targetId}`)
     }
   })
+  if (decisions.length > 8 && repository) {
+    lines.push(`  decisionMore{"+${decisions.length - 8} decisions in evidence"}`)
+    lines.push('  decisionMore -.-> repository', '  class decisionMore condensed')
+  }
+  lines.push(
+    '  classDef runtime stroke-width:2px',
+    '  classDef contract stroke-width:2px,stroke-dasharray:5 3',
+    '  classDef delivery stroke-width:1.5px',
+    '  classDef decision stroke-width:2px',
+    '  classDef condensed stroke-dasharray:3 3',
+  )
   return lines.join('\n')
 }
 
@@ -552,7 +651,7 @@ export async function analyzeRepositoryArchitecture({
     },
     repositoryName: repository.fullName,
     revision,
-    diagram: architectureMermaidDiagram(values, sortedRelations, sortedDecisions),
+    diagram: architectureMermaidDiagram(repository.fullName, values, sortedRelations, sortedDecisions),
     nodes: values,
     relations: sortedRelations,
     decisions: sortedDecisions,

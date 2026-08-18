@@ -66,7 +66,7 @@ export function AppCommandPalette({
         <CommandGroup heading="Create">
           <CommandItem value="Create new Work outcome task" onSelect={onCreateWork}>
             <Plus className="text-primary" />
-            <span>
+            <span className="min-w-0 flex-1">
               <strong className="block text-sm font-medium">Create Work</strong>
               <span className="block text-xs text-muted-foreground">Describe an outcome and start when ready</span>
             </span>
@@ -76,9 +76,14 @@ export function AppCommandPalette({
         {!query && recentItems.length > 0 && (
           <CommandGroup heading="Recent">
             {recentItems.map((item) => (
-              <CommandItem key={`recent:${item.to}`} value={`Recent ${item.label} ${item.description}`} onSelect={() => onGoTo(item)}>
+              <CommandItem
+                key={`recent:${item.to}`}
+                value={`Recent ${item.label} ${item.description}`}
+                className="[&>span:first-child]:size-4"
+                onSelect={() => onGoTo(item)}
+              >
                 {renderNavigationIcon(item, true)}
-                <span>
+                <span className="min-w-0 flex-1">
                   <strong className="block text-sm font-medium">{item.label}</strong>
                   <span className="block text-xs text-muted-foreground">{item.description}</span>
                 </span>
@@ -91,9 +96,14 @@ export function AppCommandPalette({
             {visibleItems
               .filter((item) => item.group === group)
               .map((item) => (
-                <CommandItem key={item.to} value={`${item.label} ${item.description}`} onSelect={() => onGoTo(item)}>
+                <CommandItem
+                  key={item.to}
+                  value={`${item.label} ${item.description}`}
+                  className="[&>span:first-child]:size-4"
+                  onSelect={() => onGoTo(item)}
+                >
                   {renderNavigationIcon(item, true)}
-                  <span>
+                  <span className="min-w-0 flex-1">
                     <strong className="block text-sm font-medium">{item.label}</strong>
                     <span className="block text-xs text-muted-foreground">{item.description}</span>
                   </span>
@@ -107,9 +117,14 @@ export function AppCommandPalette({
             {extensionDestinations
               .filter((item) => !pinnedExtensionIds.includes(item.moduleId || ''))
               .map((item) => (
-                <CommandItem key={item.to} value={`${item.label} ${item.description}`} onSelect={() => onGoTo(item)}>
+                <CommandItem
+                  key={item.to}
+                  value={`${item.label} ${item.description}`}
+                  className="[&>span:first-child]:size-4"
+                  onSelect={() => onGoTo(item)}
+                >
                   {renderNavigationIcon(item, true)}
-                  <span>
+                  <span className="min-w-0 flex-1">
                     <strong className="block text-sm font-medium">{item.label}</strong>
                     <span className="block text-xs text-muted-foreground">{item.description}</span>
                   </span>
@@ -129,7 +144,7 @@ export function AppCommandPalette({
                   onSelect={() => onOpenExtensionCommand(command.to)}
                 >
                   <Icon className="text-muted-foreground" />
-                  <span>
+                  <span className="min-w-0 flex-1">
                     <strong className="block text-sm font-medium">{command.label}</strong>
                     <span className="block text-xs text-muted-foreground">{command.description || command.moduleName}</span>
                   </span>
@@ -163,17 +178,17 @@ export function AppCommandPalette({
           <CommandGroup heading="Keyboard shortcuts">
             <CommandItem value="Shortcut go to focus g f" onSelect={() => onGoTo(visibleItems.find((item) => item.to === '/')!)}>
               <Inbox className="text-muted-foreground" />
-              <span>Go to Focus</span>
+              <span className="min-w-0 flex-1">Go to Focus</span>
               <CommandShortcut>G then F</CommandShortcut>
             </CommandItem>
             <CommandItem value="Shortcut go to work g w" onSelect={() => onGoTo(visibleItems.find((item) => item.to === '/work')!)}>
               <BriefcaseBusiness className="text-muted-foreground" />
-              <span>Go to Work</span>
+              <span className="min-w-0 flex-1">Go to Work</span>
               <CommandShortcut>G then W</CommandShortcut>
             </CommandItem>
             <CommandItem value="Shortcut go to agents g a" onSelect={() => onGoTo(visibleItems.find((item) => item.to === '/threads')!)}>
               <MessagesSquare className="text-muted-foreground" />
-              <span>Go to Agent activity</span>
+              <span className="min-w-0 flex-1">Go to Agent activity</span>
               <CommandShortcut>G then A</CommandShortcut>
             </CommandItem>
           </CommandGroup>
@@ -192,7 +207,7 @@ export function AppCommandPalette({
             }
           >
             <Wrench className="text-muted-foreground" />
-            <span>
+            <span className="min-w-0 flex-1">
               <strong className="block text-sm font-medium">System health</strong>
               <span className="block text-xs text-muted-foreground">Prerequisites, connections, and runtime status</span>
             </span>
@@ -210,7 +225,7 @@ export function AppCommandPalette({
             }
           >
             <Settings className="text-muted-foreground" />
-            <span>
+            <span className="min-w-0 flex-1">
               <strong className="block text-sm font-medium">Settings</strong>
               <span className="block text-xs text-muted-foreground">Workspace defaults, repositories, agents, and appearance</span>
             </span>

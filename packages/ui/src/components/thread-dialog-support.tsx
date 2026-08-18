@@ -93,10 +93,12 @@ import { embedPromptImages, PROMPT_IMAGE_ACCEPT, PROMPT_IMAGE_MAX_BYTES, PROMPT_
 import { BackendBadge } from '@vertexade/ui/components/backend-badge'
 import { cn } from '@vertexade/ui/lib/utils'
 import { storedReviewResult } from '@vertexade/ui/lib/review-summary'
+import { threadTitle } from '@vertexade/ui/lib/thread-title'
+import { buildAgentTimeline, timelinePlan } from '@vertexade/ui/lib/agent-timeline'
 import { displayBackendId, localBackendId } from '@vertexade/ui/lib/backend-registry'
 
 export const threadHeaderClass =
-  'mx-0 mt-0 shrink-0 border-b bg-gradient-to-br from-blue-500/[.08] via-background to-background px-3 py-2 sm:px-4 sm:py-2.5'
+  'mx-0 mt-0 shrink-0 border-b bg-gradient-to-br from-primary/[.09] via-background to-background px-3 py-2 sm:px-4 sm:py-2.5'
 
 const kindName: Record<string, string> = {
   task: 'Task',
@@ -125,8 +127,10 @@ export function ThreadDialogHeader({
         <p className="mt-1 text-sm text-muted-foreground">Loading run details…</p>
       </div>
     )
-  const title = runTitle(job)
+  const title = threadTitle(job)
   const pullRequest = runPullRequest(job)
+  const state = agentThreadState(job)
+  const elapsedStart = agentIsWorking(state) ? job.turn_started_at || job.created_at : job.created_at
   return (
     <div className="space-y-2">
       <div className="flex items-start gap-2.5">
@@ -139,7 +143,7 @@ export function ThreadDialogHeader({
             <Badge variant="outline" className="hidden text-xs sm:inline-flex">
               {job.agent_name}
             </Badge>
-            <BackendBadge source={job} />
+            <BackendBadge source={job} nameOnly />
             <Badge variant="outline" className="hidden text-xs sm:inline-flex">
               {job.kind_label || kindName[job.kind] || job.kind.replaceAll('_', ' ')}
             </Badge>
@@ -165,7 +169,7 @@ export function ThreadDialogHeader({
       <div className="grid grid-cols-2 gap-1 lg:grid-cols-4">
         <ThreadMeta icon={GitBranch} label="Branch" value={job.branch_name || 'No branch'} />
         <ThreadMeta icon={GitPullRequest} label="Pull request" value={pullRequest.label} href={pullRequest.url} />
-        <ThreadMeta icon={Clock3} label="Elapsed" value={duration(job.created_at, job.finished_at)} />
+        <ThreadMeta icon={Clock3} label="Elapsed" value={duration(elapsedStart, job.finished_at)} />
         <ThreadMeta icon={FolderGit2} label="Workspace" value={workspaceName(job)} title={workspaceTitle(job)} />
       </div>
     </div>
@@ -194,14 +198,14 @@ export function ThreadCompactHeader({
       <AgentAvatar id={job.agent_id} name={job.agent_name} accent={job.agent_accent} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <h2 className="min-w-0 max-w-full truncate text-sm font-semibold tracking-tight">{runTitle(job)}</h2>
+          <h2 className="min-w-0 max-w-full truncate text-sm font-semibold tracking-tight">{threadTitle(job)}</h2>
           <span className="flex shrink-0 flex-wrap items-center gap-1">
             <ThreadStatusBadges job={job} outcome={outcome} needsInput={needsInput} />
           </span>
         </div>
         <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
           <span className="font-mono">Run #{displayBackendId(job, job.id)}</span>
-          <BackendBadge source={job} />
+          <BackendBadge source={job} nameOnly />
           <span aria-hidden="true">·</span>
           <span className="max-w-56 truncate">{job.full_name}</span>
           {job.branch_name ? (
@@ -234,23 +238,6 @@ function workspaceTitle(job: JobLog) {
     : job.worktree_path
 }
 
-const runTitles: Record<string, (job: JobLog) => string> = {
-  pre_pr: (job) => job.task_title || 'Implementation task',
-  work_review: (job) => job.task_title || 'Worktree code review',
-  stack_analysis: () => 'Pull request stack analysis',
-  review: (job) => job.task_title || `Code review · PR #${job.pr_number}`,
-  task: (job) => job.task_title || `${job.full_name} #${job.pr_number}`,
-  review_handoff: (job) => job.task_title || `${job.full_name} #${job.pr_number}`,
-  planning: (job) => job.task_title || `Planning · ${job.full_name}`,
-  subagent: (job) => job.task_title || `Child agent · ${job.full_name}`,
-}
-
-function runTitle(job: JobLog) {
-  return (
-    runTitles[job.kind] || ((value: JobLog) => value.task_title || value.kind_title_fallback || `${value.full_name} #${value.pr_number}`)
-  )(job)
-}
-
 function runPullRequestNumber(job: JobLog) {
   return job.linked_pr_number ?? job.pr_number
 }
@@ -269,30 +256,28 @@ type StatusBadge = { label: string; className: string; icon?: 'check' | 'loading
 
 const inputBadge: StatusBadge[] = [{ label: 'Input required', className: 'border-amber-500/40 text-amber-400' }]
 const outputBadge: StatusBadge = {
-  label: 'Output ready',
+  label: 'Done',
   className: 'border-emerald-500/40 bg-emerald-500/[.06] text-emerald-400',
   icon: 'check',
 }
 const outputBadges: Record<ThreadOutcome['followUp'], StatusBadge[]> = {
   none: [outputBadge],
-  failed: [outputBadge, { label: 'Follow-up failed', className: 'border-red-500/40 bg-red-500/[.06] text-red-400' }],
+  failed: [{ label: 'Follow-up failed', className: 'border-red-500/40 bg-red-500/[.06] text-red-400' }],
   running: [
-    outputBadge,
     {
       label: 'Follow-up running',
       className: 'border-blue-500/40 bg-blue-500/[.06] text-blue-400',
       icon: 'loading',
     },
   ],
-  waiting: [outputBadge, { label: 'Input required', className: 'border-amber-500/40 bg-amber-500/[.06] text-amber-400' }],
+  waiting: [{ label: 'Input required', className: 'border-amber-500/40 bg-amber-500/[.06] text-amber-400' }],
   paused: [
-    outputBadge,
     {
       label: 'Follow-up paused',
       className: 'border-amber-500/40 bg-amber-500/[.06] text-amber-400',
     },
   ],
-  completed: [outputBadge, { label: 'Follow-up complete', className: 'border-emerald-500/40 text-emerald-400' }],
+  completed: [outputBadge],
 }
 const statusBadges: Record<string, StatusBadge[]> = {
   failed: [{ label: 'Failed', className: 'border-red-500/40 text-red-400' }],
@@ -314,7 +299,7 @@ function ThreadStatusBadges({ job, outcome, needsInput }: { job: JobLog; outcome
   return (
     <>
       {badgeData(job, outcome, needsInput).map((badge) => (
-        <Badge key={badge.label} variant="outline" className={cn('text-xs', badge.className)}>
+        <Badge key={badge.label} variant="outline" className={cn('h-5 px-1.5 text-[11px]', badge.className)}>
           {badge.icon === 'check' && <CheckCircle2 />}
           {badge.icon === 'loading' && <Loader2 className="animate-spin" />}
           {badge.label}
@@ -436,8 +421,8 @@ export function FollowUpComposer({
         compact ? 'p-2 sm:px-3' : 'p-2 sm:px-5 sm:py-3',
       )}
     >
-      <div className="mx-auto w-full max-w-[760px] rounded-xl border bg-card/60 p-2 sm:p-2.5">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+      <div className={cn('mx-auto w-full max-w-[760px] border bg-card/60', compact ? 'rounded-lg p-1.5' : 'rounded-xl p-2 sm:p-2.5')}>
+        <div className={cn('flex flex-wrap items-center justify-between gap-2 px-1', compact ? 'mb-1' : 'mb-2')}>
           <div>
             <strong className="text-xs">{compact ? 'Continue' : view.title}</strong>
           </div>
@@ -479,7 +464,7 @@ export function FollowUpComposer({
               ref={textarea}
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              className="min-h-10 max-h-28"
+              className={cn(compact ? 'min-h-8 max-h-20' : 'min-h-10 max-h-28')}
               placeholder={view.placeholder}
               aria-label={view.active ? 'Run direction message' : 'Follow-up message'}
             />
@@ -647,80 +632,34 @@ export function ThreadActivity({
   )
 }
 
+type ProgressStage = {
+  label: string
+  complete: boolean
+  active: boolean
+  waiting?: boolean
+  error?: boolean
+}
+
 function ThreadWorkflowPlan({ job }: { job: JobLog }) {
   const outcome = threadOutcome(job)
   const state = agentThreadState(job)
   const running = agentIsWorking(state)
   const waiting = state === 'waiting'
-  const progress = outcome.outputReady
-    ? ['running', 'waiting', 'paused'].includes(outcome.followUp)
-      ? 82
-      : 100
-    : job.status === 'starting'
-      ? 12
-      : job.status === 'running'
-        ? 58
-        : job.status === 'resumable'
-          ? 68
-          : 100
-  const stages: {
-    label: string
-    complete: boolean
-    active: boolean
-    waiting?: boolean
-    error?: boolean
-  }[] = [
-    { label: 'Isolated worktree prepared', complete: true, active: false },
-    {
-      label:
-        waiting && !outcome.outputReady
-          ? 'Task waiting for input'
-          : job.kind === 'review'
-            ? 'Repository and pull request reviewed'
-            : job.kind === 'work_review'
-              ? 'Work item implementation snapshot reviewed'
-              : 'Task output produced',
-      complete: outcome.outputReady,
-      active: running && !outcome.outputReady,
-      waiting: waiting && !outcome.outputReady,
-    },
-    {
-      label: job.diff_summary.files.length
-        ? `${job.diff_summary.files.length} changed ${job.diff_summary.files.length === 1 ? 'file' : 'files'} captured`
-        : 'Working tree inspected',
-      complete: outcome.outputReady,
-      active: false,
-    },
-    ...(outcome.followUp !== 'none'
-      ? [
-          {
-            label:
-              outcome.followUp === 'waiting'
-                ? 'Follow-up waiting for input'
-                : outcome.followUp === 'paused'
-                  ? 'Follow-up paused'
-                  : 'Latest follow-up applied',
-            complete: outcome.followUp === 'completed',
-            active: outcome.followUp === 'running',
-            waiting: ['waiting', 'paused'].includes(outcome.followUp),
-            error: outcome.followUp === 'failed',
-          },
-        ]
-      : []),
-    ...(['review', 'work_review'].includes(job.kind)
-      ? [
-          {
-            label: 'Concise review summary prepared',
-            complete: Boolean(job.review_summary) || job.review_phase === 'complete',
-            active: running && job.review_phase === 'summary',
-          },
-        ]
-      : []),
-  ]
+  const reportedPlan = timelinePlan(buildAgentTimeline(threadActivityEvents(job), state), state === 'completed')
+  const stages = reportedPlan.steps.length
+    ? reportedPlan.steps.map(
+        (step): ProgressStage => ({
+          label: step.label,
+          complete: step.status === 'completed',
+          active: step.status === 'running',
+        }),
+      )
+    : lifecycleProgressStages(job, outcome, running, waiting)
+  const progress = reportedPlan.progress ?? Math.round((stages.filter((stage) => stage.complete).length / Math.max(stages.length, 1)) * 100)
 
   return (
     <Plan
-      defaultOpen={false}
+      defaultOpen={running || waiting}
       isStreaming={running}
       className="border-blue-500/20 bg-gradient-to-br from-blue-500/[.07] via-card to-card shadow-sm"
     >
@@ -734,48 +673,119 @@ function ThreadWorkflowPlan({ job }: { job: JobLog }) {
         </PlanAction>
       </PlanHeader>
       <PlanContent className="space-y-4">
-        <Progress value={progress} className="h-1.5" />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>{reportedPlan.steps.length ? 'Agent plan' : 'Run lifecycle'}</span>
+            <span>
+              {stages.filter((stage) => stage.complete).length}/{stages.length} complete
+            </span>
+          </div>
+          <Progress value={progress} className="h-1.5" />
+        </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {stages.map((stage) => (
-            <div
-              key={stage.label}
-              className={cn(
-                'flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-xs',
-                stage.error && 'border-red-500/30 bg-red-500/[.04]',
-                stage.waiting && 'border-amber-500/30 bg-amber-500/[.04]',
-              )}
-            >
-              <span
-                className={cn(
-                  'grid size-5 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground',
-                  stage.complete && 'bg-emerald-500/15 text-emerald-500',
-                  stage.active && 'bg-blue-500/15 text-blue-500',
-                  stage.waiting && 'bg-amber-500/15 text-amber-500',
-                  stage.error && 'bg-red-500/15 text-red-500',
-                )}
-              >
-                {stage.complete ? (
-                  <CheckCircle2 className="size-3.5" />
-                ) : stage.active ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : stage.waiting || stage.error ? (
-                  <CircleAlert className="size-3.5" />
-                ) : (
-                  <Circle className="size-3" />
-                )}
-              </span>
-              <span
-                className={cn(
-                  'text-muted-foreground',
-                  (stage.complete || stage.active || stage.waiting || stage.error) && 'text-foreground',
-                )}
-              >
-                {stage.label}
-              </span>
-            </div>
+            <ProgressStageRow key={stage.label} stage={stage} />
           ))}
         </div>
       </PlanContent>
     </Plan>
   )
+}
+
+function lifecycleProgressStages(job: JobLog, outcome: ReturnType<typeof threadOutcome>, running: boolean, waiting: boolean) {
+  return [
+    { label: 'Isolated worktree prepared', complete: true, active: false },
+    taskOutputStage(job, outcome, running, waiting),
+    changedFilesStage(job, outcome.outputReady),
+    followUpStage(outcome.followUp),
+    reviewSummaryStage(job, running),
+  ].filter((stage): stage is ProgressStage => stage !== null)
+}
+
+function taskOutputStage(job: JobLog, outcome: ReturnType<typeof threadOutcome>, running: boolean, waiting: boolean): ProgressStage {
+  let label = 'Task output produced'
+  if (waiting && !outcome.outputReady) label = 'Task waiting for input'
+  else if (job.kind === 'review') label = 'Repository and pull request reviewed'
+  else if (job.kind === 'work_review') label = 'Work item implementation snapshot reviewed'
+  return {
+    label,
+    complete: outcome.outputReady,
+    active: running && !outcome.outputReady,
+    waiting: waiting && !outcome.outputReady,
+  }
+}
+
+function changedFilesStage(job: JobLog, complete: boolean): ProgressStage {
+  const files = job.diff_summary.files.length
+  return {
+    label: files ? `${files} changed ${files === 1 ? 'file' : 'files'} captured` : 'Working tree inspected',
+    complete,
+    active: false,
+  }
+}
+
+function followUpStage(followUp: ReturnType<typeof threadOutcome>['followUp']): ProgressStage | null {
+  if (followUp === 'none') return null
+  const label =
+    followUp === 'waiting' ? 'Follow-up waiting for input' : followUp === 'paused' ? 'Follow-up paused' : 'Latest follow-up applied'
+  return {
+    label,
+    complete: followUp === 'completed',
+    active: followUp === 'running',
+    waiting: ['waiting', 'paused'].includes(followUp),
+    error: followUp === 'failed',
+  }
+}
+
+function reviewSummaryStage(job: JobLog, running: boolean): ProgressStage | null {
+  if (!['review', 'work_review'].includes(job.kind)) return null
+  return {
+    label: 'Concise review summary prepared',
+    complete: Boolean(job.review_summary) || job.review_phase === 'complete',
+    active: running && job.review_phase === 'summary',
+  }
+}
+
+function ProgressStageRow({ stage }: { stage: ProgressStage }) {
+  return (
+    <div className={progressStageRowClass(stage)}>
+      <span className={progressStageIconClass(stage)}>
+        <ProgressStageIcon stage={stage} />
+      </span>
+      <span className={progressStageLabelClass(stage)}>{stage.label}</span>
+    </div>
+  )
+}
+
+function progressStageRowClass(stage: ProgressStage) {
+  return cn(
+    'flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-xs',
+    stage.error && 'border-red-500/30 bg-red-500/[.04]',
+    stage.waiting && 'border-amber-500/30 bg-amber-500/[.04]',
+  )
+}
+
+function progressStageIconClass(stage: ProgressStage) {
+  return cn(
+    'grid size-5 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground',
+    stage.complete && 'bg-emerald-500/15 text-emerald-500',
+    stage.active && 'bg-blue-500/15 text-blue-500',
+    stage.waiting && 'bg-amber-500/15 text-amber-500',
+    stage.error && 'bg-red-500/15 text-red-500',
+  )
+}
+
+function progressStageLabelClass(stage: ProgressStage) {
+  return cn('text-muted-foreground', highlightedProgressStage(stage) && 'text-foreground')
+}
+
+function highlightedProgressStage(stage: ProgressStage) {
+  return stage.complete || stage.active || stage.waiting || stage.error
+}
+
+function ProgressStageIcon({ stage }: { stage: ProgressStage }) {
+  if (stage.complete) return <CheckCircle2 className="size-3.5" />
+  if (stage.active) return <Loader2 className="size-3.5 animate-spin" />
+  if (stage.waiting || stage.error) return <CircleAlert className="size-3.5" />
+  return <Circle className="size-3" />
 }

@@ -69,7 +69,7 @@ import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { useIsMobile } from '@vertexade/ui/hooks/use-mobile'
 import { activityPreview } from '@vertexade/ui/lib/activity-preview'
 import { agentIsWorking, agentThreadLabel, agentThreadState } from '@vertexade/ui/lib/agent-thread-state'
-import { age, api, isWorkBoardEvent, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
+import { age, api, backendApi, isWorkBoardEvent, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
 import type {
   Repository,
   WorkDeletionPreview,
@@ -154,10 +154,8 @@ function WorkDetail() {
 
   const load = useCallback(async () => {
     try {
-      const [workItem, catalog] = await Promise.all([
-        api<WorkItem>(`/api/work-items/${encodeURIComponent(workKey)}`),
-        api<ModuleCatalog>('/api/modules'),
-      ])
+      const workItem = await api<WorkItem>(`/api/work-items/${encodeURIComponent(workKey)}`)
+      const catalog = await backendApi<ModuleCatalog>(workItem.backend_id, '/api/modules')
       setItem(workItem)
       setResourcePresentations(
         Object.fromEntries(

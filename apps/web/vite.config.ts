@@ -29,6 +29,17 @@ export default defineConfig({
               priority: 20,
             },
             {
+              // The navigation shell changes independently from the router/runtime
+              // entry and is shared by every authenticated workspace route.
+              name: 'app-navigation-shell',
+              test: (moduleId: string) =>
+                moduleId.endsWith('/packages/ui/src/components/app-nav.tsx') ||
+                moduleId.endsWith('/packages/ui/src/components/app-nav-items.tsx'),
+              includeDependenciesRecursively: false,
+              entriesAware: true,
+              priority: 15,
+            },
+            {
               name: 'thread-ui-runtime',
               test: (moduleId: string) => {
                 const isThreadComponent =

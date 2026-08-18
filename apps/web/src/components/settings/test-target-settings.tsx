@@ -12,7 +12,7 @@ import { Input } from '@vertexade/ui/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { RepositoryOwnerField } from './settings-shared'
 
@@ -63,7 +63,7 @@ function draftFromTarget(target: TestTarget): TargetDraft {
   }
 }
 
-export function TestTargetSettings({ repositories }: { repositories: Repository[] }) {
+export function TestTargetSettings({ repositories, backendId }: { repositories: Repository[]; backendId: string }) {
   const [repositoryId, setRepositoryId] = useState<number | null>(repositories[0]?.id || null)
   const [targets, setTargets] = useState<TestTarget[]>([])
   const [draft, setDraft] = useState<TargetDraft>(emptyDraft)
@@ -72,20 +72,20 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
   const endpoint = repositoryId ? `/api/repositories/${repositoryId}/test-target-overrides` : null
 
   useEffect(() => {
-    if (!repositoryId && repositories[0]) setRepositoryId(repositories[0].id)
+    if (!repositories.some((repository) => repository.id === repositoryId)) setRepositoryId(repositories[0]?.id || null)
   }, [repositories, repositoryId])
 
   const load = useCallback(async () => {
     if (!endpoint) return
     setLoading(true)
     try {
-      setTargets((await api<{ targets: TestTarget[] }>(endpoint)).targets)
+      setTargets((await backendApi<{ targets: TestTarget[] }>(backendId, endpoint)).targets)
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [endpoint])
+  }, [backendId, endpoint])
 
   useEffect(() => {
     setDraft(emptyDraft)
@@ -98,7 +98,7 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
       if (!endpoint) return
       setLoading(true)
       try {
-        const result = await api<{ targets: TestTarget[] }>(endpoint, {
+        const result = await backendApi<{ targets: TestTarget[] }>(backendId, endpoint, {
           method: 'POST',
           body: JSON.stringify({ targets: next }),
         })
@@ -112,7 +112,7 @@ export function TestTargetSettings({ repositories }: { repositories: Repository[
         setLoading(false)
       }
     },
-    [endpoint],
+    [backendId, endpoint],
   )
 
   const save = useCallback(

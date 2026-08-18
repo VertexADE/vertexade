@@ -24,6 +24,22 @@ function job(environment: 'dev' | 'prd') {
   }
 }
 
+const deploymentTargets = normalizeGitHubDeploymentTargets([
+  {
+    id: 'default',
+    label: 'Default deployment',
+    repository: 'acme/repo',
+    workflow: 'deploy.yml',
+    branch: 'main',
+    event: 'push',
+    services: [],
+    environments: ['dev', 'prd'],
+    production_environment: 'prd',
+    comparison_environment: 'dev',
+    job_name_template: 'Build and deploy service - {service} / Deploy {*} -> {environment}',
+  },
+])
+
 describe('GitHub Actions deployment provider', () => {
   it('normalizes workflow jobs and caches the resulting snapshot', async () => {
     const run = vi.fn(async (_command: string, args: string[]) =>
@@ -31,7 +47,7 @@ describe('GitHub Actions deployment provider', () => {
         ? JSON.stringify({ jobs: [job('dev'), job('prd')] })
         : JSON.stringify({ workflow_runs: [workflowRun] }),
     )
-    const provider = createGitHubDeploymentProvider(run)
+    const provider = createGitHubDeploymentProvider(run, undefined, undefined, () => deploymentTargets)
 
     const first = await provider.overview()
     const second = await provider.overview()
@@ -49,7 +65,7 @@ describe('GitHub Actions deployment provider', () => {
 
   it('owns vendor-specific workflow rerun commands', async () => {
     const run = vi.fn(async () => '')
-    const provider = createGitHubDeploymentProvider(run)
+    const provider = createGitHubDeploymentProvider(run, undefined, undefined, () => deploymentTargets)
     await provider.rerun(42, 'failed')
     expect(run).toHaveBeenCalledWith('gh', ['api', '--method', 'POST', expect.stringContaining('/actions/runs/42/rerun-failed-jobs')])
   })

@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vite-plus/test'
 import { defaultGitHubDeploymentTargets, matchDeploymentJob, normalizeGitHubDeploymentTargets } from './deployment-configuration.ts'
 
 describe('GitHub deployment configuration', () => {
+  it('does not invent a deployment target before one is configured', () => {
+    expect(defaultGitHubDeploymentTargets({})).toEqual([])
+    expect(defaultGitHubDeploymentTargets({ DEPLOYMENT_REPOSITORY: 'acme/platform' })).toEqual([])
+    expect(defaultGitHubDeploymentTargets({ DEPLOYMENT_WORKFLOW: 'release.yml' })).toEqual([])
+  })
+
   it('normalizes multiple targets and matches jobs with the safe template placeholders', () => {
     const targets = normalizeGitHubDeploymentTargets([
       {
@@ -36,6 +42,7 @@ describe('GitHub deployment configuration', () => {
     ).toMatchObject({
       repository: 'acme/platform',
       workflow: 'release.yml',
+      services: [],
       environments: ['dev', 'prod'],
       productionEnvironment: 'prod',
       comparisonEnvironment: 'dev',

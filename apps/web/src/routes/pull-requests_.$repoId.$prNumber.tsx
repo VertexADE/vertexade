@@ -8,7 +8,7 @@ import { PrDetailsDialog, type PrDetailsActions, type PrDetailsTab } from '@vert
 import { WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { GithubReviewer } from '@vertexade/ui/lib/dashboard-types'
 import { LaunchDialog, ReviewDialog } from '../components/pull-requests/pull-request-dialogs'
 import { LazyThreadDialog } from '../lib/lazy-dialogs'
@@ -42,16 +42,24 @@ function PullRequestDetailPage() {
 
   const load = dashboard.refresh
   const { detailsRevision, refreshPullRequest } = usePullRequestRefresh(load)
-  useEffect(() => {
-    api<GithubReviewer>('/api/scm/me')
-      .then(setCurrentUser)
-      .catch(() => {})
-  }, [])
-
   const pr = useMemo(
     () => data.prs.find((item) => item.repo_id === repoId && item.number === prNumber) || null,
     [data.prs, prNumber, repoId],
   )
+
+  useEffect(() => {
+    let current = true
+    setCurrentUser(null)
+    if (pr)
+      void backendApi<GithubReviewer>(pr.backend_id, '/api/scm/me')
+        .then((user) => {
+          if (current) setCurrentUser(user)
+        })
+        .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [pr])
 
   const startReview = useCallback(() => setReviewOpen(true), [])
 

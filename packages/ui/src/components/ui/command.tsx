@@ -31,7 +31,10 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogContent className={cn('top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0', className)} showCloseButton={showCloseButton}>
+      <DialogContent
+        className={cn('my-0 mt-[clamp(3rem,12vh,7rem)] self-start overflow-hidden rounded-xl! p-0', className)}
+        showCloseButton={showCloseButton}
+      >
         <DialogHeader className="m-0 sr-only">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -48,7 +51,7 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
       <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           data-slot="command-input"
-          className={cn('w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50', className)}
+          className={cn('w-full pl-2 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50', className)}
           {...props}
         />
         <InputGroupAddon>
@@ -101,7 +104,10 @@ function CommandItem({ className, children, ...props }: React.ComponentProps<typ
       {...props}
     >
       {children}
-      <CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      <CheckIcon
+        aria-hidden="true"
+        className="absolute right-2 opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"
+      />
     </CommandPrimitive.Item>
   )
 }

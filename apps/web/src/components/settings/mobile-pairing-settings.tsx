@@ -9,7 +9,7 @@ import { Field, FieldDescription, FieldLabel } from '@vertexade/ui/components/ui
 import { InputGroup, InputGroupButton, InputGroupInput } from '@vertexade/ui/components/ui/input-group'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
 import { Status, StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 
 type PairingRuntimeStatus = {
   web: { currentHost: string; currentPort: number }
@@ -209,7 +209,7 @@ function PairedDevices({
   )
 }
 
-export function MobilePairingSettings() {
+export function MobilePairingSettings({ backendId }: { backendId: string }) {
   const [status, setStatus] = useState<MobilePairingStatus | null>(null)
   const [runtime, setRuntime] = useState<PairingRuntimeStatus | null>(null)
   const [publicOrigin, setPublicOrigin] = useState('')
@@ -219,8 +219,8 @@ export function MobilePairingSettings() {
   const load = useCallback(async () => {
     try {
       const [pairing, server] = await Promise.all([
-        api<MobilePairingStatus>('/api/settings/mobile-pairing'),
-        api<PairingRuntimeStatus>('/api/settings/server-runtime'),
+        backendApi<MobilePairingStatus>(backendId, '/api/settings/mobile-pairing'),
+        backendApi<PairingRuntimeStatus>(backendId, '/api/settings/server-runtime'),
       ])
       setStatus(pairing)
       setRuntime(server)
@@ -228,7 +228,7 @@ export function MobilePairingSettings() {
     } catch (error) {
       toast.error((error as Error).message)
     }
-  }, [])
+  }, [backendId])
 
   useEffect(() => void load(), [load])
 
@@ -238,7 +238,7 @@ export function MobilePairingSettings() {
     event.preventDefault()
     setBusy('generate')
     try {
-      const next = await api<MobilePairingInvitation>('/api/settings/mobile-pairing/invitations', {
+      const next = await backendApi<MobilePairingInvitation>(backendId, '/api/settings/mobile-pairing/invitations', {
         method: 'POST',
         body: JSON.stringify({ publicOrigin }),
       })
@@ -261,7 +261,9 @@ export function MobilePairingSettings() {
   async function revoke(id: string, name: string): Promise<void> {
     setBusy(id)
     try {
-      const next = await api<MobilePairingStatus>(`/api/settings/mobile-pairing/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const next = await backendApi<MobilePairingStatus>(backendId, `/api/settings/mobile-pairing/devices/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
       setStatus(next)
       toast.success(`${name} disconnected`)
     } catch (error) {

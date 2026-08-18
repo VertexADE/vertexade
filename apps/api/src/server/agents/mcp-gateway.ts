@@ -107,11 +107,27 @@ function appDescriptor(serverId: string, toolName: string, uri: string, result: 
 
 function transport(server: AgentMcpServer) {
   if (server.transport === 'stdio')
-    return new StdioClientTransport({ command: server.command, args: server.args, env: server.env, stderr: 'pipe' })
-  const options = { requestInit: { headers: server.headers } }
+    return new StdioClientTransport({ command: server.command, args: server.args, env: server.env, cwd: server.cwd, stderr: 'pipe' })
+  const options = server.pluginId
+    ? { fetch: agentPluginMcpFetch(new URL(server.url).origin, server.headers) }
+    : { requestInit: { headers: server.headers } }
   return server.transport === 'http'
     ? new StreamableHTTPClientTransport(new URL(server.url), options)
     : new SSEClientTransport(new URL(server.url), options)
+}
+
+export function agentPluginMcpFetch(
+  origin: string,
+  configuredHeaders: Record<string, string> = {},
+  implementation: typeof fetch = fetch,
+): typeof fetch {
+  return async (input, init) => {
+    const target = input instanceof URL ? input : new URL(input instanceof Request ? input.url : String(input))
+    if (target.origin !== origin) throw new Error(`Agent Plugin MCP request cannot leave its configured origin ${origin}`)
+    const headers = new Headers(configuredHeaders)
+    new Headers(init?.headers).forEach((value, name) => headers.set(name, value))
+    return implementation(input, { ...init, headers, redirect: 'error' })
+  }
 }
 
 class McpGatewayConnection {

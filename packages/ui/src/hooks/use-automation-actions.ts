@@ -19,12 +19,14 @@ export function useAutomationActions({
   load,
   runtime,
   setRuntime,
+  onSaved,
 }: {
   draft: RecipeDraft
   resetDraft(): void
   load(): Promise<unknown>
   runtime: AutomationRuntimeStatus | null
   setRuntime: Dispatch<SetStateAction<AutomationRuntimeStatus | null>>
+  onSaved?(recipe: AutomationRecipe): void
 }) {
   const confirmAction = useConfirm()
   const [busy, setBusy] = useState('')
@@ -34,7 +36,7 @@ export function useAutomationActions({
     setBusy('save')
     try {
       const request = saveRequest(draft.editingId)
-      await api(request.path, {
+      const recipe = await api<AutomationRecipe>(request.path, {
         method: request.method,
         body: JSON.stringify({
           name: draft.name,
@@ -59,6 +61,7 @@ export function useAutomationActions({
       toast.success(request.message)
       resetDraft()
       await load()
+      onSaved?.(recipe)
     } catch (error) {
       toast.error(saveError(error))
     } finally {

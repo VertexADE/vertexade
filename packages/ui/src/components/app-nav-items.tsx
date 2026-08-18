@@ -30,8 +30,8 @@ export const coreItems = [
   },
   {
     to: '/threads',
-    label: 'Agents',
-    description: 'Follow active runs, decisions, and results',
+    label: 'Threads',
+    description: 'Live runs, decisions, and execution history',
     icon: MessagesSquare,
     group: 'Workspace',
   },

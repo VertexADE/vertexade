@@ -1,7 +1,5 @@
-import { activeBackendId } from '@vertexade/ui/lib/backend-registry'
-
 export type PlatformQueryKey = readonly ['platform', string, string]
 
-export function platformQueryKey(resource: string, backendId: string = activeBackendId() || 'primary'): PlatformQueryKey {
+export function platformQueryKey(resource: string, backendId = 'federated'): PlatformQueryKey {
   return ['platform', backendId, resource]
 }

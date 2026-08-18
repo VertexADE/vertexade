@@ -2,6 +2,7 @@ import type { AgentResourceService } from './resources.ts'
 import { HttpError, readJsonObject } from '@vertexade/platform-server/http'
 import { searchMcpRegistry } from './mcp-registry.ts'
 import { McpGatewayPool, toolAppResourceUri } from './mcp-gateway.ts'
+import { transportClientIdentity } from '../transport-context.ts'
 
 function response(status: number, value: unknown) {
   return Response.json(value, { status })
@@ -12,6 +13,21 @@ function message(error: unknown) {
 function kind(value: string) {
   if (value !== 'skill' && value !== 'mcp') throw new Error('Agent resource kind must be skill or mcp')
   return value
+}
+
+function requirePluginAdministrator(request: Request) {
+  const client = transportClientIdentity(request)
+  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(client))
+    throw new HttpError('Agent Plugins can only be installed through the authenticated local server gateway', 403)
+}
+
+async function installPlugin(request: Request, service: AgentResourceService, gateways: McpGatewayPool) {
+  requirePluginAdministrator(request)
+  const previous = service.catalog().plugins
+  const plugin = await service.installPlugin(await readJsonObject(request))
+  const before = previous.find((candidate) => candidate.id === plugin.id)?.mcpServerIds || []
+  for (const serverId of new Set([...before, ...plugin.mcpServerIds])) gateways.invalidate(serverId)
+  return plugin
 }
 
 export function createAgentResourceRoutes(service: AgentResourceService, profilesChanged: () => void = () => {}) {
@@ -29,6 +45,7 @@ async function dispatch(request: Request, service: AgentResourceService, profile
   const url = new URL(request.url)
   const routes = [
     () => exactRoute(request, url, service, profilesChanged, gateways),
+    () => pluginRoute(request, url, service, gateways),
     () => defaultRoute(request, url, service),
     () => removalRoute(request, url, service, gateways),
     () => profileRemovalRoute(request, url, service, profilesChanged),
@@ -120,6 +137,7 @@ async function exactRoute(
       gateways.invalidate(server.id)
       return server
     },
+    'POST /api/agent-resources/plugins': () => installPlugin(request, service, gateways),
     'POST /api/agent-resources/profiles': async () => {
       const profile = service.upsertProfile(await readJsonObject(request))
       profilesChanged()
@@ -128,6 +146,30 @@ async function exactRoute(
   }
   const handler = routes[`${request.method} ${url.pathname}`]
   return handler ? response(request.method === 'POST' ? 201 : 200, await handler()) : null
+}
+
+async function reloadPlugin(id: string, service: AgentResourceService, gateways: McpGatewayPool) {
+  const previous = service.catalog().plugins.find((plugin) => plugin.id === id)
+  const plugin = await service.reloadPlugin(id)
+  for (const serverId of new Set([...(previous?.mcpServerIds || []), ...plugin.mcpServerIds])) gateways.invalidate(serverId)
+  return response(200, plugin)
+}
+
+function removePlugin(id: string, service: AgentResourceService, gateways: McpGatewayPool) {
+  const removed = service.removePlugin(id)
+  for (const serverId of removed.mcpServerIds) gateways.invalidate(serverId)
+  return response(200, { removed: true })
+}
+
+async function pluginRoute(request: Request, url: URL, service: AgentResourceService, gateways: McpGatewayPool) {
+  const match = url.pathname.match(/^\/api\/agent-resources\/plugins\/([^/]+)(?:\/(reload))?$/)
+  if (!match) return null
+  const id = decodeURIComponent(match[1]!)
+  const handlers: Record<string, () => Response | Promise<Response>> = {
+    'POST reload': () => reloadPlugin(id, service, gateways),
+    'DELETE ': () => removePlugin(id, service, gateways),
+  }
+  return handlers[`${request.method} ${match[2] || ''}`]?.() || null
 }
 
 function profileRemovalRoute(request: Request, url: URL, service: AgentResourceService, profilesChanged: () => void) {

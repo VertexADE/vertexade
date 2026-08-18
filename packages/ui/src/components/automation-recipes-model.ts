@@ -69,7 +69,10 @@ export function automationNames<T extends { id: number; name: string }>(items: T
 
 export function visibleAutomationRuns(runs: AutomationFlowRun[], filter: 'approval' | 'history' | undefined) {
   if (filter === 'approval') return runs.filter((run) => run.improvementApprovalStatus === 'pending')
-  if (filter === 'history') return runs.filter((run) => run.improvementApprovalStatus !== 'pending')
+  if (filter === 'history')
+    return runs.filter(
+      (run) => run.improvementApprovalStatus !== 'pending' && ['succeeded', 'failed', 'cancelled', 'timed-out'].includes(run.status),
+    )
   return runs
 }
 

@@ -167,6 +167,92 @@ describe('multi-backend API proxy', () => {
     )
   })
 
+  it('isolates cached remote snapshots for browser connections that reuse the same backend id', async () => {
+    vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async (input) => {
+        const url = new URL(String(input))
+        if (url.pathname !== '/api/read-model') return Response.json({ error: 'Unexpected test request' }, { status: 404 })
+        if (url.host === 'second.internal') throw new Error('Second server is offline')
+        const id = url.host === 'local.internal' ? 1 : 2
+        return Response.json(readModel(id, url.hostname))
+      }),
+    )
+    const { proxyApiRequest } = await import('./api-proxy')
+    const pairedHeader = (serviceUrl: string, sessionToken: string) =>
+      encodeURIComponent(
+        JSON.stringify([
+          {
+            id: 'studio',
+            name: 'Studio',
+            namespace: 1,
+            serviceUrl,
+            sessionToken,
+            expiresAt: '2099-01-01T00:00:00Z',
+          },
+        ]),
+      )
+
+    const first = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', {
+        headers: { 'x-vertexade-paired-servers': pairedHeader('http://first.internal', 'first-session') },
+      }),
+    })
+    expect((await first.json()).updates.repositories.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: expect.objectContaining({ full_name: 'first.internal/api' }) })]),
+    )
+
+    const second = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', {
+        headers: { 'x-vertexade-paired-servers': pairedHeader('http://second.internal', 'second-session') },
+      }),
+    })
+    const payload = await second.json()
+
+    expect(payload.updates.repositories.entries).toMatchObject([{ value: { full_name: 'local.internal/api' } }])
+    expect(payload.updates.dashboardMeta.entries[0].value.backends).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'studio', connected: false, error: 'Second server is offline' })]),
+    )
+  })
+
+  it('does not reuse authenticated read-model snapshots across client credentials', async () => {
+    vi.stubEnv(
+      'VERTEXADE_API_URLS',
+      JSON.stringify([
+        { id: 'local', label: 'Local', url: 'http://local.internal' },
+        { id: 'team', label: 'Team', url: 'http://team.internal' },
+      ]),
+    )
+    let offline = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async (input) => {
+        if (offline) throw new Error('Backends are offline')
+        const url = new URL(String(input))
+        return Response.json(readModel(url.host === 'local.internal' ? 1 : 2, url.hostname))
+      }),
+    )
+    const { proxyApiRequest } = await import('./api-proxy')
+
+    const first = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', {
+        headers: { authorization: 'Bearer first-client' },
+      }),
+    })
+    expect(first.status).toBe(200)
+    offline = true
+
+    const second = await proxyApiRequest({
+      request: new Request('http://frontend.internal/api/read-model?since=0', {
+        headers: { authorization: 'Bearer second-client' },
+      }),
+    })
+
+    expect(second.status).toBe(502)
+    await expect(second.json()).resolves.toMatchObject({ error: 'None of the configured backends could be reached' })
+  })
+
   it('rejects oversized JSON requests before proxying them to a backend', async () => {
     vi.stubEnv('VERTEXADE_API_URL', 'http://local.internal')
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {

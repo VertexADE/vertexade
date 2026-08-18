@@ -8,9 +8,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@v
 import { Field, FieldLabel } from '@vertexade/ui/components/ui/field'
 import { Input } from '@vertexade/ui/components/ui/input'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@vertexade/ui/components/ui/input-group'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { age, backendApi } from '@vertexade/ui/lib/dashboard-api'
-import { loadBackendRegistry, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
+import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { desktopBridge } from '../../lib/desktop-bridge'
 import { RepositoryEnvironmentDialog } from './repository-environment-dialog'
@@ -22,36 +22,26 @@ type AddRepositoryInput = { repository: string } | { local_path: string; name?: 
 export function Repositories({
   repositories,
   onAdd,
+  backend,
 }: {
   repositories: Repository[]
   onAdd(input: AddRepositoryInput, backendId?: string): Promise<void>
+  backend: BackendDescriptor
 }) {
   const [environmentRepo, setEnvironmentRepo] = useState<Repository | null>(null)
   const [choosingDirectory, setChoosingDirectory] = useState(false)
   const [bridge, setBridge] = useState<ReturnType<typeof desktopBridge>>(null)
-  const [backends, setBackends] = useState<BackendDescriptor[]>([])
   const [browserOpen, setBrowserOpen] = useState(false)
-  const [repositoryBackendId, setRepositoryBackendId] = useState('')
   useEffect(() => setBridge(desktopBridge()), [])
-  useEffect(() => {
-    void loadBackendRegistry()
-      .then((result) => {
-        setBackends(result.backends)
-        setRepositoryBackendId(
-          (current) => current || result.backends.find((backend) => backend.isDefault)?.id || result.backends[0]?.id || '',
-        )
-      })
-      .catch(() => setBackends([]))
-  }, [])
   const form = useForm({
     defaultValues: { repository: '' },
     onSubmit: async ({ value }) => {
-      await onAdd({ repository: value.repository.trim() }, repositoryBackendId || undefined)
+      await onAdd({ repository: value.repository.trim() }, backend.id)
       form.reset()
     },
   })
   const localForm = useForm({
-    defaultValues: { path: '', name: '', strategy: 'auto', backendId: '' },
+    defaultValues: { path: '', name: '', strategy: 'auto' },
     onSubmit: async ({ value }) => {
       await onAdd(
         {
@@ -59,17 +49,21 @@ export function Repositories({
           ...(value.name.trim() ? { name: value.name.trim() } : {}),
           ...(value.strategy === 'auto' ? {} : { workspace_strategy: value.strategy }),
         },
-        value.backendId || undefined,
+        backend.id,
       )
       localForm.reset()
     },
   })
   async function sync(repo: Repository) {
     try {
-      const result = await backendApi<{ open_prs: number }>(repo.backend_id, `/api/repositories/${repo.backend_local_id ?? repo.id}/sync`, {
-        method: 'POST',
-        body: '{}',
-      })
+      const result = await backendApi<{ open_prs: number }>(
+        repo.backend_id || backend.id,
+        `/api/repositories/${repo.backend_local_id ?? repo.id}/sync`,
+        {
+          method: 'POST',
+          body: '{}',
+        },
+      )
       toast.success(`${repo.full_name}: ${result.open_prs} open PRs`)
     } catch (error) {
       toast.error((error as Error).message)
@@ -92,7 +86,7 @@ export function Repositories({
       <Card className="min-w-0" layout="divided">
         <CardHeader>
           <CardTitle>Repositories</CardTitle>
-          <CardDescription>Add a hosted Git repository or an existing directory on this server.</CardDescription>
+          <CardDescription>Add a hosted Git repository or an existing directory on {backend.label}.</CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -100,25 +94,8 @@ export function Repositories({
             event.stopPropagation()
             void form.handleSubmit()
           }}
-          className="grid min-w-0 gap-2 p-3 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-end"
+          className="grid min-w-0 gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
         >
-          <Field>
-            <FieldLabel>Server</FieldLabel>
-            <Select value={repositoryBackendId} onValueChange={setRepositoryBackendId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Local" />
-              </SelectTrigger>
-              <SelectContent>
-                {backends
-                  .filter((backend) => backend.connected)
-                  .map((backend) => (
-                    <SelectItem key={backend.id} value={backend.id}>
-                      {backend.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </Field>
           <Field>
             <FieldLabel htmlFor="settings-add-repository">Add a GitHub repository</FieldLabel>
             <form.Field
@@ -148,14 +125,12 @@ export function Repositories({
               </Button>
             )}
           </form.Subscribe>
-          <div className="sm:col-start-2">
+          <div>
             <RepositorySearchPicker
-              backendId={repositoryBackendId}
-              added={repositories
-                .filter((repository) => !repository.backend_id || repository.backend_id === repositoryBackendId)
-                .map((repository) => repository.full_name)}
+              backendId={backend.id}
+              added={repositories.map((repository) => repository.full_name)}
               onSelect={async (repository) => {
-                await onAdd({ repository: repository.id }, repositoryBackendId || undefined)
+                await onAdd({ repository: repository.id }, backend.id)
               }}
             />
           </div>
@@ -166,32 +141,8 @@ export function Repositories({
             event.stopPropagation()
             void localForm.handleSubmit()
           }}
-          className="grid min-w-0 gap-2 border-t p-3 sm:grid-cols-[10rem_minmax(0,1.4fr)_minmax(8rem,.6fr)_11rem_auto] sm:items-end"
+          className="grid min-w-0 gap-2 border-t p-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(8rem,.6fr)_11rem_auto] sm:items-end"
         >
-          <Field>
-            <FieldLabel>Server</FieldLabel>
-            <localForm.Field name="backendId">
-              {(field) => (
-                <Select
-                  value={field.state.value || backends.find((backend) => backend.isDefault)?.id || ''}
-                  onValueChange={field.handleChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Local" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {backends
-                      .filter((backend) => backend.connected)
-                      .map((backend) => (
-                        <SelectItem key={backend.id} value={backend.id}>
-                          {backend.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </localForm.Field>
-          </Field>
           <Field>
             <FieldLabel htmlFor="settings-add-local-directory">Local directory</FieldLabel>
             <localForm.Field
@@ -220,21 +171,19 @@ export function Repositories({
                       <FolderOpen /> Browse
                     </InputGroupButton>
                   </InputGroupAddon>
-                  {bridge &&
-                    (localForm.getFieldValue('backendId') || backends.find((backend) => backend.isDefault)?.id) ===
-                      backends.find((backend) => backend.isDefault)?.id && (
-                      <InputGroupAddon align="inline-end">
-                        <InputGroupButton
-                          aria-label="Choose a local directory"
-                          title="Choose folder"
-                          disabled={choosingDirectory}
-                          onClick={() => void chooseDirectory()}
-                        >
-                          {choosingDirectory ? <RefreshCw className="animate-spin" /> : <FolderOpen />}
-                          Native
-                        </InputGroupButton>
-                      </InputGroupAddon>
-                    )}
+                  {bridge && backend.isDefault && (
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        aria-label="Choose a local directory"
+                        title="Choose folder"
+                        disabled={choosingDirectory}
+                        onClick={() => void chooseDirectory()}
+                      >
+                        {choosingDirectory ? <RefreshCw className="animate-spin" /> : <FolderOpen />}
+                        Native
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  )}
                 </InputGroup>
               )}
             </localForm.Field>
@@ -262,10 +211,12 @@ export function Repositories({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Automatic</SelectItem>
-                    <SelectItem value="direct">Direct</SelectItem>
-                    <SelectItem value="copy">Copy, then apply</SelectItem>
-                    <SelectItem value="move">Move on apply</SelectItem>
+                    <SelectGroup>
+                      <SelectItem value="auto">Automatic</SelectItem>
+                      <SelectItem value="direct">Direct</SelectItem>
+                      <SelectItem value="copy">Copy, then apply</SelectItem>
+                      <SelectItem value="move">Move on apply</SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               )}
@@ -346,11 +297,8 @@ export function Repositories({
       />
       <ServerDirectoryBrowserDialog
         open={browserOpen}
-        backendId={localForm.getFieldValue('backendId') || backends.find((backend) => backend.isDefault)?.id || ''}
-        backendName={
-          backends.find((backend) => backend.id === (localForm.getFieldValue('backendId') || backends.find((item) => item.isDefault)?.id))
-            ?.label || 'Local'
-        }
+        backendId={backend.id}
+        backendName={backend.label}
         initialPath={localForm.getFieldValue('path')}
         onOpenChange={setBrowserOpen}
         onSelect={(path) => localForm.setFieldValue('path', path)}

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from '@vertexade/ui/components/ui/checkbox'
 import { ChoiceItem, ChoiceItemContent, ChoiceItemDescription, ChoiceItemTitle, ChoiceList } from '@vertexade/ui/components/ui/choice-list'
 import { Spinner } from '@vertexade/ui/components/ui/spinner'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import type { Repository } from '@vertexade/ui/lib/dashboard-types'
 import { RepositoryOwnerField } from './settings-shared'
 
@@ -33,26 +33,26 @@ function ruleIdentity(rule: PullRequestReadinessRule): string {
   return `${rule.entryKey}:${rule.condition}`
 }
 
-export function EvidencePolicySettings({ repositories }: { repositories: Repository[] }) {
+export function EvidencePolicySettings({ repositories, backendId }: { repositories: Repository[]; backendId: string }) {
   const [repositoryId, setRepositoryId] = useState<number | null>(repositories[0]?.id || null)
   const [policy, setPolicy] = useState<PullRequestReadinessPolicy | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!repositoryId && repositories[0]) setRepositoryId(repositories[0].id)
+    if (!repositories.some((repository) => repository.id === repositoryId)) setRepositoryId(repositories[0]?.id || null)
   }, [repositories, repositoryId])
 
   const load = useCallback(async () => {
     if (!repositoryId) return
     try {
-      const value = await api<PullRequestReadinessPolicy>(`/api/repositories/${repositoryId}/evidence-policy`)
+      const value = await backendApi<PullRequestReadinessPolicy>(backendId, `/api/repositories/${repositoryId}/evidence-policy`)
       setPolicy(value)
       setSelected(new Set(value.rules.filter((rule) => rule.required).map(ruleIdentity)))
     } catch (error) {
       toast.error((error as Error).message)
     }
-  }, [repositoryId])
+  }, [backendId, repositoryId])
 
   useEffect(() => void load(), [load])
 
@@ -60,7 +60,7 @@ export function EvidencePolicySettings({ repositories }: { repositories: Reposit
     if (!repositoryId) return
     setSaving(true)
     try {
-      const value = await api<PullRequestReadinessPolicy>(`/api/repositories/${repositoryId}/evidence-policy`, {
+      const value = await backendApi<PullRequestReadinessPolicy>(backendId, `/api/repositories/${repositoryId}/evidence-policy`, {
         method: 'POST',
         body: JSON.stringify({ rules: availableRules.filter((rule) => selected.has(ruleIdentity(rule))) }),
       })
@@ -71,7 +71,7 @@ export function EvidencePolicySettings({ repositories }: { repositories: Reposit
     } finally {
       setSaving(false)
     }
-  }, [repositoryId, selected])
+  }, [backendId, repositoryId, selected])
 
   return (
     <Card layout="divided">

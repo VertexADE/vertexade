@@ -11,6 +11,7 @@ export type WorkTarget = { repository: Repository; repositories?: Repository[]; 
 export type AutomationThreadLaunchResult = { jobId: number } | { skippedReason: string }
 
 export type AutomationThreadLaunchOptions = {
+  automationName?: string
   branchType?: string
   agentId?: string | null
   model?: string | null
@@ -21,6 +22,11 @@ export type AutomationThreadLaunchOptions = {
   source?: Record<string, unknown>
   repositoryIds?: number[]
   resourceSelection?: { skills: string[]; mcpServers: string[] } | null
+}
+
+function usableTitle(value: unknown) {
+  const title = String(value ?? '').trim()
+  return title && !['undefined', 'null'].includes(title.toLowerCase()) ? title : ''
 }
 
 export type AutomationThreadLaunchDependencies = {
@@ -92,7 +98,7 @@ function repositoryById(database: DrizzleDashboardDatabase, id: number) {
     .get()
 }
 
-function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): WorkTarget {
+function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget, automationName = ''): WorkTarget {
   if (target.entityType === 'work-item') {
     const item = requireRow(
       database
@@ -118,7 +124,7 @@ function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): 
     return {
       repository: workspace[0],
       repositories: workspace,
-      title: item.title,
+      title: usableTitle(item.title) || automationName || `Work item #${item.id}`,
       workItemId: item.id,
     }
   }
@@ -143,7 +149,7 @@ function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): 
     )
     return {
       repository: row.repository,
-      title: row.workTitle || `Continue run #${target.entityId}`,
+      title: usableTitle(row.workTitle) || automationName || `Continue run #${target.entityId}`,
       workItemId: row.workItemId,
     }
   }
@@ -168,7 +174,9 @@ function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): 
     )
     return {
       repository: row.repository,
-      title: `Follow up PR #${target.entityId}: ${row.workTitle}`.slice(0, 200),
+      title: usableTitle(row.workTitle)
+        ? `Follow up PR #${target.entityId}: ${usableTitle(row.workTitle)}`.slice(0, 200)
+        : automationName || `Follow up PR #${target.entityId}`,
       workItemId: null,
     }
   }
@@ -176,7 +184,7 @@ function workTarget(database: DrizzleDashboardDatabase, target: TriggerTarget): 
     const repository = requireRow(repositoryById(database, target.entityId), 'The triggered repository is no longer available')
     return {
       repository,
-      title: String(target.entity.title || '').trim() || `Automated work for ${repository.full_name}`,
+      title: usableTitle(target.entity.title) || automationName || `Automated work for ${repository.full_name}`,
       workItemId: null,
     }
   }
@@ -402,13 +410,15 @@ export function createAutomationThreadLauncher(database: DrizzleDashboardDatabas
     configured: AutomationThreadLaunchOptions = {},
   ) => {
     const target = triggerTarget(trigger)
+    const automationName = usableTitle(configured.automationName)
     const launchOptions = {
       ...triggerLaunchOptions(trigger),
       ...Object.fromEntries(Object.entries(configured).filter(([, value]) => value != null && value !== '')),
     }
+    delete launchOptions.automationName
     if (action === 'work')
       return {
-        jobId: launchedJobId(await dependencies.launchWork(workTarget(database, target), prompt, launchOptions)),
+        jobId: launchedJobId(await dependencies.launchWork(workTarget(database, target, automationName), prompt, launchOptions)),
       }
     if (action === 'improve') {
       const improvement = improveTarget(database, target)
@@ -420,7 +430,15 @@ export function createAutomationThreadLauncher(database: DrizzleDashboardDatabas
           ),
         }
       }
-      return { jobId: launchedJobId(await dependencies.launchWork(improvement.target, prompt, launchOptions)) }
+      return {
+        jobId: launchedJobId(
+          await dependencies.launchWork(
+            { ...improvement.target, title: usableTitle(improvement.target.title) || automationName || 'Automation thread' },
+            prompt,
+            launchOptions,
+          ),
+        ),
+      }
     }
     const review = reviewTarget(database, target)
     if (review.kind === 'pull-request') {

@@ -47,8 +47,8 @@ function profileIdentity(profile: CustomAgentProfile | null) {
   return profile ? { id: profile.id } : {}
 }
 
-async function deleteProfile(profile: CustomAgentProfile) {
-  await api(`/api/agent-resources/profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' })
+async function deleteProfile(profile: CustomAgentProfile, request: typeof api) {
+  await request(`/api/agent-resources/profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' })
 }
 
 function resetDeletedProfileSelection(profile: CustomAgentProfile) {
@@ -66,11 +66,15 @@ export function CustomAgentSettings({
   skills,
   mcpServers,
   reload,
+  request = api,
+  backendId,
 }: {
   profiles: CustomAgentProfile[]
   skills: Resource[]
   mcpServers: Resource[]
   reload(): void
+  request?: typeof api
+  backendId?: string
 }) {
   const confirmAction = useConfirm()
   const [editing, setEditing] = useState<CustomAgentProfile | null>(null)
@@ -86,7 +90,7 @@ export function CustomAgentSettings({
     })
     if (!confirmed) return
     try {
-      await deleteProfile(profile)
+      await deleteProfile(profile, request)
       resetDeletedProfileSelection(profile)
       setEditing((current) => (current?.id === profile.id ? null : current))
       toast.success(`${profile.name} deleted`)
@@ -112,6 +116,8 @@ export function CustomAgentSettings({
           profile={editing}
           skills={skills}
           mcpServers={mcpServers}
+          request={request}
+          backendId={backendId}
           onSaved={() => {
             setEditing(null)
             reload()
@@ -128,12 +134,16 @@ function CustomAgentForm({
   profile,
   skills,
   mcpServers,
+  request,
+  backendId,
   onSaved,
   onCancel,
 }: {
   profile: CustomAgentProfile | null
   skills: Resource[]
   mcpServers: Resource[]
+  request: typeof api
+  backendId?: string
   onSaved(): void
   onCancel(): void
 }) {
@@ -141,7 +151,7 @@ function CustomAgentForm({
     defaultValues: initialForm(profile),
     onSubmit: async ({ value }) => {
       try {
-        await api('/api/agent-resources/profiles', {
+        await request('/api/agent-resources/profiles', {
           method: 'POST',
           body: JSON.stringify({
             ...profileIdentity(profile),
@@ -191,6 +201,7 @@ function CustomAgentForm({
       <AgentOptionsPicker
         nativeOnly
         showSubagents={false}
+        backendId={backendId}
         value={options}
         onChange={(value) => {
           form.setFieldValue('agentId', value.agentId)

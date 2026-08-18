@@ -1,30 +1,34 @@
 import {
-  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Circle,
   CircleAlert,
   Clipboard,
+  Eye,
   FileCode2,
+  FilePenLine,
   FilePlus2,
   FileX2,
+  Globe,
   GitBranch,
   ListChecks,
   Loader2,
-  MessageSquareText,
+  Search,
   Terminal,
   UserRound,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { DiffReview } from '@vertexade/ui/components/diff-review'
 import type { FileReference } from '@vertexade/ui/components/markdown-content'
 import { ThreadMarkdownContent } from '@vertexade/ui/components/thread-markdown-content'
 import type { AgentAccent } from '@vertexade/ui/components/agent-identity'
 import { Badge } from '@vertexade/ui/components/ui/badge'
-import { buildAgentTimeline, timelineSummary, type TimelineEvent } from '@vertexade/ui/lib/agent-timeline'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@vertexade/ui/components/ui/tooltip'
+import { buildAgentTimeline, timelinePlan, timelineSummary, type TimelineEvent } from '@vertexade/ui/lib/agent-timeline'
 import { buildThreadWorkSessions, type ThreadWorkSession } from '@vertexade/ui/lib/thread-work-sessions'
 import { agentIsWorking, agentThreadLabel, type AgentThreadState } from '@vertexade/ui/lib/agent-thread-state'
 import { dateValue } from '@vertexade/ui/lib/dashboard-api'
@@ -33,7 +37,13 @@ import { cn } from '@vertexade/ui/lib/utils'
 
 function timeLabel(value: string | null) {
   const date = dateValue(value)
-  return date ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
+  return date
+    ? date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : ''
 }
 
 function statusLabel(event: TimelineEvent) {
@@ -58,10 +68,13 @@ const eventIcons: Record<string, LucideIcon> = {
   waiting: CircleAlert,
   paused: CircleAlert,
   interrupted: CircleAlert,
-  message: MessageSquareText,
   user_message: UserRound,
   action: Wrench,
   command: Terminal,
+  read: Eye,
+  edit: FilePenLine,
+  search: Search,
+  web: Globe,
   changes: FileCode2,
   plan: ListChecks,
   started: GitBranch,
@@ -76,14 +89,33 @@ const statusIconKeys: Record<string, string> = {
   interrupted: 'interrupted',
 }
 const actionIconKeys: Record<string, string> = {
-  'action:commandexecution': 'command',
-  'action:bash': 'command',
+  command: 'command',
+  commandexecution: 'command',
+  bash: 'command',
+  shell: 'command',
+  terminal: 'command',
+  exec: 'command',
+  read: 'read',
+  view: 'read',
+  inspect: 'read',
+  edit: 'edit',
+  write: 'edit',
+  patch: 'edit',
+  search: 'search',
+  grep: 'search',
+  find: 'search',
+  web: 'web',
+  browser: 'web',
+  fetch: 'web',
 }
 
 function eventIconKey(event: TimelineEvent) {
   const statusKey = statusIconKeys[String(event.status)]
-  const actionKey = actionIconKeys[`${event.kind}:${String(event.action_kind).toLowerCase()}`]
-  return [statusKey, actionKey, event.kind].find(Boolean)!
+  const actionKind = String(event.action_kind)
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+  const actionKey = event.kind === 'action' ? Object.entries(actionIconKeys).find(([key]) => actionKind.includes(key))?.[1] : undefined
+  return [actionKey, statusKey, event.kind].find(Boolean)!
 }
 
 function EventIcon({ event }: { event: TimelineEvent }) {
@@ -94,23 +126,23 @@ function EventIcon({ event }: { event: TimelineEvent }) {
 
 function eventTone(event: TimelineEvent) {
   const tones: Record<string, string> = {
-    failed: 'border-red-500/35 bg-red-500/[.05] text-red-500',
-    error: 'border-red-500/35 bg-red-500/[.05] text-red-500',
-    running: 'border-blue-500/35 bg-blue-500/[.06] text-blue-500',
-    pending: 'border-blue-500/35 bg-blue-500/[.06] text-blue-500',
-    input: 'border-amber-500/35 bg-amber-500/[.06] text-amber-500',
-    waiting: 'border-amber-500/35 bg-amber-500/[.06] text-amber-500',
-    paused: 'border-amber-500/35 bg-amber-500/[.06] text-amber-500',
-    interrupted: 'border-amber-500/35 bg-amber-500/[.06] text-amber-500',
-    completed: 'border-emerald-500/30 bg-emerald-500/[.05] text-emerald-500',
-    user_message: 'border-blue-500/35 bg-blue-500/[.06] text-blue-500',
+    failed: 'text-destructive',
+    error: 'text-destructive',
+    running: 'text-primary',
+    pending: 'text-primary',
+    input: 'text-warning',
+    waiting: 'text-warning',
+    paused: 'text-warning',
+    interrupted: 'text-warning',
+    completed: 'text-success',
+    user_message: 'text-primary',
   }
-  return tones[event.status || ''] || tones[event.kind] || 'border-border bg-card text-muted-foreground'
+  return tones[event.status || ''] || tones[event.kind] || 'text-muted-foreground'
 }
 
 function EventMeta({ event }: { event: TimelineEvent }) {
   return (
-    <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+    <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
       <ActionKind event={event} />
       <EventStatus event={event} />
       <EventTime event={event} />
@@ -122,7 +154,7 @@ function EventMeta({ event }: { event: TimelineEvent }) {
 function ActionKind({ event }: { event: TimelineEvent }) {
   if (!event.action_kind) return null
   return (
-    <Badge variant="outline" className="hidden h-5 max-w-32 truncate px-1.5 font-mono text-xs sm:inline-flex">
+    <Badge variant="outline" className="hidden h-4 max-w-28 truncate px-1 font-mono text-[9px] sm:inline-flex">
       {event.action_kind}
     </Badge>
   )
@@ -158,27 +190,20 @@ function MessageEvent({
   worktreePath: string
 }) {
   const user = event.kind === 'user_message'
-  const Icon = user ? UserRound : Bot
   return (
     <article
-      className={cn(
-        'border-b border-border/45 bg-transparent px-1 pb-4 pt-1 sm:px-2',
-        user && 'border-l-2 border-l-blue-500/35 bg-blue-500/[.025] pl-3 sm:pl-4',
-      )}
+      className={cn('border-b border-border/45 bg-transparent pb-2 pt-0.5', user && 'border-l border-l-primary/35 bg-primary/[.025] pl-2')}
     >
-      <div className="mb-2 flex items-center gap-2 text-xs">
-        <span
-          className={cn(
-            'grid size-6 place-items-center rounded-md bg-primary text-primary-foreground',
-            user && 'bg-blue-500/15 text-blue-400',
-          )}
-        >
-          <Icon className="size-3.5" />
-        </span>
+      <div className="mb-1 flex min-h-4 items-center gap-1.5 text-[11px]">
         {user ? <strong className="min-w-0 flex-1 truncate">{event.title}</strong> : <span className="min-w-0 flex-1" />}
         <EventMeta event={event} />
       </div>
-      <ThreadMarkdownContent content={event.text} onOpenFile={onOpenFile} worktreePath={worktreePath} className="text-sm" />
+      <ThreadMarkdownContent
+        content={event.text}
+        onOpenFile={onOpenFile}
+        worktreePath={worktreePath}
+        className="font-thread text-[length:var(--thread-font-size)]"
+      />
     </article>
   )
 }
@@ -196,23 +221,33 @@ function SessionMessage({
   const user = event.kind === 'user_message'
   const copy = () => void navigator.clipboard.writeText(event.text).then(() => toast.success('Message copied'))
   return (
-    <article className={cn('group/message flex min-w-0 flex-col gap-1', user ? 'items-end' : 'items-start')}>
+    <article className={cn('group/message flex min-w-0 flex-col gap-0.5', user ? 'items-end' : 'items-start')}>
       <div
         className={cn(
           'min-w-0 max-w-[min(88%,52rem)]',
-          user ? 'rounded-2xl rounded-br-md bg-blue-600 px-3.5 py-2.5 text-white shadow-sm' : 'w-full px-1 py-1',
+          user
+            ? 'rounded-xl rounded-br-sm bg-message-bubble px-2.5 py-1.5 text-message-bubble-foreground shadow-sm'
+            : 'w-full px-0.5 py-0.5',
         )}
       >
         <ThreadMarkdownContent
           content={event.text}
           onOpenFile={onOpenFile}
           worktreePath={worktreePath}
-          className={cn('text-sm', user && '[&_a]:text-white [&_code]:bg-white/15 [&_code]:text-white')}
+          className={cn(
+            'font-thread text-[length:var(--thread-font-size)]',
+            user && '[&_a]:text-message-bubble-foreground [&_code]:bg-message-bubble-foreground/15 [&_code]:text-message-bubble-foreground',
+          )}
         />
       </div>
-      <div className={cn('flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground', user && 'flex-row-reverse')}>
+      <div className={cn('flex items-center gap-1 px-0.5 text-[10px] text-muted-foreground', user && 'flex-row-reverse')}>
         <EventTime event={event} />
-        <button type="button" onClick={copy} className="rounded p-1 opacity-60 hover:bg-muted hover:opacity-100" aria-label="Copy message">
+        <button
+          type="button"
+          onClick={copy}
+          className="rounded p-0.5 opacity-60 hover:bg-muted hover:opacity-100"
+          aria-label="Copy message"
+        >
           <Clipboard className="size-3" />
         </button>
       </div>
@@ -232,20 +267,20 @@ function WorkSession({
   worktreePath: string
 }) {
   return (
-    <section id={`thread-turn-${index + 1}`} className="scroll-mt-20 space-y-3" data-thread-work-session>
+    <section id={`thread-turn-${index + 1}`} className="scroll-mt-20 space-y-1.5" data-thread-work-session>
       <SessionMessage event={session.trigger} onOpenFile={onOpenFile} worktreePath={worktreePath} />
       {session.activity.length ? (
-        <details className="group/session overflow-hidden rounded-xl border border-border/55 bg-muted/[.08]" open={!session.complete}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs hover:bg-muted/25">
-            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open/session:rotate-90" />
-            <strong>{session.complete ? `Worked for ${session.duration}` : 'Agent is working'}</strong>
-            <span className="text-muted-foreground">
+        <details className="group/session overflow-hidden rounded-md border border-border/40 bg-muted/[.035]" open={!session.complete}>
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-[11px] hover:bg-muted/20">
+            <ChevronRight className="size-3 text-muted-foreground transition-transform group-open/session:rotate-90" />
+            <strong className="font-medium">{session.complete ? `Worked for ${session.duration}` : 'Agent is working'}</strong>
+            <span className="truncate text-muted-foreground">
               {session.activity.length} {session.activity.length === 1 ? 'update' : 'updates'}
               {session.actions ? ` · ${session.actions} ${session.actions === 1 ? 'action' : 'actions'}` : ''}
             </span>
-            {!session.complete ? <Loader2 className="ml-auto size-3.5 animate-spin text-blue-500" /> : null}
+            {!session.complete ? <Loader2 className="ml-auto size-3 animate-spin text-primary" /> : null}
           </summary>
-          <ol className="relative border-t border-border/45 px-3 py-3 before:absolute before:bottom-6 before:left-[1.98rem] before:top-6 before:w-px before:bg-border">
+          <ol className="flex flex-col gap-1 border-t border-border/35 px-2 py-1.5">
             {session.activity.map((event) => (
               <TimelineEntry key={event.key} event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
             ))}
@@ -271,11 +306,11 @@ function CopyAction({ event }: { event: TimelineEvent }) {
     <button
       type="button"
       onClick={copy}
-      className="grid size-8 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
       title="Copy action details"
       aria-label="Copy action details"
     >
-      <Clipboard className="size-3.5" />
+      <Clipboard className="size-3" />
     </button>
   )
 }
@@ -317,22 +352,22 @@ function ChangesEvent({ event, onOpenFile }: { event: TimelineEvent; onOpenFile:
   const patch = diffPatch(event)
   if (!files.length) return <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{event.text}</p>
   return (
-    <details className="group/details mt-1 w-full max-w-full overflow-hidden rounded-md border bg-background/60">
-      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/30">
-        <FileCode2 className="size-3.5 shrink-0 text-blue-500" />
+    <details className="group/details mt-0.5 w-full max-w-full overflow-hidden rounded-md border bg-background/60">
+      <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 px-1.5 py-1 text-[10px] hover:bg-muted/30">
+        <FileCode2 className="size-3 shrink-0 text-primary" />
         <strong>
           {files.length} {files.length === 1 ? 'file' : 'files'}
         </strong>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{event.text.split('\n', 1)[0] || 'File changes'}</span>
         <span className="font-mono text-emerald-500">+{files.reduce((total, file) => total + Number(file.additions || 0), 0)}</span>
         <span className="font-mono text-red-500">−{files.reduce((total, file) => total + Number(file.deletions || 0), 0)}</span>
-        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-180" />
+        <ChevronDown className="size-3 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-180" />
       </summary>
       {event.text ? (
-        <p className="whitespace-pre-wrap break-words border-t px-2.5 py-2 text-xs text-muted-foreground">{event.text}</p>
+        <p className="whitespace-pre-wrap break-words border-t px-2 py-1.5 text-[11px] text-muted-foreground">{event.text}</p>
       ) : null}
       {patch ? (
-        <div className="min-w-0 border-t p-2">
+        <div className="min-w-0 border-t p-1.5">
           <DiffReview patch={patch} files={files} />
         </div>
       ) : (
@@ -402,7 +437,7 @@ function eventCardClass(event: TimelineEvent) {
     error: 'border-l-2 border-l-red-500/40 bg-red-500/[.025] pl-3',
     input: 'border-l-2 border-l-amber-500/40 bg-amber-500/[.025] pl-3',
   }
-  return cn('min-w-0 border-b border-border/45 bg-transparent px-1 pb-4 pt-1 sm:px-2', tones[event.kind])
+  return cn('min-w-0 border-b border-border/35 bg-transparent pb-2 pt-0.5', tones[event.kind])
 }
 
 function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: (reference: FileReference) => void }) {
@@ -411,15 +446,17 @@ function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: 
     return (
       <li className="relative min-w-0 py-0.5 text-[11px] text-muted-foreground">
         <details className="group/details w-full max-w-xl overflow-hidden rounded-md border border-transparent hover:border-border/55 hover:bg-muted/20">
-          <summary className="flex min-h-7 cursor-pointer list-none items-center gap-2 px-1.5 py-1">
-            <EventIcon event={event} />
+          <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 px-1 py-0.5">
+            <span className={eventTone(event)}>
+              <EventIcon event={event} />
+            </span>
             <strong className="shrink-0 font-medium text-foreground/80">{event.title}</strong>
             <span className="min-w-0 flex-1 truncate font-mono">{actionSummary(event)}</span>
             <EventStatus event={event} />
             <ActionDuration event={event} />
             <ChevronDown className="size-3 shrink-0 transition-transform group-open/details:rotate-180" />
           </summary>
-          <div className="border-t border-border/45 px-2.5 py-2">
+          <div className="border-t border-border/35 px-2 py-1.5">
             <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/80">{event.text}</p>
             <div className="mt-1 flex justify-end">
               <CopyAction event={event} />
@@ -430,8 +467,8 @@ function TimelineRow({ event, onOpenFile }: { event: TimelineEvent; onOpenFile: 
     )
   }
   return (
-    <li className="relative grid grid-cols-[2rem_minmax(0,1fr)] gap-2.5 pb-3 last:pb-0 sm:grid-cols-[2.25rem_minmax(0,1fr)] sm:gap-3">
-      <span className={cn('relative z-10 grid size-8 place-items-center rounded-full border border-border/55 sm:size-9', eventTone(event))}>
+    <li className="grid grid-cols-[1rem_minmax(0,1fr)] gap-1.5 pb-1.5 last:pb-0">
+      <span className={cn('mt-0.5 flex size-4 items-center justify-center', eventTone(event))}>
         <EventIcon event={event} />
       </span>
       <article className={eventCardClass(event)}>
@@ -457,12 +494,22 @@ function TimelineEntry({
   onOpenFile: (reference: FileReference) => void
   worktreePath: string
 }) {
-  if (['message', 'user_message'].includes(event.kind))
+  if (event.data?.presentation === 'plain_assistant_message')
     return (
-      <li className="relative grid grid-cols-[2rem_minmax(0,1fr)] gap-2.5 pb-3 last:pb-0 sm:grid-cols-[2.25rem_minmax(0,1fr)] sm:gap-3">
-        <span
-          className={cn('relative z-10 grid size-8 place-items-center rounded-full border border-border/55 sm:size-9', eventTone(event))}
-        >
+      <li className="py-1">
+        <SessionMessage event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+      </li>
+    )
+  if (event.kind === 'message')
+    return (
+      <li className="pb-1.5 last:pb-0">
+        <MessageEvent event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
+      </li>
+    )
+  if (event.kind === 'user_message')
+    return (
+      <li className="grid grid-cols-[1rem_minmax(0,1fr)] gap-1.5 pb-1.5 last:pb-0">
+        <span className={cn('mt-0.5 flex size-4 items-center justify-center text-muted-foreground', eventTone(event))}>
           <EventIcon event={event} />
         </span>
         <MessageEvent event={event} onOpenFile={onOpenFile} worktreePath={worktreePath} />
@@ -493,15 +540,30 @@ export function AgentActivityTimeline({
   const timeline = buildAgentTimeline(events, state)
   const visible = timeline.filter((event) => event.kind !== 'technical')
   const summary = timelineSummary(timeline, state)
+  const plan = timelinePlan(timeline, state === 'completed')
   const sessions = buildThreadWorkSessions(visible, state === 'completed')
   return (
-    <section className="relative space-y-3" data-agent-timeline>
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-y border-border/55 bg-background/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-        <ListChecks className="size-4 text-muted-foreground" />
-        <strong className="text-xs">Activity</strong>
-        <span className="text-xs text-muted-foreground">
-          {summary.visible} updates{summary.actions ? ` · ${summary.actions} actions` : ''}
+    <section className="group/timeline relative space-y-2" data-agent-timeline>
+      <header
+        className="sticky top-0 z-20 flex min-h-8 items-center gap-1.5 border-b border-border/45 bg-background/95 px-1 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/85"
+        aria-live="polite"
+      >
+        <ListChecks className="size-3.5 text-muted-foreground" />
+        <strong className="shrink-0 text-xs">Progress</strong>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {summary.active?.title || `${summary.visible} updates${summary.actions ? ` · ${summary.actions} actions` : ''}`}
         </span>
+        {plan.progress !== null ? (
+          <span className="hidden shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground sm:flex">
+            <span className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+              <span
+                className="block h-full rounded-full bg-primary transition-[width] duration-300"
+                style={{ width: `${plan.progress}%` }}
+              />
+            </span>
+            {plan.completed}/{plan.steps.length}
+          </span>
+        ) : null}
         {agentIsWorking(state) ? (
           <span className="ml-auto inline-flex items-center gap-1 text-xs text-blue-500">
             <Loader2 className="size-3 animate-spin" />
@@ -511,7 +573,7 @@ export function AgentActivityTimeline({
       </header>
       <div className="relative">
         <TurnRail sessions={sessions} />
-        <div className="space-y-5">
+        <div className="space-y-3">
           {sessions.map((session, index) => (
             <WorkSession key={session.key} session={session} index={index} onOpenFile={onOpenFile} worktreePath={worktreePath} />
           ))}
@@ -522,25 +584,71 @@ export function AgentActivityTimeline({
 }
 
 function TurnRail({ sessions }: { sessions: ThreadWorkSession[] }) {
+  const [activeTurn, setActiveTurn] = useState(0)
+
+  useEffect(() => {
+    let frame = 0
+    const updateActiveTurn = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const anchor = window.innerHeight * 0.3
+        const positions = sessions.map((_, index) => document.getElementById(`thread-turn-${index + 1}`)?.getBoundingClientRect().top)
+        const visibleIndex = positions.findLastIndex((top) => top !== undefined && top <= anchor)
+        setActiveTurn(Math.max(0, visibleIndex))
+      })
+    }
+
+    updateActiveTurn()
+    window.addEventListener('scroll', updateActiveTurn, true)
+    window.addEventListener('resize', updateActiveTurn)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', updateActiveTurn, true)
+      window.removeEventListener('resize', updateActiveTurn)
+    }
+  }, [sessions])
+
   if (sessions.length < 2) return null
   return (
-    <nav aria-label="Conversation turns" className="absolute right-full top-0 mr-3 hidden h-full w-8 lg:block">
-      <ol className="sticky top-14 flex flex-col items-center gap-1.5 rounded-full border bg-background/90 px-1 py-1.5 shadow-sm backdrop-blur">
-        {sessions.map((session, index) => (
-          <li key={session.key}>
-            <a
-              href={`#thread-turn-${index + 1}`}
-              className={cn(
-                'grid size-6 place-items-center rounded-full text-[10px] font-semibold transition-colors hover:bg-blue-500/15 hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                session.complete ? 'bg-muted text-muted-foreground' : 'bg-blue-500 text-white',
-              )}
-              title={`Jump to turn ${index + 1}${session.duration ? ` · ${session.duration}` : ''}`}
-              aria-label={`Jump to turn ${index + 1}`}
-            >
-              {index + 1}
-            </a>
-          </li>
-        ))}
+    <nav
+      aria-label="Conversation turns"
+      className="absolute right-full top-0 mr-2 hidden h-full w-5 opacity-0 transition-opacity group-hover/timeline:opacity-100 focus-within:opacity-100 lg:block"
+    >
+      <ol className="sticky top-14 flex flex-col items-end gap-0.5 py-1">
+        {sessions.map((session, index) => {
+          const message = session.trigger?.text.trim().replace(/\s+/g, ' ') || `Turn ${index + 1}`
+          const preview = message.length > 120 ? `${message.slice(0, 117)}…` : message
+          const active = index === activeTurn
+          return (
+            <li key={session.key}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={`#thread-turn-${index + 1}`}
+                    className="group/turn flex h-2.5 w-6 items-center justify-end rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`Jump to turn ${index + 1}: ${preview}`}
+                    aria-current={active ? 'location' : undefined}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'block h-0.5 w-2 rounded-full transition-[width,background-color,opacity] group-hover/turn:w-3 group-hover/turn:bg-primary group-hover/turn:opacity-100',
+                        active
+                          ? 'w-3 bg-primary opacity-100'
+                          : session.complete
+                            ? 'bg-muted-foreground/40 opacity-80'
+                            : 'w-2.5 bg-primary opacity-70',
+                      )}
+                    />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="left" sideOffset={6} className="max-w-64 text-left leading-relaxed">
+                  <span className="line-clamp-3">{preview}</span>
+                </TooltipContent>
+              </Tooltip>
+            </li>
+          )
+        })}
       </ol>
     </nav>
   )

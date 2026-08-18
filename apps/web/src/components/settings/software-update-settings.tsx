@@ -4,12 +4,12 @@ import { Check, Copy, Download, ExternalLink, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
-import { api } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import { desktopBridge } from '../../lib/desktop-bridge'
 
-export function SoftwareUpdateSettings() {
+export function SoftwareUpdateSettings({ backendId }: { backendId: string }) {
   const bridge = desktopBridge()
-  return bridge ? <DesktopUpdateSettings bridge={bridge} /> : <ServerUpdateSettings />
+  return bridge ? <DesktopUpdateSettings bridge={bridge} /> : <ServerUpdateSettings backendId={backendId} />
 }
 
 function DesktopUpdateSettings({ bridge }: { bridge: VertexADEDesktopBridge }) {
@@ -65,13 +65,24 @@ function DesktopUpdateSettings({ bridge }: { bridge: VertexADEDesktopBridge }) {
   )
 }
 
-function ServerUpdateSettings() {
+function ServerUpdateSettings({ backendId }: { backendId: string }) {
   const [serverInfo, setServerInfo] = useState<ServerUpdateInfo | null>(null)
   const [showInstructions, setShowInstructions] = useState(false)
 
   useEffect(() => {
-    void api<ServerUpdateInfo>('/api/software-update').then(setServerInfo).catch(showError)
-  }, [])
+    let current = true
+    setServerInfo(null)
+    void backendApi<ServerUpdateInfo>(backendId, '/api/software-update')
+      .then((value) => {
+        if (current) setServerInfo(value)
+      })
+      .catch((error) => {
+        if (current) showError(error)
+      })
+    return () => {
+      current = false
+    }
+  }, [backendId])
 
   async function copyCommand() {
     if (!serverInfo) return

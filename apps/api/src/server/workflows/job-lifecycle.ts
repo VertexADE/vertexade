@@ -86,6 +86,7 @@ export class JobLifecycle {
         exitCode: null,
         latestActivity: options.activity ?? sql`${jobs.latestActivity}`,
         activityAt: sql`CURRENT_TIMESTAMP`,
+        turnStartedAt: sql`CURRENT_TIMESTAMP`,
         finishedAt: null,
       })
       .where(eq(jobs.id, jobId))

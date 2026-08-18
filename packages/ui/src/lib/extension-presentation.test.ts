@@ -1,14 +1,20 @@
-import { describe, expect, it } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Blocks } from 'lucide-react'
 import {
   extensionAccent,
   extensionBrowserAssetSource,
+  fetchExtensionIconAsset,
   extensionIcon,
   extensionIconSource,
   extensionPresentation,
 } from './extension-presentation'
+import { browserPairedServersHeaderName } from './browser-paired-servers'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('extension presentation', () => {
   it('resolves the icon declared by the extension catalog', () => {
@@ -33,18 +39,36 @@ describe('extension presentation', () => {
     expect(extensionBrowserAssetSource('https://images.example.test/ada.png', 'team')).toBe('https://images.example.test/ada.png')
   })
 
-  it('renders the extension-owned vector asset without a hardcoded icon registry', () => {
+  it('does not load extension assets through an image request that cannot carry pairing headers', () => {
     const Icon = extensionIcon({ asset: 'assets/icon.svg' }, 'airtable')
     const markup = renderToStaticMarkup(createElement(Icon, { className: 'size-4' }))
-    expect(markup).toContain('href="/api/extensions/airtable/catalog-icon"')
-    expect(markup).toContain('brightness-0 dark:invert')
-    expect(markup).not.toContain('https://')
+    expect(markup).not.toContain('/api/extensions/airtable/catalog-icon')
+    expect(markup).toContain('data-extension-icon-loading="true"')
   })
 
-  it('renders a backend-scoped vector asset for a remote catalog', () => {
+  it('does not server-render a remote asset request without its browser credential', () => {
     const Icon = extensionIcon({ asset: 'assets/icon.svg' }, 'airtable', 'team')
     const markup = renderToStaticMarkup(createElement(Icon, { className: 'size-4' }))
-    expect(markup).toContain('href="/api/backends/team/extensions/airtable/catalog-icon"')
+    expect(markup).not.toContain('/api/backends/team/extensions/airtable/catalog-icon')
+  })
+
+  it('fetches icon assets with pairing metadata and rejects non-SVG responses', async () => {
+    const localStorage = {
+      getItem: () => JSON.stringify([{ id: 'team', name: 'Team', serviceUrl: 'https://team.test', namespace: 7, sessionToken: 'secret' }]),
+    }
+    vi.stubGlobal('localStorage', localStorage)
+    const request = vi.fn(async () => new Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }))
+    const asset = await fetchExtensionIconAsset('/api/backends/team/extensions/airtable/catalog-icon', request)
+    expect(asset).toBeInstanceOf(Blob)
+    expect(request).toHaveBeenCalledWith(
+      '/api/backends/team/extensions/airtable/catalog-icon',
+      expect.objectContaining({
+        headers: expect.objectContaining({ accept: 'image/svg+xml', [browserPairedServersHeaderName]: expect.any(String) }),
+      }),
+    )
+    await expect(
+      fetchExtensionIconAsset('/api/backends/team/extensions/broken/catalog-icon', async () => Response.json({ error: 'missing' })),
+    ).resolves.toBeNull()
   })
 
   it('returns the manifest accent with a safe default', () => {

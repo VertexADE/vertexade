@@ -8,6 +8,8 @@ import { orderedFollowUpMigration } from './ordered-follow-up-migration.ts'
 import { runContextMigration } from './run-context-migration.ts'
 import { localDirectoryMigration } from './local-directory-migration.ts'
 import { automationAgentResourcesMigration } from './automation-agent-resources-migration.ts'
+import { agentResourceOverridesMigration } from './agent-resource-overrides-migration.ts'
+import { threadMigrations } from './thread-migrations.ts'
 import { addColumn, columns, tableExists } from './migration-utils.ts'
 import type { Migration } from './migration.ts'
 
@@ -761,6 +763,8 @@ const migrations: Migration[] = [
     },
   },
   automationAgentResourcesMigration,
+  ...threadMigrations,
+  agentResourceOverridesMigration,
 ]
 
 export const dashboardSchemaVersion = migrations.at(-1)?.version || 0

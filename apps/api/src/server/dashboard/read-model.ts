@@ -238,11 +238,11 @@ export function threadSummaries(archive = 'all') {
     archive === 'all' ? sql`` : archive === 'archived' ? sql`AND j.archived_at IS NOT NULL` : sql`AND j.archived_at IS NULL`
   return db
     .all(sql`SELECT j.id,j.repo_id,j.pr_number,j.status,j.thread_id,j.worktree_path,j.session_cwd,
-    j.workspace_mode,j.head_sha,j.latest_activity,j.activity_at,j.created_at,j.finished_at,j.diff_additions,
+    j.workspace_mode,j.head_sha,j.latest_activity,j.activity_at,j.turn_started_at,j.created_at,j.finished_at,j.diff_additions,
     j.diff_deletions,j.input_questions,j.kind,j.source_job_id,
     COALESCE(j.task_title, CASE WHEN j.kind='review' AND p.title IS NOT NULL THEN 'Review PR #' || j.pr_number || ': ' || p.title END) AS task_title,
     j.branch_name,j.linked_pr_number,
-    j.linked_pr_url,j.archived_at,j.pr_merged_at,j.pr_closed_at,j.review_phase,j.review_phase_started_at,
+    j.linked_pr_url,j.archived_at,j.settled_at,j.snoozed_until,j.pr_merged_at,j.pr_closed_at,j.review_phase,j.review_phase_started_at,
     j.agent_model,j.agent_reasoning_effort,j.ephemeral,j.work_item_id,j.agent_id,j.subagent_integrated_at,r.full_name,
     r.source_kind AS repository_source_kind,
     CASE WHEN r.source_kind='directory' THEN r.workspace_strategy ELSE NULL END AS directory_workspace_strategy,

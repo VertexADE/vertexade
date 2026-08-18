@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AutomationAuditEvent, AutomationFlowRun, AutomationRecipe, CapabilityExecution } from '@vertexade/platform-contracts'
-import { Power, Workflow } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowUpRight, Loader2, Power, RefreshCw, TriangleAlert, Workflow } from 'lucide-react'
 import { AutomationImprovementApproval } from '@vertexade/ui/components/automation-improvement-approval'
 import { RecipeList, recipeStatusTone } from '@vertexade/ui/components/automation-recipe-list'
 import { Badge } from '@vertexade/ui/components/ui/badge'
@@ -85,7 +86,6 @@ function FlowRunCard({
           <strong className="block truncate text-xs">{flowRunName(run, recipeName)}</strong>
           <span className="text-xs text-muted-foreground">
             Flow #{run.id} · phase {run.currentPhase}/{run.phaseCount}
-            {flowThreadReference(run)}
           </span>
           <FlowRunError error={run.lastError} />
         </div>
@@ -94,6 +94,13 @@ function FlowRunCard({
             {awaitingApproval ? 'Awaiting approval' : run.status}
           </Badge>
           <span className="mt-1 block text-xs text-muted-foreground">{age(run.createdAt)}</span>
+          {run.threadJobId ? (
+            <Button asChild variant="ghost" size="xs" className="mt-1">
+              <Link to="/threads/$threadId" params={{ threadId: String(run.threadJobId) }}>
+                Thread #{run.threadJobId} <ArrowUpRight />
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </div>
       {awaitingApproval && <AutomationImprovementApproval run={run} busy={busy} onResolve={onResolve} />}
@@ -103,10 +110,6 @@ function FlowRunCard({
 
 function flowRunName(run: AutomationFlowRun, recipeName?: string) {
   return recipeName ?? `Automation #${run.recipeId}`
-}
-
-function flowThreadReference(run: AutomationFlowRun) {
-  return run.threadJobId ? ` · run #${run.threadJobId}` : ''
 }
 
 function FlowRunError({ error }: { error: string | null }) {
@@ -220,6 +223,7 @@ export function ExtensionAutomations({
     load: overview.load,
     runtime: overview.runtime,
     setRuntime: overview.setRuntime,
+    onSaved: () => selectView('recipes'),
   })
 
   return (
@@ -283,27 +287,53 @@ function AutomationWorkspace({
         recipeCount={recipes.length}
         runCount={runs.length}
       />
-      <AutomationRuntimeBanner embedded={embedded} runtime={runtime} busy={busy} onToggle={() => void toggleRuntime()} />
-      <AutomationViewContent
-        activeView={activeView}
-        actions={actions}
-        auditEvents={auditEvents}
-        choices={choices}
-        conditionFields={conditionFields}
-        draftState={draftState}
-        embedded={embedded}
-        executions={executions}
-        recipeNames={recipeNames}
-        recipes={recipes}
-        repositories={repositories}
-        templates={templates}
-        trigger={trigger}
-        triggerNames={triggerNames}
-        triggers={triggers}
-        visibleRuns={visibleRuns}
-      />
+      <AutomationOverviewState overview={overview} />
+      {overview.ready ? (
+        <>
+          <AutomationRuntimeBanner embedded={embedded} runtime={runtime} busy={busy} onToggle={() => void toggleRuntime()} />
+          <AutomationViewContent
+            activeView={activeView}
+            actions={actions}
+            auditEvents={auditEvents}
+            choices={choices}
+            conditionFields={conditionFields}
+            draftState={draftState}
+            embedded={embedded}
+            executions={executions}
+            recipeNames={recipeNames}
+            recipes={recipes}
+            repositories={repositories}
+            templates={templates}
+            trigger={trigger}
+            triggerNames={triggerNames}
+            triggers={triggers}
+            visibleRuns={visibleRuns}
+          />
+        </>
+      ) : null}
     </Card>
   )
+}
+
+function AutomationOverviewState({ overview }: { overview: ReturnType<typeof useAutomationOverview> }) {
+  if (overview.ready && !overview.error) return null
+  if (overview.error)
+    return (
+      <div className="flex items-center gap-2 border-b border-destructive/25 bg-destructive/[.05] px-3 py-2 text-xs">
+        <TriangleAlert className="size-4 shrink-0 text-destructive" />
+        <span className="min-w-0 flex-1 truncate">{overview.error.message}</span>
+        <Button type="button" variant="outline" size="xs" disabled={overview.loading} onClick={() => void overview.load()}>
+          <RefreshCw className={overview.loading ? 'animate-spin' : ''} /> Retry
+        </Button>
+      </div>
+    )
+  if (overview.loading)
+    return (
+      <div className="flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" /> Loading automation workspace…
+      </div>
+    )
+  return null
 }
 
 function AutomationHeader({

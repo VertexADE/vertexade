@@ -35,7 +35,7 @@ describe('VertexADE sub-agent MCP server', () => {
       protocolVersion: '2025-06-18',
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'vertexade-subagents' },
-      instructions: expect.stringMatching(/every collaboration mode, including Default mode.*prefer form for questionnaires/i),
+      instructions: expect.stringMatching(/every collaboration mode, including Default mode.*MUST use the form tool.*two or more/i),
     })
   })
 
@@ -46,7 +46,7 @@ describe('VertexADE sub-agent MCP server', () => {
     }
     expect(listed.tools.map(({ name }) => name)).toEqual(['form'])
     expect(listed.tools[0]?.description).toMatch(/available in every collaboration mode, including Default mode/i)
-    expect(listed.tools[0]?.description).toMatch(/Prefer it over a plain chat questionnaire/i)
+    expect(listed.tools[0]?.description).toMatch(/MUST use it when asking two or more questions/i)
   })
 
   it('supports modern stateless discovery and MCP App resources', async () => {
@@ -128,12 +128,58 @@ describe('VertexADE sub-agent MCP server', () => {
         method: 'tools/call',
         params: {
           name: 'form',
-          arguments: { title: 'Release', fields: [] },
+          arguments: {
+            title: 'Release',
+            fields: [{ id: 'channel', label: 'Channel', type: 'select', options: [{ label: 'Stable', value: 'stable' }] }],
+          },
           inputResponses: { form: { action: 'accept', content: { channel: 'stable' } } },
           _meta: meta,
         },
       }),
-    ).resolves.toMatchObject({ resultType: 'complete', structuredContent: { channel: 'stable' } })
+    ).resolves.toMatchObject({
+      resultType: 'complete',
+      structuredContent: { status: 'submitted', markdown: '## Release\n\n- **Channel:** stable' },
+    })
+  })
+
+  it('maps typed Vertex Form fields to matching elicitation schema types and formats', async () => {
+    const result = await handleSubagentMcpRequest({
+      jsonrpc: '2.0',
+      id: 16,
+      method: 'tools/call',
+      params: {
+        name: 'form',
+        arguments: {
+          title: 'Delivery',
+          fields: [
+            { id: 'count', label: 'Count', type: 'number' },
+            { id: 'due', label: 'Due date', type: 'date' },
+            { id: 'contact', label: 'Contact', type: 'email' },
+            { id: 'target', label: 'Target', type: 'url' },
+            { id: 'notes', label: 'Notes', type: 'textarea' },
+          ],
+        },
+        _meta: { 'io.modelcontextprotocol/protocolVersion': modernProtocolVersion },
+      },
+    })
+
+    expect(result).toMatchObject({
+      inputRequests: {
+        form: {
+          params: {
+            requestedSchema: {
+              properties: {
+                count: { type: 'number' },
+                due: { format: 'date' },
+                contact: { format: 'email' },
+                target: { format: 'uri' },
+                notes: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    })
   })
 
   it('keeps legacy form requests open without a fixed-duration timeout', async () => {

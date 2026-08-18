@@ -112,6 +112,9 @@ function normalizeTarget(candidate: unknown, index: number): GitHubDeploymentTar
 }
 
 export function defaultGitHubDeploymentTargets(environment: NodeJS.ProcessEnv = process.env): GitHubDeploymentTargetConfiguration[] {
+  const repository = String(environment.DEPLOYMENT_REPOSITORY || '').trim()
+  const workflow = String(environment.DEPLOYMENT_WORKFLOW || '').trim()
+  if (!repository || !workflow) return []
   const environments = String(environment.DEPLOYMENT_ENVIRONMENTS || 'dev,acc,prd')
     .split(',')
     .map((item) => item.trim().toLowerCase())
@@ -121,21 +124,11 @@ export function defaultGitHubDeploymentTargets(environment: NodeJS.ProcessEnv = 
       id: 'default',
       label: 'Default deployment',
       enabled: true,
-      repository: environment.DEPLOYMENT_REPOSITORY || 'vertexade/vertexade',
-      workflow: environment.DEPLOYMENT_WORKFLOW || 'monorepo.yml',
+      repository,
+      workflow,
       branch: environment.DEPLOYMENT_BRANCH || 'main',
       event: environment.DEPLOYMENT_EVENT || 'push',
-      services: String(
-        environment.DEPLOYMENT_SERVICES ||
-          [
-            'availability-service',
-            'booking-service',
-            'master-data-service',
-            'site-access-service',
-            'tridens-integration',
-            'unified-api',
-          ].join(','),
-      )
+      services: String(environment.DEPLOYMENT_SERVICES || '')
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean),

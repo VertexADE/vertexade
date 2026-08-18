@@ -48,9 +48,10 @@ describe('automation recipe projections', () => {
 
   it('separates approval runs from history without changing source order', () => {
     const runs = [
-      { id: 1, improvementApprovalStatus: 'pending' },
-      { id: 2, improvementApprovalStatus: 'approved' },
-      { id: 3, improvementApprovalStatus: null },
+      { id: 1, improvementApprovalStatus: 'pending', status: 'running' },
+      { id: 2, improvementApprovalStatus: 'approved', status: 'succeeded' },
+      { id: 3, improvementApprovalStatus: null, status: 'failed' },
+      { id: 4, improvementApprovalStatus: null, status: 'running' },
     ] as AutomationFlowRun[]
     expect(visibleAutomationRuns(runs, 'approval').map(({ id }) => id)).toEqual([1])
     expect(visibleAutomationRuns(runs, 'history').map(({ id }) => id)).toEqual([2, 3])

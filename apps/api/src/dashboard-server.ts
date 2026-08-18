@@ -99,7 +99,7 @@ import { agentThreadContext, mergeAgentThreadContext } from './server/agents/thr
 import { AgentResourceService, applyCustomAgentPrompt, applySkillInstructions } from './server/agents/resources.ts'
 import { createAgentResourceRoutes } from './server/agents/resource-routes.ts'
 import { CustomAgentSynchronizer } from './server/agents/custom-agents.ts'
-import { SubagentHarness } from './server/agents/subagent-harness.ts'
+import { createVertexMcpIntegration, type VertexMcpIntegration } from './server/agents/vertex-mcp-integration.ts'
 import { createAgentThreadSpawner } from './server/agents/agent-thread-spawner.ts'
 import { createSubagentWorkspace, integrateSubagentWorkspace } from './server/agents/subagent-workspace.ts'
 import { createReadOnlyContentGenerator } from './server/agents/content-generation.ts'
@@ -224,7 +224,7 @@ let agents: AgentRegistry
 let agentProvider: string
 let agent: Readonly<Agent>
 let agentResources: AgentResourceService
-let subagentHarness: SubagentHarness
+let vertexMcpIntegration: VertexMcpIntegration
 let work: WorkService
 let workMemory: WorkMemoryService
 let workCleanup: ReturnType<typeof createWorkCleanup>
@@ -586,13 +586,12 @@ async function resolveAgentLaunch(workItemId, prompt, agentId = agentLaunchConte
     resourceSummary: { skills: resources.skills.map((skill) => skill.name), mcpServers: resources.mcpServers.map((server) => server.name) },
   }
 }
-subagentHarness = new SubagentHarness({
+vertexMcpIntegration = createVertexMcpIntegration({
   database: db,
   agents,
   activeJobs,
   cancellingJobs,
   logsRoot: LOGS,
-  apiUrl: INTERNAL_API_URL,
   notify: notifyClients,
   resolveLaunch: resolveAgentLaunch,
   createWorkspace: (parent) =>
@@ -606,6 +605,7 @@ subagentHarness = new SubagentHarness({
   discardWorkspace: async () => undefined,
   integrateWorkspace: (parent, child) => integrateSubagentWorkspace(parent, child, { run }),
   startChild: (options) => startMonitoredJob(options),
+  apiUrl: INTERNAL_API_URL,
 })
 const agentLogPath = (workItem, repository, suffix) => createAgentLogPath(LOGS, workItem, repository, suffix)
 const workspaceRoutes = createWorkspaceRoutes({
@@ -647,7 +647,7 @@ const spawnAgentThread = createAgentThreadSpawner({
   defaultAgentId: agentProvider,
   launchContext: agentLaunchContext,
   localize: localizeAgentPrompt,
-  decorate: (jobId, options) => subagentHarness.decorateLaunch(jobId, options),
+  decorate: (jobId, options) => vertexMcpIntegration.decorateLaunch(jobId, options),
   resolveCommand: (command) => systemConfiguration.tool(command),
   tools: () => systemConfiguration.read().tools,
   environment: (cwd, jobId) => repositoryCredentialEnvironment(db, githubCredentialsForRepository, cwd, jobId),
@@ -788,7 +788,7 @@ export const handleDashboardRequest = createDashboardRequestHandler({
   agentProvider,
   launchContext: agentLaunchContext,
   events: dashboardEvents,
-  subagentDispatch: (request) => subagentHarness.dispatch(request),
+  subagentDispatch: (request) => vertexMcpIntegration.dispatch(request),
   coreRouters: [
     platformManagementRoutes,
     capabilityRoutes,

@@ -20,4 +20,14 @@ describe('agent form requests', () => {
     expect(cancelFormForJob(42, 'Cancelled by the user')).toBe(true)
     await expect(pending).resolves.toEqual({ status: 'cancelled', reason: 'Cancelled by the user' })
   })
+
+  it('removes a pending form when its HTTP request is aborted', async () => {
+    const controller = new AbortController()
+    const pending = waitForFormResolution('form:aborted', 43, controller.signal)
+
+    controller.abort()
+
+    await expect(pending).resolves.toEqual({ status: 'cancelled', reason: 'The agent stopped waiting for form input' })
+    expect(cancelFormForJob(43, 'Too late')).toBe(false)
+  })
 })

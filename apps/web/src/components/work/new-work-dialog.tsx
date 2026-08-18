@@ -28,9 +28,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@vertexade/ui/components/ui/input'
 import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { Label } from '@vertexade/ui/components/ui/label'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@vertexade/ui/components/ui/field'
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@vertexade/ui/components/ui/field'
 import { Popover, PopoverContent, PopoverTrigger } from '@vertexade/ui/components/ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { SegmentedControl, SegmentedControlItem } from '@vertexade/ui/components/ui/segmented-control'
 import type { WorkBoardData, WorkItem } from '@vertexade/ui/lib/dashboard-types'
 
@@ -50,11 +50,11 @@ export function NewWorkDialog({
   initialStartThread?: boolean
 }) {
   const [step, setStep] = useState(0)
-  const [quick, setQuick] = useState(false)
+  const [quick, setQuick] = useState(true)
   useEffect(() => {
     if (open) {
       setStep(0)
-      setQuick(false)
+      setQuick(true)
     }
   }, [open])
   // fallow-ignore-next-line code-duplication -- the hook's named return contract is intentionally destructured at its single consumer.
@@ -84,15 +84,19 @@ export function NewWorkDialog({
     resourceSelection,
     setResourceSelection,
     backends,
-    backendId,
-    setBackendId,
+    unifiedRepositories,
+    capableBackends,
+    discoveringCapabilities,
+    targetBackendIds,
+    primaryBackendId,
+    toggleTargetBackend,
     generateTitle,
     addRepository,
     addLocalFolder,
     submit,
   } = useNewWorkDialog({ open, onOpenChange, data, onCreated, initialStartThread })
-  const targetRepositories = data.repositories.filter((repository) => !repository.backend_id || repository.backend_id === backendId)
-  const selectedRepositoryNames = data.repositories
+  const targetRepositories = unifiedRepositories
+  const selectedRepositoryNames = unifiedRepositories
     .filter((repository) => repositories.includes(repository.id))
     .map((repository) => repository.full_name.split('/').at(-1) || repository.full_name)
   const selectedRepositories = targetRepositories.filter((repository) => repositories.includes(repository.id))
@@ -101,9 +105,9 @@ export function NewWorkDialog({
     selectedRepositories.every((repository) => repository.source_kind !== 'directory' && repository.source_kind !== 'workspace')
   const launchSummary = startThread
     ? selectedRepositoryNames.length
-      ? `Start now · ${selectedRepositoryNames.join(', ')}`
-      : 'Start in a managed general workspace'
-    : 'Add to Work · start later'
+      ? `Start now · ${selectedRepositoryNames.join(', ')} · ${targetBackendIds.length} ${targetBackendIds.length === 1 ? 'server' : 'servers'}`
+      : `Start in a managed general workspace · ${targetBackendIds.length} ${targetBackendIds.length === 1 ? 'server' : 'servers'}`
+    : `Add to Work on ${targetBackendIds.length} ${targetBackendIds.length === 1 ? 'server' : 'servers'} · start later`
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-0 sm:max-w-[42rem]">
@@ -114,26 +118,7 @@ export function NewWorkDialog({
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
             <FieldGroup>
-              {backends.length > 1 && (
-                <Field className="rounded-xl border border-primary/25 bg-primary/[.04] p-3" aria-label="Target server">
-                  <FieldLabel htmlFor="work-backend">Server</FieldLabel>
-                  <Select value={backendId} onValueChange={setBackendId}>
-                    <SelectTrigger id="work-backend" className="w-full bg-background">
-                      <SelectValue placeholder="Choose a server" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {backends.map((backend) => (
-                        <SelectItem key={backend.id} value={backend.id} disabled={!backend.connected}>
-                          {backend.label}
-                          {backend.connected ? '' : ' · offline'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FieldDescription>Owns this Work item, its filesystem, agents, extensions, and every resulting thread.</FieldDescription>
-                </Field>
-              )}
-              <nav className="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1" aria-label="Create Work progress">
+              <nav className={quick ? 'hidden' : 'grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1'} aria-label="Create Work progress">
                 {['Intent', 'Context', 'Agent'].map((label, index) => (
                   <button
                     key={label}
@@ -149,7 +134,16 @@ export function NewWorkDialog({
                   </button>
                 ))}
               </nav>
-              <Button type="button" variant={quick ? 'default' : 'outline'} size="sm" onClick={() => setQuick((value) => !value)}>
+              <Button
+                type="button"
+                variant={quick ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  const next = !quick
+                  setQuick(next)
+                  if (next) setStartThread(true)
+                }}
+              >
                 {quick ? 'Use guided steps' : 'Quick start'}
               </Button>
               <Field aria-labelledby="work-outcome" className={step === 0 || quick ? '' : 'hidden'}>
@@ -168,26 +162,36 @@ export function NewWorkDialog({
                 <FieldDescription>One sentence is enough. The rest is optional.</FieldDescription>
               </Field>
 
+              {quick && startThread && (
+                <section className="rounded-lg border bg-muted/[.06] p-2.5" aria-label="Quick agent setup">
+                  <AgentOptionsPicker backendId={primaryBackendId} fields="essentials" />
+                </section>
+              )}
+
               <div className={step === 1 || quick ? 'contents' : 'hidden'}>
-                {startThread && (
-                  <Field aria-label="Agent workspace">
-                    <RepositoryChooser
-                      repositories={targetRepositories}
-                      selected={repositories}
-                      backendId={backendId}
-                      onChange={(ids) => setRepositories(quick ? ids.slice(-1) : ids)}
-                      onAdd={async (repository) => {
-                        const id = await addRepository(repository)
-                        if (quick) setRepositories([id])
-                      }}
-                      onAddLocal={async (input) => {
-                        const id = await addLocalFolder(input)
-                        if (quick) setRepositories([id])
-                      }}
-                      backendName={backends.find((backend) => backend.id === backendId)?.label || 'server'}
-                    />
-                  </Field>
-                )}
+                <Field aria-label="Work scope">
+                  <RepositoryChooser
+                    repositories={targetRepositories}
+                    selected={repositories}
+                    backendId={primaryBackendId}
+                    onChange={(ids) => setRepositories(quick ? ids.slice(-1) : ids)}
+                    onAdd={async (repository) => {
+                      const id = await addRepository(repository)
+                      if (quick && id !== null) setRepositories([id])
+                    }}
+                    onAddLocal={async (input) => {
+                      const id = await addLocalFolder(input)
+                      if (quick && id !== null) setRepositories([id])
+                    }}
+                    backendName={backends.find((backend) => backend.id === primaryBackendId)?.label || 'server'}
+                  />
+                  <WorkTargetServers
+                    backends={capableBackends}
+                    discovering={discoveringCapabilities}
+                    selected={targetBackendIds}
+                    onChange={toggleTargetBackend}
+                  />
+                </Field>
 
                 <details open className={quick ? 'hidden' : 'group rounded-xl border bg-muted/[.08]'}>
                   <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
@@ -213,7 +217,11 @@ export function NewWorkDialog({
 
               <div className={step === 2 || quick ? 'contents' : 'hidden'}>
                 <section
-                  className="grid gap-2 rounded-lg border bg-muted/[.06] p-2.5 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center"
+                  className={
+                    quick
+                      ? 'hidden'
+                      : 'grid gap-2 rounded-lg border bg-muted/[.06] p-2.5 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center'
+                  }
                   aria-labelledby="work-start-mode"
                 >
                   <div className="min-w-0">
@@ -281,7 +289,7 @@ export function NewWorkDialog({
                   </div>
                 </details>
 
-                <details open className="group rounded-xl border bg-muted/[.08]">
+                <details open className={quick ? 'hidden' : 'group rounded-xl border bg-muted/[.08]'}>
                   <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3">
                     <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/50">
                       <Settings2 className="size-4 text-muted-foreground" />
@@ -295,9 +303,9 @@ export function NewWorkDialog({
                   <div className="space-y-4 border-t p-3">
                     {startThread && (
                       <section className="space-y-4 rounded-lg border bg-background/50 p-3" aria-label="Agent and delivery setup">
-                        <AgentOptionsPicker backendId={backendId} />
+                        <AgentOptionsPicker backendId={primaryBackendId} />
                         <AgentResourcePicker
-                          backendId={backendId}
+                          backendId={primaryBackendId}
                           value={resourceSelection || emptyAgentResourceSelection}
                           onChange={setResourceSelection}
                         />
@@ -330,9 +338,11 @@ export function NewWorkDialog({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="implementation">Implementation</SelectItem>
-                            <SelectItem value="investigation">Investigation</SelectItem>
-                            <SelectItem value="operational">Operational</SelectItem>
+                            <SelectGroup>
+                              <SelectItem value="implementation">Implementation</SelectItem>
+                              <SelectItem value="investigation">Investigation</SelectItem>
+                              <SelectItem value="operational">Operational</SelectItem>
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                       </Label>
@@ -343,17 +353,19 @@ export function NewWorkDialog({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="urgent">Urgent</SelectItem>
+                            <SelectGroup>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="normal">Normal</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                              <SelectItem value="urgent">Urgent</SelectItem>
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                       </Label>
                     </div>
                     <div>
                       <h3 className="mb-2 text-xs font-medium">Source context</h3>
-                      <WorkReferencePicker backendId={backendId} selected={references} onChange={setReferences} />
+                      <WorkReferencePicker backendId={primaryBackendId} selected={references} onChange={setReferences} />
                     </div>
                     <SequentialWorkOption checked={splitWorkItem} onCheckedChange={setSplitWorkItem} />
                   </div>
@@ -377,15 +389,19 @@ export function NewWorkDialog({
                   Continue
                 </Button>
               ) : (
-                <Button disabled={busy || generatingTitle || uploadingImages || (!title.trim() && !description.trim())}>
+                <Button
+                  disabled={
+                    busy || generatingTitle || uploadingImages || !targetBackendIds.length || (!title.trim() && !description.trim())
+                  }
+                >
                   {busy || uploadingImages ? <Loader2 className="animate-spin" /> : startThread ? <Bot /> : <Plus />}
                   {uploadingImages
                     ? 'Adding images…'
                     : busy && !title.trim()
                       ? 'Creating outcome…'
                       : startThread
-                        ? `Start work${repositories.length > 1 ? ` in ${repositories.length} repositories` : ''}`
-                        : 'Create work'}
+                        ? `Start work${targetBackendIds.length > 1 ? ` on ${targetBackendIds.length} servers` : ''}`
+                        : `Create work${targetBackendIds.length > 1 ? ` on ${targetBackendIds.length} servers` : ''}`}
                 </Button>
               )}
             </div>
@@ -393,6 +409,47 @@ export function NewWorkDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function WorkTargetServers({
+  backends,
+  discovering,
+  selected,
+  onChange,
+}: {
+  backends: Array<{ id: string; label: string }>
+  discovering: boolean
+  selected: string[]
+  onChange(backendId: string, selected: boolean): void
+}) {
+  if (backends.length <= 1 && !discovering) return null
+  return (
+    <FieldSet className="rounded-xl border border-primary/25 bg-primary/[.04] p-3">
+      <FieldLegend variant="label">Run on</FieldLegend>
+      <FieldDescription>
+        Every selected server can access all chosen projects. Select several to initialize the Work item on each.
+      </FieldDescription>
+      {discovering && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+          <Loader2 className="animate-spin" /> Checking authenticated servers…
+        </p>
+      )}
+      <FieldGroup className="gap-2">
+        {backends.map((backend) => {
+          const checked = selected.includes(backend.id)
+          const id = `work-target-${backend.id}`
+          return (
+            <Field key={backend.id} orientation="horizontal">
+              <Checkbox id={id} checked={checked} onCheckedChange={(value) => onChange(backend.id, Boolean(value))} />
+              <FieldLabel htmlFor={id} className="font-normal">
+                {backend.label}
+              </FieldLabel>
+            </Field>
+          )
+        })}
+      </FieldGroup>
+    </FieldSet>
   )
 }
 
@@ -418,13 +475,25 @@ function RepositoryChooser({
   const [localName, setLocalName] = useState('')
   const [localStrategy, setLocalStrategy] = useState<'direct' | 'copy'>('direct')
   const [addingLocal, setAddingLocal] = useState(false)
+  const [sourceMode, setSourceMode] = useState<'general' | 'projects'>(() => (selected.length ? 'projects' : 'general'))
   const selectedRepositories = repositories.filter((repository) => selected.includes(repository.id))
   const names = selectedRepositories.map((repository) => repository.full_name)
-  const generalWorkspace = selected.length === 0
+  const generalWorkspace = sourceMode === 'general'
+  useEffect(() => {
+    if (selected.length) setSourceMode('projects')
+  }, [selected.length])
   return (
     <div className="flex flex-col gap-2">
       <SegmentedControl className="grid w-full grid-cols-2" aria-label="Workspace source">
-        <SegmentedControlItem type="button" active={generalWorkspace} className="justify-center" onClick={() => onChange([])}>
+        <SegmentedControlItem
+          type="button"
+          active={generalWorkspace}
+          className="justify-center"
+          onClick={() => {
+            setSourceMode('general')
+            onChange([])
+          }}
+        >
           <Layers3 />
           General workspace
         </SegmentedControlItem>
@@ -433,6 +502,7 @@ function RepositoryChooser({
           active={!generalWorkspace}
           className="justify-center"
           onClick={() => {
+            setSourceMode('projects')
             if (!selected.length && repositories[0]) onChange([repositories[0].id])
           }}
         >
@@ -441,12 +511,12 @@ function RepositoryChooser({
         </SegmentedControlItem>
       </SegmentedControl>
       {generalWorkspace ? (
+        <FieldDescription>Use an empty managed folder for research, writing, planning, or other project-independent work.</FieldDescription>
+      ) : (
         <>
-          <FieldDescription>
-            Use an empty managed folder for research, writing, planning, or other project-independent work.
-          </FieldDescription>
           <RepositorySearchPicker
             backendId={backendId}
+            disabled={!backendId}
             added={repositories.map((repository) => repository.full_name)}
             onSelect={(repository) => onAdd(repository.id)}
           />
@@ -475,8 +545,10 @@ function RepositoryChooser({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="direct">Direct · live</SelectItem>
-                  <SelectItem value="copy">Copy · merge back</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="direct">Direct · live</SelectItem>
+                    <SelectItem value="copy">Copy · merge back</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               <Button
@@ -513,14 +585,6 @@ function RepositoryChooser({
             initialPath={localPath}
             onOpenChange={setBrowserOpen}
             onSelect={setLocalPath}
-          />
-        </>
-      ) : (
-        <>
-          <RepositorySearchPicker
-            backendId={backendId}
-            added={repositories.map((repository) => repository.full_name)}
-            onSelect={(repository) => onAdd(repository.id)}
           />
           <Popover>
             <PopoverTrigger asChild>

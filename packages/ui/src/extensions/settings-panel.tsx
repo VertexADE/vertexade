@@ -269,13 +269,16 @@ export function PortableSettingsPanel({
   module,
   settings,
   onChanged,
+  backendId,
 }: {
   module: ModuleCatalogEntry
   settings: PortableSettingsSurface
   onChanged(): void
+  backendId?: string
 }) {
   const confirmAction = useConfirm()
   const extension = useMemo(() => platformClient.extension(module.id), [module.id])
+  const requestOptions = useMemo(() => (backendId ? { headers: { 'x-vertexade-backend': backendId } } : undefined), [backendId])
   const [source, setSource] = useState<Record<string, unknown>>({})
   const [values, setValues] = useState<PortableSettingsValues>({})
   const [actionResults, setActionResults] = useState<Record<string, unknown>>({})
@@ -287,7 +290,7 @@ export function PortableSettingsPanel({
     setLoading(true)
     setError('')
     try {
-      const result = await extension.loadSettings<Record<string, unknown>>(settings)
+      const result = await extension.loadSettings<Record<string, unknown>>(settings, requestOptions)
       setSource(result)
       setValues(portableSettingsValues(result, settings))
     } catch (reason) {
@@ -295,7 +298,7 @@ export function PortableSettingsPanel({
     } finally {
       setLoading(false)
     }
-  }, [extension, settings])
+  }, [extension, requestOptions, settings])
 
   useEffect(() => {
     void load()
@@ -310,7 +313,7 @@ export function PortableSettingsPanel({
     }
     setBusy('submit')
     try {
-      await extension.saveSettings(settings, values)
+      await extension.saveSettings(settings, values, requestOptions)
       toast.success(settings.submit?.successMessage || 'Settings saved.')
       await load()
       onChanged()
@@ -327,7 +330,7 @@ export function PortableSettingsPanel({
     if (action.confirm && !(await confirmAction(action.confirm))) return
     setBusy(action.id)
     try {
-      const result = await extension.executeSettingsAction(settings, action, values)
+      const result = await extension.executeSettingsAction(settings, action, values, requestOptions)
       if (action.intent === 'discover') setActionResults((current) => ({ ...current, [action.id]: result }))
       else {
         await load()
@@ -446,12 +449,20 @@ export function PortableSettingsPanel({
   )
 }
 
-export function ExtensionSettingsPanel({ module, onChanged }: { module: ModuleCatalogEntry; onChanged(): void }) {
+export function ExtensionSettingsPanel({
+  module,
+  backendId,
+  onChanged,
+}: {
+  module: ModuleCatalogEntry
+  backendId?: string
+  onChanged(): void
+}) {
   if (!module.portable?.settings)
     return (
       <Card>
         <CardContent className="p-4 text-xs text-muted-foreground">This extension does not expose additional settings.</CardContent>
       </Card>
     )
-  return <PortableSettingsPanel module={module} settings={module.portable.settings} onChanged={onChanged} />
+  return <PortableSettingsPanel module={module} settings={module.portable.settings} backendId={backendId} onChanged={onChanged} />
 }

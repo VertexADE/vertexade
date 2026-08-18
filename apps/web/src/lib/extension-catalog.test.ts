@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test'
 import type { ModuleCatalogEntry } from '@vertexade/platform-contracts'
 
-import { extensionAvailableInView } from './extension-catalog'
+import type { BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
+import { extensionAvailableInView, extensionBackendConnection } from './extension-catalog'
 
 function extension(input: Partial<ModuleCatalogEntry> = {}): ModuleCatalogEntry {
   return {
@@ -30,5 +31,34 @@ describe('extension catalog views', () => {
 
     expect(extensionAvailableInView(available, 'installed')).toBe(false)
     expect(extensionAvailableInView(available, 'catalog')).toBe(true)
+  })
+
+  it('uses the catalog request itself as the current server connection result', () => {
+    const backend = {
+      id: 'studio',
+      label: 'Studio',
+      namespace: 1,
+      isDefault: false,
+      connected: false,
+      lastConnectedAt: null,
+      error: 'Earlier event stream failure',
+      apiPath: '/api/backends/studio',
+    } satisfies BackendDescriptor
+
+    expect(extensionBackendConnection(backend, null, '2026-08-18T10:00:00.000Z')).toMatchObject({
+      connected: true,
+      error: null,
+      lastConnectedAt: '2026-08-18T10:00:00.000Z',
+    })
+    expect(extensionBackendConnection(backend, 'Catalog request failed')).toMatchObject({
+      connected: false,
+      error: 'Catalog request failed',
+      lastConnectedAt: null,
+    })
+    expect(extensionBackendConnection(backend, '')).toMatchObject({
+      connected: false,
+      error: 'Extension catalog unavailable',
+      lastConnectedAt: null,
+    })
   })
 })

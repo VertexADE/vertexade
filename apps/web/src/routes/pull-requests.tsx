@@ -36,6 +36,7 @@ import {
 } from '../components/pull-requests/pull-request-queue-model'
 import { PullRequestDetailsWorkspace, PullRequestQueueWorkspace } from '../components/pull-requests/pull-request-workspaces'
 import { pullRequestThreads } from '../components/pull-requests/pull-request-thread-association'
+import { unifiedPullRequests } from '../components/pull-requests/unified-pull-requests'
 
 export const Route = createFileRoute('/pull-requests')({
   ssr: false,
@@ -73,13 +74,19 @@ function Dashboard() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const dashboard = useDashboardCache()
+  const pullRequests = useMemo(
+    () => unifiedPullRequests(dashboard.data.prs, dashboard.data.backends?.find((backend) => backend.isDefault)?.id),
+    [dashboard.data.backends, dashboard.data.prs],
+  )
+  const unifiedData = useMemo(() => ({ ...dashboard.data, prs: pullRequests }), [dashboard.data, pullRequests])
+  const unifiedDashboard = useMemo(() => ({ ...dashboard, data: unifiedData }), [dashboard, unifiedData])
   const dialogs = usePullRequestDialogs()
   const scmIdentity = useCurrentScmIdentity()
   const filters = usePullRequestFilterState(search, navigate, dashboard.data.repositories, scmIdentity.identity.status)
-  const selection = usePullRequestSelection(search, navigate, dashboard.data, useIsMobile())
-  const batch = usePullRequestBatchSelection(dashboard.data.prs)
+  const selection = usePullRequestSelection(search, navigate, unifiedData, useIsMobile())
+  const batch = usePullRequestBatchSelection(pullRequests)
   const projection = usePullRequestProjection(
-    dashboard.data,
+    unifiedData,
     filters.filters,
     filters.view,
     filters.limit,
@@ -92,7 +99,7 @@ function Dashboard() {
   const details = usePullRequestRefresh(dashboard.refresh)
   return (
     <PullRequestDashboardView
-      dashboard={dashboard}
+      dashboard={unifiedDashboard}
       dialogs={dialogs}
       filters={filters}
       selection={selection}
@@ -277,7 +284,10 @@ function selectedPullRequest(search: DashboardSearch, pullRequests: PullRequest[
   if (!search.repo || !search.pr) return null
   return (
     pullRequests.find(
-      (pr) => pr.full_name === search.repo && pr.number === search.pr && (!search.backend || pr.backend_id === search.backend),
+      (pr) =>
+        pr.full_name.toLowerCase() === search.repo?.toLowerCase() &&
+        pr.number === search.pr &&
+        (!search.backend || pr.backend_id === search.backend || pr.backend_aliases?.includes(search.backend)),
     ) || null
   )
 }
@@ -606,7 +616,9 @@ function SharedReviewDialogs({ dashboard, dialogs, selection }: DashboardViewPro
       setReviewPr={dialogs.setReviewPr}
       setHandoffJob={dialogs.setHandoffJob}
       onSubmitReview={(job) => {
-        const pr = dashboard.data.prs.find((item) => item.repo_id === job.repo_id && item.number === job.pr_number)
+        const pr = dashboard.data.prs.find(
+          (item) => item.number === job.pr_number && (item.repo_id === job.repo_id || item.full_name === job.full_name),
+        )
         if (!pr) return toast.error('The reviewed pull request is no longer available in this workspace')
         selection.openReviewDecision(pr)
       }}

@@ -4,6 +4,7 @@ import type { BackendAttributed, BackendDescriptor } from './backend-registry'
 export type Repository = BackendAttributed & {
   id: number
   full_name: string
+  clone_url?: string
   local_path: string
   source_kind: 'git' | 'directory' | 'workspace'
   workspace_strategy: 'worktree' | 'direct' | 'copy' | 'move'
@@ -11,6 +12,7 @@ export type Repository = BackendAttributed & {
 }
 
 export type PullRequest = BackendAttributed & {
+  backend_aliases?: string[]
   id: number
   repo_id: number
   full_name: string
@@ -70,6 +72,7 @@ export type Job = BackendAttributed & {
   head_sha: string | null
   latest_activity: string | null
   activity_at: string | null
+  turn_started_at?: string | null
   created_at: string
   finished_at: string | null
   diff_files: string | null
@@ -88,6 +91,8 @@ export type Job = BackendAttributed & {
   linked_pr_number: number | null
   linked_pr_url: string | null
   archived_at: string | null
+  settled_at?: string | null
+  snoozed_until?: string | null
   pr_merged_at: string | null
   pr_closed_at: string | null
   review_phase: 'details' | 'summary' | 'complete' | 'summary_failed' | null
@@ -228,7 +233,8 @@ export type WorkItem = BackendAttributed & {
 export type WorkBoardData = {
   items: WorkItem[]
   repositories: Array<
-    Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'> & Partial<Pick<Repository, 'source_kind' | 'workspace_strategy'>>
+    Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'> &
+      Partial<Pick<Repository, 'clone_url' | 'source_kind' | 'workspace_strategy'>>
   >
 }
 
@@ -250,7 +256,7 @@ export type {
 
 export type Preset = { id: number; name: string; prompt: string }
 export type HighlightRule = { id: number; text: string; color: string }
-export type Notification = {
+export type Notification = BackendAttributed & {
   id: number
   kind: string
   title: string
@@ -445,7 +451,7 @@ export type InputQuestion = {
   question: string
   isSecret?: boolean
   description?: string
-  type?: 'text' | 'select' | 'checkbox'
+  type?: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date' | 'email' | 'url' | 'password'
   required?: boolean
   multiline?: boolean
   formTitle?: string

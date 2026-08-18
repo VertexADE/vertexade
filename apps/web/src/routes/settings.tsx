@@ -1,10 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Bot,
   ArrowRight,
   BookOpen,
-  Braces,
   Container,
   FolderCog,
   Gauge,
@@ -13,47 +12,35 @@ import {
   Palette,
   RefreshCw,
   Search,
+  Server,
   Settings2,
   ShieldCheck,
   Sparkles,
   Smartphone,
   Wifi,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GlobalHighlights } from '@vertexade/ui/components/global-highlights'
-import {
-  emptySystemConfiguration,
-  PromptPolicySettings,
-  RuntimeSettings,
-  ToolPathSettings,
-  type SystemConfigurationValue,
-} from '@vertexade/ui/components/system-configuration-settings'
+import { emptySystemConfiguration, type SystemConfigurationValue } from '@vertexade/ui/components/system-configuration-settings'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
-import { AgentResourceSettings } from '@vertexade/ui/components/agent-resource-settings'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@vertexade/ui/components/ui/card'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
 import { SearchInput } from '@vertexade/ui/components/ui/search-input'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
 import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@vertexade/ui/components/ui/tabs'
-import { api, backendApi, isNotificationEvent, isPlatformApiError, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
+import { backendApi, isNotificationEvent, isPlatformApiError, subscribeToDashboardEvents } from '@vertexade/ui/lib/dashboard-api'
+import { loadBackendRegistry, resolveBackend, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
 import type { DashboardData, Repository } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
-import {
-  ContentGenerationDefaults,
-  Highlights,
-  Presets,
-  Repositories,
-  WorktreePreviewSettings,
-} from '../components/settings/settings-panels'
+import { Highlights, Repositories, WorktreePreviewSettings } from '../components/settings/settings-panels'
 import { SettingsGroup, SettingsPageHeader, SettingsSectionDivider } from '../components/settings/settings-shared'
 import type { ContentGenerationSettings, PreviewSettings, ThreadRuntimeDefaults } from '../components/settings/settings-types'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
-import { ThreadRuntimeDefaultSettings } from '../components/settings/settings-thread-runtime-defaults'
 import { ServerRuntimeSettings } from '../components/settings/server-runtime-settings'
 import { TestTargetSettings } from '../components/settings/test-target-settings'
 import { EvidencePolicySettings } from '../components/settings/evidence-policy-settings'
@@ -61,6 +48,7 @@ import { DesktopOnboardingSettings } from '../components/onboarding/desktop-onbo
 import { MobilePairingSettings } from '../components/settings/mobile-pairing-settings'
 import { BrowserPairingSettings } from '../components/settings/browser-pairing-settings'
 import { SoftwareUpdateSettings } from '../components/settings/software-update-settings'
+import { SettingsAgentSection } from '../components/settings/settings-agent-section'
 
 type SettingsSection = 'overview' | 'connectivity' | 'workspace' | 'agents' | 'appearance'
 const settingsSectionIds = new Set<SettingsSection>(['overview', 'connectivity', 'workspace', 'agents', 'appearance'])
@@ -71,7 +59,7 @@ const legacySettingsSections: Record<string, SettingsSection> = {
   runtime: 'agents',
 }
 type WorkspaceSettingsOverview = Pick<DashboardData, 'repositories' | 'presets' | 'highlights'>
-type SettingsSearch = { section?: SettingsSection; q?: string }
+type SettingsSearch = { section?: SettingsSection; q?: string; server?: string }
 
 function settingsSection(value: unknown): SettingsSection | undefined {
   const candidate = String(value || '')
@@ -83,11 +71,16 @@ function settingsQuery(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value.slice(0, 100) : undefined
 }
 
+function settingsServer(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value.slice(0, 100) : undefined
+}
+
 export const Route = createFileRoute('/settings')({
   ssr: false,
   validateSearch: (search: Record<string, unknown>): SettingsSearch => ({
     section: settingsSection(search.section),
     q: settingsQuery(search.q),
+    server: settingsServer(search.server),
   }),
   component: SettingsPage,
 })
@@ -152,12 +145,12 @@ const settingsGroups = [
 
 const settingsSectionClass = 'flex min-w-0 flex-col gap-5 [&_[data-slot=card]]:min-w-0'
 
-async function workspaceSettingsOverview(): Promise<WorkspaceSettingsOverview> {
+async function workspaceSettingsOverview(backendId: string): Promise<WorkspaceSettingsOverview> {
   try {
-    return await api<WorkspaceSettingsOverview>('/api/settings/workspace-overview')
+    return await backendApi<WorkspaceSettingsOverview>(backendId, '/api/settings/workspace-overview')
   } catch (error) {
     if (!isPlatformApiError(error) || error.status !== 404) throw error
-    const dashboard = await api<DashboardData>('/api/dashboard')
+    const dashboard = await backendApi<DashboardData>(backendId, '/api/dashboard')
     return {
       repositories: dashboard.repositories,
       presets: dashboard.presets,
@@ -179,6 +172,35 @@ function SettingsLoadError({ message, onRetry }: { message: string; onRetry(): v
         Try again
       </Button>
     </StatusPanel>
+  )
+}
+
+function SettingsServerSelect({
+  backends,
+  selected,
+  onChange,
+}: {
+  backends: BackendDescriptor[]
+  selected: BackendDescriptor | null
+  onChange(backendId: string): void
+}) {
+  return (
+    <Select value={selected?.id || ''} onValueChange={onChange}>
+      <SelectTrigger size="sm" aria-label="Settings server">
+        <Server data-icon="inline-start" />
+        <SelectValue placeholder="Choose server" />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectGroup>
+          {backends.map((backend) => (
+            <SelectItem key={backend.id} value={backend.id}>
+              {backend.label}
+              {backend.connected ? '' : ' · offline'}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -216,7 +238,15 @@ function SettingsShortcut({
   )
 }
 
-function SettingsOverview({ workspace, onNavigate }: { workspace: WorkspaceSettingsOverview; onNavigate(section: SettingsSection): void }) {
+function SettingsOverview({
+  workspace,
+  backendId,
+  onNavigate,
+}: {
+  workspace: WorkspaceSettingsOverview
+  backendId: string
+  onNavigate(section: SettingsSection): void
+}) {
   return (
     <section data-slot="settings-section" aria-labelledby="overview-settings" className={settingsSectionClass}>
       <SettingsPageHeader
@@ -281,7 +311,7 @@ function SettingsOverview({ workspace, onNavigate }: { workspace: WorkspaceSetti
         description="Update the signed desktop app or view safe, installation-specific server upgrade instructions."
         icon={RefreshCw}
       >
-        <SoftwareUpdateSettings />
+        <SoftwareUpdateSettings backendId={backendId} />
       </SettingsGroup>
       <SettingsSectionDivider />
       <SettingsGroup
@@ -333,9 +363,14 @@ function SettingsPage() {
     },
   })
   const [systemConfiguration, setSystemConfiguration] = useState<SystemConfigurationValue>(emptySystemConfiguration)
+  const [backends, setBackends] = useState<BackendDescriptor[]>([])
   const [loadError, setLoadError] = useState('')
+  const [loadedBackendId, setLoadedBackendId] = useState('')
+  const loadGeneration = useRef(0)
   const section = search.section || 'overview'
   const settingsQuery = search.q || ''
+  const selectedBackend = resolveBackend(backends, search.server)
+  const backendId = selectedBackend?.id || ''
   const updateSearch = useCallback(
     (patch: Partial<SettingsSearch>) =>
       void navigate({
@@ -345,27 +380,46 @@ function SettingsPage() {
       }),
     [navigate],
   )
+  useEffect(() => {
+    const refreshBackends = () => {
+      void loadBackendRegistry()
+        .then(({ backends: available }) => setBackends(available))
+        .catch((error) => {
+          const message = (error as Error).message
+          setLoadError(message)
+          toast.error(message)
+        })
+    }
+    refreshBackends()
+    window.addEventListener('vertexade:paired-servers', refreshBackends)
+    return () => window.removeEventListener('vertexade:paired-servers', refreshBackends)
+  }, [])
   const load = useCallback(async () => {
+    if (!backendId) return
+    const requestGeneration = ++loadGeneration.current
     setLoadError('')
     try {
-      const [previews, generation, system, threads, overview] = await Promise.all([
-        api<PreviewSettings>('/api/settings/worktree-previews'),
-        api<ContentGenerationSettings>('/api/settings/content-generation'),
-        api<SystemConfigurationValue>('/api/settings/system-configuration'),
-        api<ThreadRuntimeDefaults>('/api/settings/thread-runtime-defaults'),
-        workspaceSettingsOverview(),
+      const [previews, generatedContent, system, threads, overview] = await Promise.all([
+        backendApi<PreviewSettings>(backendId, '/api/settings/worktree-previews'),
+        backendApi<ContentGenerationSettings>(backendId, '/api/settings/content-generation'),
+        backendApi<SystemConfigurationValue>(backendId, '/api/settings/system-configuration'),
+        backendApi<ThreadRuntimeDefaults>(backendId, '/api/settings/thread-runtime-defaults'),
+        workspaceSettingsOverview(backendId),
       ])
+      if (requestGeneration !== loadGeneration.current) return
       setPreviewSettings(previews)
-      setContentGeneration(generation)
+      setContentGeneration(generatedContent)
       setSystemConfiguration(system)
       setThreadDefaults(threads)
       setWorkspace(overview)
+      setLoadedBackendId(backendId)
     } catch (error) {
+      if (requestGeneration !== loadGeneration.current) return
       const message = (error as Error).message
       setLoadError(message)
       toast.error(message)
     }
-  }, [])
+  }, [backendId])
   useEffect(() => {
     void load()
   }, [load])
@@ -382,10 +436,10 @@ function SettingsPage() {
 
   async function addRepository(
     input: { repository: string } | { local_path: string; name?: string; workspace_strategy?: string },
-    backendId?: string,
+    targetBackendId = backendId,
   ) {
     try {
-      const result = await backendApi<{ repo: Repository; open_prs: number }>(backendId, '/api/repositories', {
+      const result = await backendApi<{ repo: Repository; open_prs: number }>(targetBackendId, '/api/repositories', {
         method: 'POST',
         body: JSON.stringify(input),
       })
@@ -417,6 +471,11 @@ function SettingsPage() {
           className="mb-3 items-center pb-0 [&_[data-slot=page-header-content]]:xl:flex [&_[data-slot=page-header-content]]:xl:items-baseline [&_[data-slot=page-header-content]]:xl:gap-3 [&_[data-slot=page-title]]:text-xl [&_[data-slot=page-description]]:xl:mt-0"
           title="Settings"
           description="Workspace, agent, automation, and display defaults."
+          actions={
+            backends.length > 1 ? (
+              <SettingsServerSelect backends={backends} selected={selectedBackend} onChange={(server) => updateSearch({ server })} />
+            ) : undefined
+          }
         />
         {loadError && <SettingsLoadError message={loadError} onRetry={() => void load()} />}
         <Tabs
@@ -496,13 +555,33 @@ function SettingsPage() {
               </p>
             )}
           </aside>
-          {visibleSections.length ? (
+          {!selectedBackend ? (
+            <StatusPanel className="min-h-24">
+              <Server />
+              <StatusPanelContent>
+                <StatusPanelTitle>Connecting to settings</StatusPanelTitle>
+                <StatusPanelDescription>Reading the paired server registry…</StatusPanelDescription>
+              </StatusPanelContent>
+            </StatusPanel>
+          ) : loadedBackendId !== backendId ? (
+            <StatusPanel tone={loadError ? 'danger' : 'info'} className="min-h-24">
+              {loadError ? <Settings2 /> : <RefreshCw className="animate-spin" />}
+              <StatusPanelContent>
+                <StatusPanelTitle>
+                  {loadError ? `${selectedBackend.label} settings are unavailable` : `Loading ${selectedBackend.label}`}
+                </StatusPanelTitle>
+                <StatusPanelDescription>
+                  {loadError ? 'Retry after checking the server connection.' : 'Reading this server’s workspace and agent configuration…'}
+                </StatusPanelDescription>
+              </StatusPanelContent>
+            </StatusPanel>
+          ) : visibleSections.length ? (
             <>
               <TabsContent value="overview">
-                <SettingsOverview workspace={workspace} onNavigate={(next) => updateSearch({ section: next })} />
+                <SettingsOverview workspace={workspace} backendId={backendId} onNavigate={(next) => updateSearch({ section: next })} />
               </TabsContent>
               <TabsContent value="workspace">
-                <section data-slot="settings-section" aria-labelledby="workspace-settings" className={settingsSectionClass}>
+                <section key={backendId} data-slot="settings-section" aria-labelledby="workspace-settings" className={settingsSectionClass}>
                   <SettingsPageHeader
                     id="workspace-settings"
                     eyebrow="Workspace"
@@ -534,16 +613,7 @@ function SettingsPage() {
                     description="Expose isolated Work-item and pull-request worktrees behind a predictable wildcard domain."
                     icon={Container}
                   >
-                    <WorktreePreviewSettings settings={previewSettings} onSaved={setPreviewSettings} />
-                  </SettingsGroup>
-                  <SettingsSectionDivider />
-                  <SettingsGroup
-                    id="connectivity-browser-servers"
-                    title="Paired servers"
-                    description="Use one-time pairing links to add independent servers to this browser's unified workspace."
-                    icon={Network}
-                  >
-                    <BrowserPairingSettings />
+                    <WorktreePreviewSettings settings={previewSettings} onSaved={setPreviewSettings} backendId={backendId} />
                   </SettingsGroup>
                   <SettingsSectionDivider />
                   <SettingsGroup
@@ -552,7 +622,9 @@ function SettingsPage() {
                     description="Add GitHub repositories, synchronize pull requests, and configure repository-specific environments."
                     icon={FolderCog}
                   >
-                    <Repositories repositories={workspace.repositories} onAdd={addRepository} />
+                    {selectedBackend && (
+                      <Repositories repositories={workspace.repositories} backend={selectedBackend} onAdd={addRepository} />
+                    )}
                   </SettingsGroup>
                   <SettingsSectionDivider />
                   <SettingsGroup
@@ -561,13 +633,18 @@ function SettingsPage() {
                     description="Control executable test targets and the evidence required before a pull request is considered ready."
                     icon={ShieldCheck}
                   >
-                    <TestTargetSettings repositories={workspace.repositories} />
-                    <EvidencePolicySettings repositories={workspace.repositories} />
+                    <TestTargetSettings repositories={workspace.repositories} backendId={backendId} />
+                    <EvidencePolicySettings repositories={workspace.repositories} backendId={backendId} />
                   </SettingsGroup>
                 </section>
               </TabsContent>
               <TabsContent value="connectivity">
-                <section data-slot="settings-section" aria-labelledby="connectivity-settings" className={settingsSectionClass}>
+                <section
+                  key={backendId}
+                  data-slot="settings-section"
+                  aria-labelledby="connectivity-settings"
+                  className={settingsSectionClass}
+                >
                   <SettingsPageHeader
                     id="connectivity-settings"
                     eyebrow="Connectivity"
@@ -594,12 +671,21 @@ function SettingsPage() {
                     ]}
                   />
                   <SettingsGroup
+                    id="connectivity-browser-servers"
+                    title="VertexADE servers"
+                    description="See this server and every paired remote server as one live workspace."
+                    icon={Network}
+                  >
+                    <BrowserPairingSettings />
+                  </SettingsGroup>
+                  <SettingsSectionDivider />
+                  <SettingsGroup
                     id="connectivity-devices"
                     title="Mobile devices"
                     description="Create short-lived invitations and revoke each phone independently."
                     icon={Smartphone}
                   >
-                    <MobilePairingSettings />
+                    <MobilePairingSettings backendId={backendId} />
                   </SettingsGroup>
                   <SettingsSectionDivider />
                   <SettingsGroup
@@ -608,88 +694,30 @@ function SettingsPage() {
                     description="Expose the authenticated web listener to trusted LAN or Tailscale devices while keeping the backend API on loopback."
                     icon={Wifi}
                   >
-                    <ServerRuntimeSettings />
+                    <ServerRuntimeSettings backendId={backendId} />
                   </SettingsGroup>
                 </section>
               </TabsContent>
               <TabsContent value="agents">
-                <section data-slot="settings-section" aria-labelledby="agent-settings" className={settingsSectionClass}>
-                  <SettingsPageHeader
-                    id="agent-settings"
-                    eyebrow="Agents"
-                    title="Defaults & instructions"
-                    description="Choose safe model defaults, centralize workspace guidance, and define the runtime boundaries used by Work-item and review threads."
-                    icon={Gauge}
-                    badge="Workspace-wide"
-                    summary={[
-                      {
-                        label: 'Generated text',
-                        value: contentGeneration.model || contentGeneration.agentId || 'Not configured',
-                        detail: 'Read-only',
-                      },
-                      {
-                        label: 'Thread defaults',
-                        value: threadDefaults.workItem.agentId && threadDefaults.review.agentId ? 'Configured' : 'Incomplete',
-                        detail: 'Work + reviews',
-                      },
-                      {
-                        label: 'Prompt presets',
-                        value: String(workspace.presets.length),
-                        detail: 'Reusable',
-                      },
-                    ]}
-                  />
-                  <SettingsGroup
-                    id="agents-defaults"
-                    title="Execution defaults"
-                    description="Set the providers and models used when a workflow does not choose its own runtime."
-                    icon={Gauge}
-                  >
-                    <ContentGenerationDefaults
-                      key={`${contentGeneration.agentId}:${contentGeneration.model}:${contentGeneration.reasoningEffort}`}
-                      value={contentGeneration}
-                      onSaved={setContentGeneration}
-                    />
-                    <ThreadRuntimeDefaultSettings
-                      key={`${threadDefaults.workItem.agentId}:${threadDefaults.review.agentId}`}
-                      value={threadDefaults}
-                      onSaved={setThreadDefaults}
-                    />
-                  </SettingsGroup>
-                  <SettingsSectionDivider />
-                  <SettingsGroup
-                    id="agents-instructions"
-                    title="Instructions"
-                    description="Maintain trusted workspace policy and reusable prompts separately from model selection."
-                    icon={Braces}
-                  >
-                    <PromptPolicySettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                    <Presets presets={workspace.presets} />
-                  </SettingsGroup>
-                  <SettingsSectionDivider />
-                  <SettingsGroup
-                    id="agents-custom"
-                    title="Custom agents"
-                    description="Create reusable agent presets. Skills and MCP servers are managed under Extensions."
-                    icon={Bot}
-                  >
-                    <AgentResourceSettings section="agents" />
-                  </SettingsGroup>
-                  <SettingsSectionDivider />
-                  <SettingsGroup
-                    id="agents-runtime"
-                    title="Runtime & tools"
-                    description="Control executable discovery, retry behavior, concurrency, and automation limits."
-                    icon={Wrench}
-                    badge="Advanced"
-                  >
-                    <ToolPathSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                    <RuntimeSettings value={systemConfiguration} onSaved={setSystemConfiguration} />
-                  </SettingsGroup>
-                </section>
+                <SettingsAgentSection
+                  key={backendId}
+                  backendId={backendId}
+                  contentGeneration={contentGeneration}
+                  onContentGenerationSaved={setContentGeneration}
+                  presets={workspace.presets}
+                  systemConfiguration={systemConfiguration}
+                  onSystemConfigurationSaved={setSystemConfiguration}
+                  threadDefaults={threadDefaults}
+                  onThreadDefaultsSaved={setThreadDefaults}
+                />
               </TabsContent>
               <TabsContent value="appearance">
-                <section data-slot="settings-section" aria-labelledby="appearance-settings" className={settingsSectionClass}>
+                <section
+                  key={backendId}
+                  data-slot="settings-section"
+                  aria-labelledby="appearance-settings"
+                  className={settingsSectionClass}
+                >
                   <SettingsPageHeader
                     id="appearance-settings"
                     eyebrow="Personal"
@@ -730,7 +758,7 @@ function SettingsPage() {
                     description="Make important words, owners, or statuses visually distinct throughout manager screens."
                     icon={Sparkles}
                   >
-                    <Highlights rules={workspace.highlights} />
+                    <Highlights rules={workspace.highlights} backendId={backendId} />
                   </SettingsGroup>
                 </section>
               </TabsContent>

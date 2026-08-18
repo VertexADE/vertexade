@@ -9,11 +9,13 @@ import { useReactiveApi } from '@vertexade/ui/hooks/use-reactive-api'
 import {
   api,
   age,
+  backendApi,
   federationFailureMessage,
   isModuleCatalogEvent,
   isNotificationEvent,
   type FederatedResult,
 } from '@vertexade/ui/lib/dashboard-api'
+import { loadBackendRegistry } from '@vertexade/ui/lib/backend-registry'
 import type { Notification } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
@@ -79,16 +81,42 @@ function NotificationLinks({ item, presentation }: { item: Notification; present
   )
 }
 
-function presentationMap(catalog: ModuleCatalog) {
+function presentationMap(catalogs: Array<{ backendId: string; isDefault: boolean; catalog: ModuleCatalog }>) {
   return Object.fromEntries(
-    catalog.modules
-      .filter((module) => module.enabled && module.lifecycle !== 'failed')
-      .flatMap((module) =>
-        (module.ui?.notifications || []).map(
-          (notification) => [notification.kind, { ...notification, moduleId: module.id, moduleName: module.name }] as const,
+    catalogs.flatMap(({ backendId, isDefault, catalog }) =>
+      catalog.modules
+        .filter((module) => module.enabled && module.lifecycle !== 'failed')
+        .flatMap((module) =>
+          (module.ui?.notifications || []).flatMap((notification) => {
+            const presentation = {
+              ...notification,
+              to:
+                notification.to?.startsWith(`/extensions/${module.id}`) && !notification.to.includes('server=')
+                  ? `${notification.to}${notification.to.includes('?') ? '&' : '?'}server=${encodeURIComponent(backendId)}`
+                  : notification.to,
+              moduleId: module.id,
+              moduleName: module.name,
+            }
+            return [[`${backendId}:${notification.kind}`, presentation], ...(isDefault ? [[notification.kind, presentation]] : [])]
+          }),
         ),
-      ),
+    ),
   )
+}
+
+async function loadNotificationCenter() {
+  const [value, registry] = await Promise.all([api<NotificationList>('/api/notifications'), loadBackendRegistry()])
+  const outcomes = await Promise.allSettled(
+    registry.backends.map(async (backend) => ({
+      backendId: backend.id,
+      isDefault: backend.isDefault,
+      catalog: await backendApi<ModuleCatalog>(backend.id, '/api/modules'),
+    })),
+  )
+  return {
+    value,
+    catalogs: outcomes.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : [])),
+  }
 }
 
 function notificationAppearance(item: Notification, presentation?: NotificationPresentation) {
@@ -110,16 +138,16 @@ export function NotificationCenter() {
   const [dismissingId, setDismissingId] = useState<number | null>(null)
   const notifications = useReactiveApi({
     key: 'notifications-with-presentations',
-    load: () => Promise.all([api<NotificationList>('/api/notifications'), api<ModuleCatalog>('/api/modules')]),
+    load: loadNotificationCenter,
     accepts: (event) => isNotificationEvent(event) || isModuleCatalogEvent(event),
   })
 
   useEffect(() => {
     if (!notifications.data) return
-    const [value, catalog] = notifications.data
+    const { value, catalogs } = notifications.data
     setItems(value.notifications)
     setUnread(value.unread_count)
-    setPresentations(presentationMap(catalog))
+    setPresentations(presentationMap(catalogs))
   }, [notifications.data])
 
   async function markAllRead() {
@@ -232,7 +260,7 @@ export function NotificationCenter() {
         )}
         <div className="max-h-[min(32rem,70dvh)] overflow-y-auto">
           {items.slice(0, 8).map((item) => {
-            const presentation = presentations[item.kind]
+            const presentation = item.backend_id ? presentations[`${item.backend_id}:${item.kind}`] : presentations[item.kind]
             const { Icon, tone } = notificationAppearance(item, presentation)
             return (
               <article key={item.id} className={cn('group border-b p-3 last:border-0', !item.read_at && 'bg-blue-500/5')}>
