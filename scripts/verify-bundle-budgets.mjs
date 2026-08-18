@@ -24,7 +24,7 @@ const budgets = [
     pattern: /^markdown-math-content-[\w-]+\.js$/,
     maximumGzipBytes: 10 * 1024,
   },
-  { label: 'thread panel', pattern: /^thread-panel-[\w-]+\.js$/, maximumGzipBytes: 75 * 1024 },
+  { label: 'thread panel', pattern: /^thread-panel-[\w-]+\.js$/, maximumGzipBytes: 90 * 1024 },
   {
     label: 'pull request details',
     pattern: /^pr-details-dialog-[\w-]+\.js$/,

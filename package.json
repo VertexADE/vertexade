@@ -26,7 +26,7 @@
     "build:mobile": "pnpm --filter @vertexade/mobile export",
     "build:desktop": "pnpm --filter @vertexade/desktop dist",
     "build:staged": "VERTEXADE_WEB_OUTPUT_DIR=.output-next pnpm --filter @vertexade/web build && VERTEXADE_WEB_OUTPUT_DIR=.output-next pnpm verify:web-build",
-    "verify:web-build": "node scripts/verify-react-compiler.mjs && node scripts/verify-bundle-budgets.mjs",
+    "verify:web-build": "node scripts/verify-react-compiler.mjs && node scripts/verify-client-chunk-graph.mjs && node scripts/verify-bundle-budgets.mjs",
     "start": "concurrently --kill-others --names api,web \"pnpm start:api\" \"pnpm start:web\"",
     "start:api": "pnpm --filter @vertexade/api start",
     "start:web": "pnpm --filter @vertexade/web start",
