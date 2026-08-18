@@ -347,19 +347,18 @@ function requiredIterationPath(value: unknown) {
   return iterationPath
 }
 
-function requiredParentId(value: unknown, type: string) {
-  const parentId = Number(value || 0) || null
-  if (!parentId) {
-    throw new HttpError(type === 'Task' ? 'Choose the parent story' : 'Choose the parent feature', 400)
-  }
-  return parentId
+function requestedParentId(value: unknown, type: string) {
+  const parentId = Number(value || 0)
+  if (Number.isInteger(parentId) && parentId > 0) return parentId
+  if (type === 'Task') throw new HttpError('Choose the parent story', 400)
+  return undefined
 }
 
 function requestedAzureItem(input: Record<string, unknown>): WorkItemCreateInput {
   const type = supportedWorkItemType(input.type)
   const title = requiredWorkItemTitle(input.title)
   const iterationPath = requiredIterationPath(input.iteration_path)
-  const parentId = requiredParentId(input.parent_id, type)
+  const parentId = requestedParentId(input.parent_id, type)
 
   return {
     type,

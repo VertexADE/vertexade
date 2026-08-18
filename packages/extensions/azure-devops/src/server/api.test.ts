@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
-import { azurePortableGroupOrder, parseAzureStoryManifest, selectAzureIterationItems } from './api.ts'
+import type { ExtensionRoute } from '@vertexade/platform-contracts'
+import { azurePortableGroupOrder, parseAzureStoryManifest, registerAzureDevOpsApi, selectAzureIterationItems } from './api.ts'
 import { loadAzureBoardData } from './board.ts'
 import { AzureDevOpsClient, azureConfig } from './client.ts'
 
@@ -146,5 +147,61 @@ describe('Azure planning manifests', () => {
     const board = await loadAzureBoardData(provider, config, '')
 
     expect(board).toMatchObject({ configured: true, story_type: 'Issue', items: [], features: [] })
+    expect(board.portable_collection_actions[0].inputs).toContainEqual(
+      expect.objectContaining({
+        name: 'parent_id',
+        label: 'Parent feature or story (required for tasks)',
+      }),
+    )
+    expect(board.portable_collection_actions[0].inputs.find((input: { name: string }) => input.name === 'parent_id')).not.toHaveProperty(
+      'required',
+    )
+  })
+
+  it('creates a top-level Basic issue while still requiring a parent for tasks', async () => {
+    const routes: ExtensionRoute[] = []
+    const createWorkItem = vi.fn(async (input) => ({ id: 42, ...input }))
+    const config = azureConfig({ url: 'https://dev.azure.com/acme', project: 'Milence', pat: 'secret' })
+    const provider = {
+      id: 'azure-devops',
+      name: 'Azure DevOps',
+      normalizeConfig: azureConfig,
+      createClient: () => ({ createWorkItem }),
+    }
+    const host = {
+      settings: { read: () => config },
+      cache: { invalidate: vi.fn() },
+      events: { emit: vi.fn() },
+    }
+    registerAzureDevOpsApi(
+      { routes: { register: (route: ExtensionRoute) => routes.push(route) } } as never,
+      provider as never,
+      host as never,
+      {} as never,
+    )
+    const createItem = routes.find(({ method, path }) => method === 'POST' && path === '/items')!
+
+    const issueResponse = await createItem.handler(
+      new Request('http://local/items', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'Issue', title: 'Top-level issue', iteration_path: 'Milence\\Sprint 1' }),
+      }),
+      { moduleId: 'azure-devops', params: {}, signal: AbortSignal.timeout(1_000) },
+    )
+
+    expect(issueResponse.status).toBe(201)
+    expect(createWorkItem).toHaveBeenCalledWith(expect.objectContaining({ type: 'Issue', title: 'Top-level issue', parentId: undefined }))
+
+    await expect(
+      createItem.handler(
+        new Request('http://local/items', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'Task', title: 'Orphan task', iteration_path: 'Milence\\Sprint 1' }),
+        }),
+        { moduleId: 'azure-devops', params: {}, signal: AbortSignal.timeout(1_000) },
+      ),
+    ).rejects.toMatchObject({ message: 'Choose the parent story', status: 400 })
   })
 })

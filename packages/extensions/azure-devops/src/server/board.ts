@@ -425,9 +425,8 @@ export async function loadAzureBoardData(provider: AzureProvider, config: AzureC
           },
           {
             name: 'parent_id',
-            label: 'Parent feature or story',
+            label: 'Parent feature or story (required for tasks)',
             type: 'select',
-            required: true,
             optionsPath: 'portable_parents',
             optionValuePath: 'id',
             optionLabelPath: 'name',
