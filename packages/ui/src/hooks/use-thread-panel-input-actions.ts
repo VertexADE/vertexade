@@ -21,7 +21,7 @@ export function useThreadPanelInputActions(jobId: number | null, job: JobLog | n
     for (const question of questions) {
       const values =
         question.type === 'checkbox'
-          ? checkboxValues(selections[question.id] || [], custom[question.id])
+          ? checkboxAnswerValues(selections[question.id] || [], custom[question.id])
           : [answerValue(question.id, answers, custom)].filter(Boolean)
       if (question.required !== false && !values.length) return toast.error('Answer every required field')
       payload[question.id] = { answers: values }
@@ -50,10 +50,11 @@ export function useThreadPanelInputActions(jobId: number | null, job: JobLog | n
   return { answers, setAnswers, custom, setCustom, selections, setSelections, submitAnswers, cancelForm }
 }
 
-function checkboxValues(selections: string[], custom: string | undefined): string[] {
+export function checkboxAnswerValues(selections: string[], custom: string | undefined): string[] {
   const customAnswer = custom?.trim()
+  const includesOther = selections.includes('__other__')
   const selected = selections.filter((value) => value !== '__other__')
-  return customAnswer ? [...selected, customAnswer] : selected
+  return includesOther && customAnswer ? [...selected, customAnswer] : selected
 }
 
 function answerValue(questionId: string, answers: Record<string, string>, custom: Record<string, string>) {
