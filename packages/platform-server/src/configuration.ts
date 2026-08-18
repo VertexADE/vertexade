@@ -13,6 +13,11 @@ export function vertexDataDirectory(environment: NodeJS.ProcessEnv = process.env
   return environment.XDG_DATA_HOME ? join(resolve(environment.XDG_DATA_HOME), 'vertex-ade') : join(homedir(), '.vertex-ade')
 }
 
+export function vertexAgentPluginRoots(environment: NodeJS.ProcessEnv = process.env) {
+  const configured = commaSeparatedValues(environment.VERTEXADE_AGENT_PLUGIN_ROOTS).map((root) => resolve(root))
+  return configured.length ? configured : [homedir()]
+}
+
 export function vertexWorkItemDirectory(environment: NodeJS.ProcessEnv = process.env): string {
   return join(vertexDataDirectory(environment), 'work-items')
 }

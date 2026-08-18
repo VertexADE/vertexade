@@ -20,13 +20,14 @@ function elapsed(startValue: string | null, endValue: string | null) {
 }
 
 function mergeAction(start: TimelineEvent, finish: LogEvent): TimelineEvent {
+  const data = start.data && finish.data ? { started: start.data, completed: finish.data } : finish.data || start.data
   return {
     ...start,
     text: finish.text || start.text,
     status: finish.status || start.status,
     completed_at: finish.time,
     duration_ms: elapsed(start.time, finish.time),
-    data: start.data && finish.data ? { started: start.data, completed: finish.data } : finish.data || start.data,
+    data: start.data?.presentation === 'plain_assistant_message' ? { ...(data || {}), presentation: 'plain_assistant_message' } : data,
   }
 }
 

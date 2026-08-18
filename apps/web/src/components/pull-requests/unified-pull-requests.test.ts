@@ -57,7 +57,13 @@ describe('unified pull requests', () => {
       [remote, local],
     ])
       expect(unifiedPullRequests(input, 'local')).toEqual([
-        expect.objectContaining({ backend_id: 'local', repo_id: 1, auto_review_watch: 0, latest_agent_review_id: 1_000_003 }),
+        expect.objectContaining({
+          backend_id: 'local',
+          backend_aliases: ['local', 'remote'],
+          repo_id: 1,
+          auto_review_watch: 0,
+          latest_agent_review_id: 1_000_003,
+        }),
       ])
   })
 })

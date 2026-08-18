@@ -67,12 +67,14 @@ export function CustomAgentSettings({
   mcpServers,
   reload,
   request = api,
+  backendId,
 }: {
   profiles: CustomAgentProfile[]
   skills: Resource[]
   mcpServers: Resource[]
   reload(): void
   request?: typeof api
+  backendId?: string
 }) {
   const confirmAction = useConfirm()
   const [editing, setEditing] = useState<CustomAgentProfile | null>(null)
@@ -115,6 +117,7 @@ export function CustomAgentSettings({
           skills={skills}
           mcpServers={mcpServers}
           request={request}
+          backendId={backendId}
           onSaved={() => {
             setEditing(null)
             reload()
@@ -132,6 +135,7 @@ function CustomAgentForm({
   skills,
   mcpServers,
   request,
+  backendId,
   onSaved,
   onCancel,
 }: {
@@ -139,6 +143,7 @@ function CustomAgentForm({
   skills: Resource[]
   mcpServers: Resource[]
   request: typeof api
+  backendId?: string
   onSaved(): void
   onCancel(): void
 }) {
@@ -196,6 +201,7 @@ function CustomAgentForm({
       <AgentOptionsPicker
         nativeOnly
         showSubagents={false}
+        backendId={backendId}
         value={options}
         onChange={(value) => {
           form.setFieldValue('agentId', value.agentId)

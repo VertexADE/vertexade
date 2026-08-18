@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import type { ModuleCatalog, ModuleCatalogEntry } from '@vertexade/platform-contracts'
-import { Blocks, Loader2, Settings } from 'lucide-react'
+import { AlertTriangle, Blocks, Loader2, Settings } from 'lucide-react'
 import { PortableExtensionHost } from '@vertexade/ui/components/portable-extension-host'
 import { WorkspaceHeader, WorkspacePage } from '@vertexade/ui/components/workspace-layout'
 import { Badge } from '@vertexade/ui/components/ui/badge'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@vertexade/ui/components/ui/empty'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@vertexade/ui/components/ui/select'
+import { StatusPanel, StatusPanelContent, StatusPanelDescription, StatusPanelTitle } from '@vertexade/ui/components/ui/status'
 import { backendApi } from '@vertexade/ui/lib/dashboard-api'
 import { loadBackendRegistry, resolveBackend, type BackendDescriptor } from '@vertexade/ui/lib/backend-registry'
+import { extensionBackendConnection } from '../lib/extension-catalog'
 
 export const Route = createFileRoute('/extensions/$moduleId/$')({
   ssr: false,
@@ -25,6 +27,17 @@ function ExtensionRoute() {
   const navigate = Route.useNavigate()
   const catalog = useCatalogModule(moduleId, server)
   const detailId = extensionDetailId(_splat)
+
+  useEffect(() => {
+    if (!server || catalog.module === undefined || !catalog.backend || catalog.backend.id === server) return
+    void navigate({
+      to: '/extensions/$moduleId/$',
+      params: { moduleId, _splat: _splat || '' },
+      search: (current) => ({ ...current, server: catalog.backend!.id }),
+      replace: true,
+      resetScroll: false,
+    })
+  }, [_splat, catalog.backend, catalog.module, moduleId, navigate, server])
 
   return (
     <WorkspacePage>
@@ -43,6 +56,7 @@ function ExtensionRoute() {
           })
         }
       />
+      {catalog.warning ? <ExtensionCatalogWarning message={catalog.warning} /> : null}
       <ModuleContent
         module={catalog.module}
         moduleId={moduleId}
@@ -96,7 +110,7 @@ function ExtensionHeader({
                 <SelectGroup>
                   {backends.map((candidate) => (
                     <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.label}
+                      {candidate.label} · {candidate.connected ? 'Connected' : 'Offline'}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -125,21 +139,35 @@ function ModuleStatus({ module }: { module: ModuleCatalogEntry | null | undefine
   return <Badge variant={module.enabled ? 'secondary' : 'outline'}>{module.enabled ? 'Enabled' : 'Disabled'}</Badge>
 }
 
+function ExtensionCatalogWarning({ message }: { message: string }) {
+  return (
+    <StatusPanel tone="warning">
+      <AlertTriangle />
+      <StatusPanelContent>
+        <StatusPanelTitle>Some servers could not load this extension</StatusPanelTitle>
+        <StatusPanelDescription>{message}</StatusPanelDescription>
+      </StatusPanelContent>
+    </StatusPanel>
+  )
+}
+
 function useCatalogModule(moduleId: string, requestedBackendId?: string) {
   const [module, setModule] = useState<ModuleCatalogEntry | null | undefined>(undefined)
   const [backend, setBackend] = useState<BackendDescriptor | null>(null)
   const [backends, setBackends] = useState<BackendDescriptor[]>([])
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
 
   useEffect(() => {
     let active = true
     setModule(undefined)
     setError('')
+    setWarning('')
     void loadBackendRegistry()
       .then(async ({ backends: registered }) => {
         const catalogs = await Promise.allSettled(
           registered.map(async (candidate) => ({
-            backend: candidate,
+            backend: extensionBackendConnection(candidate, null),
             catalog: await backendApi<ModuleCatalog>(candidate.id, '/api/modules'),
           })),
         )
@@ -154,9 +182,13 @@ function useCatalogModule(moduleId: string, requestedBackendId?: string) {
           requestedBackendId,
         )
         const selected = available.find((entry) => entry.backend.id === selectedBackend?.id)
+        const failedBackends = catalogs.flatMap((result, index) =>
+          result.status === 'rejected' ? [registered[index]?.label || registered[index]?.id || `Server ${index + 1}`] : [],
+        )
         setBackends(available.map((entry) => entry.backend))
         setBackend(selectedBackend)
         setModule(selected?.module || null)
+        if (failedBackends.length) setWarning(`Catalog unavailable on ${failedBackends.join(', ')}.`)
         if (!selected && catalogs.every((result) => result.status === 'rejected'))
           setError('No paired server could load its extension catalog')
       })
@@ -169,7 +201,7 @@ function useCatalogModule(moduleId: string, requestedBackendId?: string) {
       active = false
     }
   }, [moduleId, requestedBackendId])
-  return { module, backend, backends, error }
+  return { module, backend, backends, error, warning }
 }
 
 function ModuleContent({

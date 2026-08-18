@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -40,6 +40,18 @@ afterEach(async () => {
 })
 
 describe('Agent Plugins 1.0 loader', () => {
+  it('rejects plugin paths outside the configured trusted roots', async () => {
+    const root = await plugin()
+    const trusted = await temporaryDirectory('trusted-agent-plugins')
+
+    await expect(loadAgentPlugin(root, await temporaryDirectory('agent-plugin-data'), [trusted])).rejects.toThrow(
+      'outside the trusted roots',
+    )
+    await expect(loadAgentPlugin(root, await temporaryDirectory('agent-plugin-data'), [root])).resolves.toMatchObject({
+      plugin: { root: await realpath(root) },
+    })
+  })
+
   it('loads a single portable plugin from a marketplace-style repository root', async () => {
     const repository = await temporaryDirectory('agent-plugin-repository')
     const root = join(repository, 'plugins', 'nemeda-agent-kit')

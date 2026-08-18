@@ -80,6 +80,19 @@ async function readableDirectory(inputPath: string) {
   }
 }
 
+async function trustedPluginPath(inputPath: string, trustedRoots: string[]) {
+  const directory = await readableDirectory(inputPath)
+  for (const configuredRoot of trustedRoots) {
+    try {
+      const root = await realpath(resolve(configuredRoot))
+      if (pathWithin(root, directory)) return directory
+    } catch (error) {
+      if (!missingPath(error)) throw error
+    }
+  }
+  throw new Error('Agent Plugin path is outside the trusted roots configured by VERTEXADE_AGENT_PLUGIN_ROOTS')
+}
+
 async function optionalPluginDirectory(sourceRoot: string, candidate: string, label: string) {
   try {
     const directory = await containedPath(sourceRoot, candidate, label)
@@ -494,8 +507,9 @@ async function discoverMcp(root: string, data: string, pluginId: string, pluginN
   return servers
 }
 
-export async function loadAgentPlugin(inputPath: string, pluginDataRoot: string): Promise<LoadedAgentPlugin> {
-  const root = await pluginRoot(inputPath)
+export async function loadAgentPlugin(inputPath: string, pluginDataRoot: string, trustedRoots?: string[]): Promise<LoadedAgentPlugin> {
+  const source = trustedRoots ? await trustedPluginPath(inputPath, trustedRoots) : inputPath
+  const root = await pluginRoot(source)
   const diagnostics: AgentPluginDiagnostic[] = []
   const metadata = manifest(await jsonFile(root, join(root, 'plugin.json'), 'plugin.json'), diagnostics)
   const pluginId = id('agent-plugin', root)

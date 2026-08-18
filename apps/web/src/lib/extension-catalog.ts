@@ -12,10 +12,11 @@ export function extensionBackendConnection(
   error: string | null,
   connectedAt = new Date().toISOString(),
 ): BackendDescriptor {
+  const connectionError = error === null ? null : error || 'Extension catalog unavailable'
   return {
     ...backend,
-    connected: error === null,
-    error,
-    lastConnectedAt: error === null ? connectedAt : backend.lastConnectedAt,
+    connected: connectionError === null,
+    error: connectionError,
+    lastConnectedAt: connectionError === null ? connectedAt : backend.lastConnectedAt,
   }
 }

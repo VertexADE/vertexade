@@ -44,7 +44,7 @@ export function ExtensionDetailsHeader({
         {backend ? (
           <Badge variant="outline">
             <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
-            {backend.label}
+            {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
           </Badge>
         ) : null}
         {module.enabled && workspaceRoute && (

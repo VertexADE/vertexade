@@ -177,11 +177,11 @@ export function NewWorkDialog({
                     onChange={(ids) => setRepositories(quick ? ids.slice(-1) : ids)}
                     onAdd={async (repository) => {
                       const id = await addRepository(repository)
-                      if (quick) setRepositories([id])
+                      if (quick && id !== null) setRepositories([id])
                     }}
                     onAddLocal={async (input) => {
                       const id = await addLocalFolder(input)
-                      if (quick) setRepositories([id])
+                      if (quick && id !== null) setRepositories([id])
                     }}
                     backendName={backends.find((backend) => backend.id === primaryBackendId)?.label || 'server'}
                   />
@@ -516,6 +516,7 @@ function RepositoryChooser({
         <>
           <RepositorySearchPicker
             backendId={backendId}
+            disabled={!backendId}
             added={repositories.map((repository) => repository.full_name)}
             onSelect={(repository) => onAdd(repository.id)}
           />

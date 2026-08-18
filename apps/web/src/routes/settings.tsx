@@ -633,8 +633,8 @@ function SettingsPage() {
                     description="Control executable test targets and the evidence required before a pull request is considered ready."
                     icon={ShieldCheck}
                   >
-                    <TestTargetSettings repositories={workspace.repositories} />
-                    <EvidencePolicySettings repositories={workspace.repositories} />
+                    <TestTargetSettings repositories={workspace.repositories} backendId={backendId} />
+                    <EvidencePolicySettings repositories={workspace.repositories} backendId={backendId} />
                   </SettingsGroup>
                 </section>
               </TabsContent>

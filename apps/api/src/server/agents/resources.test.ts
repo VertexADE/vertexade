@@ -243,7 +243,7 @@ describe('agent resources', () => {
         },
       }
       const run = vi.fn()
-      const service = new AgentResourceService(drizzleDashboardDatabase(client), settings, run, () => true, dataRoot)
+      const service = new AgentResourceService(drizzleDashboardDatabase(client), settings, run, () => true, dataRoot, [root])
       service.initialize()
 
       const plugin = await service.installPlugin({ path: root })

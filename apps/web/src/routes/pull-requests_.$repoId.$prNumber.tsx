@@ -48,10 +48,17 @@ function PullRequestDetailPage() {
   )
 
   useEffect(() => {
-    if (!pr) return
-    backendApi<GithubReviewer>(pr.backend_id, '/api/scm/me')
-      .then(setCurrentUser)
-      .catch(() => {})
+    let current = true
+    setCurrentUser(null)
+    if (pr)
+      void backendApi<GithubReviewer>(pr.backend_id, '/api/scm/me')
+        .then((user) => {
+          if (current) setCurrentUser(user)
+        })
+        .catch(() => {})
+    return () => {
+      current = false
+    }
   }, [pr])
 
   const startReview = useCallback(() => setReviewOpen(true), [])

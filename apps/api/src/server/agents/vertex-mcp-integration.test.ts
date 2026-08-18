@@ -148,7 +148,10 @@ describe('VertexMcpIntegration', () => {
         VERTEXADE_SUBAGENT_TOKEN: expect.stringMatching(/^10\./),
       },
     })
-    const stored = database.$client.prepare('SELECT allow_subagents,subagent_token_hash FROM jobs WHERE id=10').get()
+    const stored = database.$client.prepare('SELECT allow_subagents,subagent_token_hash FROM jobs WHERE id=10').get() as {
+      allow_subagents: number
+      subagent_token_hash: string
+    }
     expect(stored).toMatchObject({
       allow_subagents: 1,
       subagent_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -260,6 +263,11 @@ describe('VertexMcpIntegration', () => {
     const expired = await integration.dispatch(request('/api/internal/subagents/agents'))
     expect(expired?.status).toBe(401)
     expect(await expired?.json()).toEqual({ error: 'The sub-agent capability expired' })
+
+    database.$client.prepare("UPDATE jobs SET subagent_token_expires_at='not-a-date' WHERE id=10").run()
+    const invalid = await integration.dispatch(request('/api/internal/subagents/agents'))
+    expect(invalid?.status).toBe(401)
+    expect(await invalid?.json()).toEqual({ error: 'The sub-agent capability expired' })
 
     database.$client.prepare("UPDATE jobs SET subagent_token_expires_at=datetime('now','+1 hour'),status='completed' WHERE id=10").run()
     const inactive = await integration.dispatch(request('/api/internal/subagents/agents'))

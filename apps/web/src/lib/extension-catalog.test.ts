@@ -55,5 +55,10 @@ describe('extension catalog views', () => {
       error: 'Catalog request failed',
       lastConnectedAt: null,
     })
+    expect(extensionBackendConnection(backend, '')).toMatchObject({
+      connected: false,
+      error: 'Extension catalog unavailable',
+      lastConnectedAt: null,
+    })
   })
 })

@@ -34,8 +34,22 @@ const backends: BackendDescriptor[] = [
 ]
 
 const repositories: WorkBoardData['repositories'] = [
-  { id: 1, full_name: 'Dovo/VertexADE', backend_id: 'local', backend_name: 'Local', source_kind: 'git' },
-  { id: 1_000_002, full_name: 'dovo/vertexade', backend_id: 'remote', backend_name: 'Remote', source_kind: 'git' },
+  {
+    id: 1,
+    full_name: 'Dovo/VertexADE',
+    clone_url: 'https://github.com/Dovo/VertexADE.git',
+    backend_id: 'local',
+    backend_name: 'Local',
+    source_kind: 'git',
+  },
+  {
+    id: 1_000_002,
+    full_name: 'dovo/vertexade',
+    clone_url: 'git@github.com:dovo/vertexade.git',
+    backend_id: 'remote',
+    backend_name: 'Remote',
+    source_kind: 'git',
+  },
   { id: 3, full_name: 'workspace', backend_id: 'local', backend_name: 'Local', source_kind: 'directory' },
   { id: 1_000_004, full_name: 'workspace', backend_id: 'remote', backend_name: 'Remote', source_kind: 'directory' },
 ]
@@ -54,6 +68,33 @@ describe('unified Work targets', () => {
       { backendId: 'local', backendName: 'Local', repositoryId: 1, repository: 'Dovo/VertexADE' },
       { backendId: 'remote', backendName: 'Remote', repositoryId: 1_000_002, repository: 'dovo/vertexade' },
     ])
+  })
+
+  it('keeps same-name repositories from different SCM origins separate', () => {
+    const gitlab = {
+      ...repositories[1]!,
+      id: 1_000_005,
+      clone_url: 'https://gitlab.example/dovo/vertexade.git',
+    }
+    const unified = unifiedWorkRepositories([repositories[0]!, gitlab], backends)
+
+    expect(unified).toHaveLength(2)
+    expect(unified.map((repository) => repository.identity)).toEqual(['scm:github.com:dovo/vertexade', 'scm:gitlab.example:dovo/vertexade'])
+  })
+
+  it('keeps repositories visible when their owning server is temporarily missing', () => {
+    const unavailable = {
+      ...repositories[1]!,
+      backend_id: 'missing',
+      backend_name: 'Missing server',
+    }
+    const unified = unifiedWorkRepositories([unavailable], backends)
+
+    expect(unified).toHaveLength(1)
+    expect(unified[0]?.capabilities).toEqual([
+      { backendId: 'missing', backendName: 'Missing server', repositoryId: unavailable.id, repository: unavailable.full_name },
+    ])
+    expect(capableWorkBackends(unified, [unavailable.id], backends)).toEqual([])
   })
 
   it('normalizes a remembered server-specific repository to its logical project', () => {

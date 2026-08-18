@@ -284,7 +284,10 @@ function selectedPullRequest(search: DashboardSearch, pullRequests: PullRequest[
   if (!search.repo || !search.pr) return null
   return (
     pullRequests.find(
-      (pr) => pr.full_name === search.repo && pr.number === search.pr && (!search.backend || pr.backend_id === search.backend),
+      (pr) =>
+        pr.full_name.toLowerCase() === search.repo?.toLowerCase() &&
+        pr.number === search.pr &&
+        (!search.backend || pr.backend_id === search.backend || pr.backend_aliases?.includes(search.backend)),
     ) || null
   )
 }

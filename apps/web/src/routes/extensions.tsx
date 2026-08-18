@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import type { ExtensionCacheStats, ModuleCatalog, ModuleCatalogCategory, ModuleCatalogEntry } from '@vertexade/platform-contracts'
 import { AlertTriangle, Boxes, CircleDot, PackageOpen, PlugZap, Server, SlidersHorizontal, Sparkles } from 'lucide-react'
@@ -30,6 +30,7 @@ type LifecycleFilter = 'all' | 'ready' | 'attention' | 'disabled'
 type BackendCatalog = { backend: BackendDescriptor; catalog: ModuleCatalog | null; error: string }
 type UnifiedExtensionCatalog = { catalogs: BackendCatalog[] }
 type ExtensionEntry = { key: string; backend: BackendDescriptor; module: ModuleCatalogEntry; cache?: ExtensionCacheStats }
+const resourceServerStorageKey = 'vertexade:extensions:resource-server'
 
 function matchesLifecycle(module: ModuleCatalogEntry, filter: LifecycleFilter) {
   if (filter === 'all') return true
@@ -60,9 +61,23 @@ export function ExtensionsPage() {
     accepts: isModuleCatalogEvent,
   })
   const catalogs = catalog.data ? catalog.data.catalogs : []
-  const [resourceServerId, setResourceServerId] = useState('')
+  const [resourceServerId, setResourceServerId] = useState(storedResourceServerId)
   const summary = extensionSummary(catalogs)
   const resourceBackend = selectedResourceBackend(catalogs, resourceServerId)
+
+  useEffect(() => {
+    if (!resourceBackend || resourceBackend.id === resourceServerId) return
+    setResourceServerId(resourceBackend.id)
+  }, [resourceBackend, resourceServerId])
+
+  useEffect(() => {
+    if (!resourceServerId) return
+    try {
+      localStorage.setItem(resourceServerStorageKey, resourceServerId)
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+  }, [resourceServerId])
 
   function selectResourceBackend(backend: BackendDescriptor) {
     setResourceServerId(backend.id)
@@ -74,6 +89,15 @@ export function ExtensionsPage() {
       <ExtensionTabs catalog={catalog} catalogs={catalogs} resourceBackend={resourceBackend} onSelectResource={selectResourceBackend} />
     </WorkspacePage>
   )
+}
+
+function storedResourceServerId() {
+  if (typeof localStorage === 'undefined') return ''
+  try {
+    return localStorage.getItem(resourceServerStorageKey) || ''
+  } catch {
+    return ''
+  }
 }
 
 function selectedResourceBackend(catalogs: BackendCatalog[], requested: string) {
@@ -230,6 +254,7 @@ function useAppExtensions(catalog: CatalogController, catalogs: BackendCatalog[]
   const selected = entries.find((entry) => entry.key === selectedId) || null
 
   async function toggle(entry: ExtensionEntry, enabled: boolean) {
+    if (busy) return
     setBusy(entry.key)
     try {
       await setExtensionEnabled(entry, enabled)
@@ -245,6 +270,7 @@ function useAppExtensions(catalog: CatalogController, catalogs: BackendCatalog[]
   }
 
   async function clearCache(entry: ExtensionEntry) {
+    if (busy) return
     setBusy(`cache:${entry.key}`)
     try {
       const removed = await clearExtensionCache(entry)
@@ -318,11 +344,15 @@ function cacheClearedMessage(module: ModuleCatalogEntry, removed: number) {
 type AppExtensionState = ReturnType<typeof useAppExtensions>
 
 function ExtensionProblems({ catalogs }: { catalogs: BackendCatalog[] }) {
-  const diagnostics = catalogs.flatMap(({ backend, catalog }) =>
-    (catalog?.diagnostics || []).map((diagnostic) => ({ backend, diagnostic })),
-  )
-  const connectionErrors = catalogs.filter((entry) => entry.error)
-  const total = diagnostics.length + connectionErrors.length
+  const problems = catalogs.flatMap(({ backend, catalog, error }) => [
+    ...(error ? [{ key: `${backend.id}:connection`, label: `${backend.label} · connection`, message: error }] : []),
+    ...(catalog?.diagnostics || []).map((diagnostic, index) => ({
+      key: `${backend.id}:${diagnostic.moduleId}:${diagnostic.phase}:${index}`,
+      label: `${backend.label} · ${diagnostic.moduleId} · ${diagnostic.phase}`,
+      message: diagnostic.message,
+    })),
+  ])
+  const total = problems.length
   if (!total) return null
   return (
     <StatusPanel tone="danger">
@@ -333,19 +363,16 @@ function ExtensionProblems({ catalogs }: { catalogs: BackendCatalog[] }) {
         </StatusPanelTitle>
         <StatusPanelDescription>Other extensions remain available.</StatusPanelDescription>
         <ul className="mt-2 space-y-1 font-mono text-[10px]">
-          {connectionErrors.map(({ backend, error }) => (
-            <li key={backend.id} className="break-words">
-              <span className="font-semibold">{backend.label} · connection</span> — {error}
+          {problems.slice(0, 3).map((problem) => (
+            <li key={problem.key} className="break-words">
+              <span className="font-semibold">{problem.label}</span> — {problem.message}
             </li>
           ))}
-          {diagnostics.slice(0, Math.max(0, 3 - connectionErrors.length)).map(({ backend, diagnostic }, index) => (
-            <li key={`${backend.id}:${diagnostic.moduleId}:${diagnostic.phase}:${index}`} className="break-words">
-              <span className="font-semibold">
-                {backend.label} · {diagnostic.moduleId} · {diagnostic.phase}
-              </span>{' '}
-              — {diagnostic.message}
+          {total > 3 ? (
+            <li>
+              {total - 3} more {total - 3 === 1 ? 'problem' : 'problems'} not shown.
             </li>
-          ))}
+          ) : null}
         </ul>
       </StatusPanelContent>
     </StatusPanel>
@@ -393,7 +420,7 @@ function ServerFilters({ catalogs, state }: { catalogs: BackendCatalog[]; state:
       {catalogs.map(({ backend }) => (
         <FilterChip key={backend.id} active={state.serverId === backend.id} onClick={() => state.setServerId(backend.id)}>
           <CircleDot className={backend.connected ? 'text-success' : 'text-warning'} />
-          {backend.label}
+          {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
         </FilterChip>
       ))}
     </ToolbarGroup>
@@ -488,7 +515,7 @@ function InstalledExtensions({ state }: { state: AppExtensionState }) {
         <ExtensionInstalledRow
           key={entry.key}
           {...extensionEntryProps(state, entry)}
-          busy={state.busy === entry.key || state.busy === `cache:${entry.key}`}
+          busy={Boolean(state.busy)}
           onClearCache={() => void state.clearCache(entry)}
         />
       ))}
@@ -500,7 +527,7 @@ function ExtensionCatalogGrid({ state }: { state: AppExtensionState }) {
   return (
     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {state.visible.map((entry) => (
-        <ExtensionCard key={entry.key} {...extensionEntryProps(state, entry)} busy={state.busy === entry.key} />
+        <ExtensionCard key={entry.key} {...extensionEntryProps(state, entry)} busy={Boolean(state.busy)} />
       ))}
     </div>
   )
@@ -527,7 +554,7 @@ function ExtensionDetailSheet({ state, onChanged }: { state: AppExtensionState; 
           module={selected.module}
           backend={selected.backend}
           cache={selected.cache}
-          busy={state.busy === selected.key || state.busy === `cache:${selected.key}`}
+          busy={Boolean(state.busy)}
           pinned={state.pinned.has(selected.module.id)}
           onTogglePin={() => state.togglePin(selected.module)}
           onToggle={(enabled) => void state.toggle(selected, enabled)}
@@ -552,14 +579,14 @@ function ResourceServerScope({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
       <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Server className="size-3.5" /> Skills and MCP servers are configured per VertexADE server.
+        <Server className="size-3.5" /> Skills, MCP servers, and Agent Plugins are configured per VertexADE server.
       </span>
       <ToolbarGroup aria-label="Resource server">
         <ToolbarLabel>Manage on</ToolbarLabel>
         {catalogs.map(({ backend }) => (
           <FilterChip key={backend.id} active={selected.id === backend.id} onClick={() => onSelect(backend)}>
             <CircleDot className={backend.connected ? 'text-success' : 'text-warning'} />
-            {backend.label}
+            {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
           </FilterChip>
         ))}
       </ToolbarGroup>

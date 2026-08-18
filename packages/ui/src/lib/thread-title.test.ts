@@ -29,4 +29,9 @@ describe('threadTitle', () => {
   it('prefers a normalized stored title', () => {
     expect(threadTitle(job({ task_title: '  Nightly   maintenance ' }))).toBe('Nightly maintenance')
   })
+
+  it('does not render dangling repository separators for repository-less runs', () => {
+    expect(threadTitle(job({ kind: 'planning', full_name: '' }))).toBe('Planning #7')
+    expect(threadTitle(job({ pr_number: 42, full_name: '' }))).toBe('PR #42')
+  })
 })

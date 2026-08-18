@@ -8,6 +8,16 @@ function newer(left: string | null | undefined, right: string | null | undefined
   return String(left || '').localeCompare(String(right || '')) > 0
 }
 
+function backendAliases(...pullRequests: PullRequest[]) {
+  return [
+    ...new Set(
+      pullRequests.flatMap((pullRequest) =>
+        [...(pullRequest.backend_aliases || []), pullRequest.backend_id].filter((alias): alias is string => Boolean(alias)),
+      ),
+    ),
+  ]
+}
+
 function preferredPullRequest(current: PullRequest, candidate: PullRequest, defaultBackendId?: string) {
   if (candidate.backend_id === defaultBackendId && current.backend_id !== defaultBackendId) return candidate
   if (current.backend_id === defaultBackendId && candidate.backend_id !== defaultBackendId) return current
@@ -32,6 +42,7 @@ function mergePullRequests(current: PullRequest, candidate: PullRequest, default
   const linkedWork = linkedWorkSource(current, candidate, preferred)
   return {
     ...preferred,
+    backend_aliases: backendAliases(preferred, current, candidate),
     latest_agent_review_id: review.latest_agent_review_id,
     latest_agent_review_head_sha: review.latest_agent_review_head_sha,
     latest_agent_review_created_at: review.latest_agent_review_created_at,
@@ -48,7 +59,12 @@ export function unifiedPullRequests(pullRequests: PullRequest[], defaultBackendI
   for (const pullRequest of pullRequests) {
     const key = identity(pullRequest)
     const current = unified.get(key)
-    unified.set(key, current ? mergePullRequests(current, pullRequest, defaultBackendId) : pullRequest)
+    unified.set(
+      key,
+      current
+        ? mergePullRequests(current, pullRequest, defaultBackendId)
+        : { ...pullRequest, backend_aliases: backendAliases(pullRequest) },
+    )
   }
   return [...unified.values()]
 }

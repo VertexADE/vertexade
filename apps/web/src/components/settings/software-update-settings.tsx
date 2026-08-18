@@ -70,7 +70,18 @@ function ServerUpdateSettings({ backendId }: { backendId: string }) {
   const [showInstructions, setShowInstructions] = useState(false)
 
   useEffect(() => {
-    void backendApi<ServerUpdateInfo>(backendId, '/api/software-update').then(setServerInfo).catch(showError)
+    let current = true
+    setServerInfo(null)
+    void backendApi<ServerUpdateInfo>(backendId, '/api/software-update')
+      .then((value) => {
+        if (current) setServerInfo(value)
+      })
+      .catch((error) => {
+        if (current) showError(error)
+      })
+    return () => {
+      current = false
+    }
   }, [backendId])
 
   async function copyCommand() {

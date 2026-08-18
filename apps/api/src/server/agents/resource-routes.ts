@@ -2,6 +2,7 @@ import type { AgentResourceService } from './resources.ts'
 import { HttpError, readJsonObject } from '@vertexade/platform-server/http'
 import { searchMcpRegistry } from './mcp-registry.ts'
 import { McpGatewayPool, toolAppResourceUri } from './mcp-gateway.ts'
+import { transportClientIdentity } from '../transport-context.ts'
 
 function response(status: number, value: unknown) {
   return Response.json(value, { status })
@@ -12,6 +13,21 @@ function message(error: unknown) {
 function kind(value: string) {
   if (value !== 'skill' && value !== 'mcp') throw new Error('Agent resource kind must be skill or mcp')
   return value
+}
+
+function requirePluginAdministrator(request: Request) {
+  const client = transportClientIdentity(request)
+  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(client))
+    throw new HttpError('Agent Plugins can only be installed through the authenticated local server gateway', 403)
+}
+
+async function installPlugin(request: Request, service: AgentResourceService, gateways: McpGatewayPool) {
+  requirePluginAdministrator(request)
+  const previous = service.catalog().plugins
+  const plugin = await service.installPlugin(await readJsonObject(request))
+  const before = previous.find((candidate) => candidate.id === plugin.id)?.mcpServerIds || []
+  for (const serverId of new Set([...before, ...plugin.mcpServerIds])) gateways.invalidate(serverId)
+  return plugin
 }
 
 export function createAgentResourceRoutes(service: AgentResourceService, profilesChanged: () => void = () => {}) {
@@ -121,7 +137,7 @@ async function exactRoute(
       gateways.invalidate(server.id)
       return server
     },
-    'POST /api/agent-resources/plugins': async () => service.installPlugin(await readJsonObject(request)),
+    'POST /api/agent-resources/plugins': () => installPlugin(request, service, gateways),
     'POST /api/agent-resources/profiles': async () => {
       const profile = service.upsertProfile(await readJsonObject(request))
       profilesChanged()

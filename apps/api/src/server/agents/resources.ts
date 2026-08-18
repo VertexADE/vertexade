@@ -8,7 +8,7 @@ import type {
   AgentSkill,
   CustomAgentProfile,
 } from '@vertexade/platform-contracts'
-import { vertexDataDirectory } from '@vertexade/platform-server/configuration'
+import { vertexAgentPluginRoots, vertexDataDirectory } from '@vertexade/platform-server/configuration'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleDashboardDatabase } from '../database/dashboard-database.ts'
 import { workAgentResourceOverrides } from '../database/schema/tables.ts'
@@ -97,9 +97,9 @@ function storedSkillMetadata(input: Record<string, unknown>, stored: boolean) {
   const pluginRoot = optionalText(input.pluginRoot, 4_096, 'Agent Plugin root')
   const skillFile = optionalText(input.skillFile, 4_096, 'Agent Plugin skill file')
   const skillDirectory = optionalText(input.skillDirectory, 4_096, 'Agent Plugin skill directory')
+  const completePluginMetadata = pluginId && pluginRoot && skillFile && skillDirectory
   return {
-    ...(pluginId ? { pluginId } : {}),
-    ...(pluginRoot && skillFile && skillDirectory ? { pluginRoot, skillFile, skillDirectory } : {}),
+    ...(completePluginMetadata ? { pluginId, pluginRoot, skillFile, skillDirectory } : {}),
   }
 }
 
@@ -313,6 +313,7 @@ export class AgentResourceService {
     private readonly run: Runner,
     private readonly agentExists: (id: string) => boolean = () => true,
     private readonly pluginDataRoot = join(vertexDataDirectory(), 'agent-plugins'),
+    private readonly pluginTrustedRoots = vertexAgentPluginRoots(),
   ) {}
 
   initialize() {
@@ -421,13 +422,13 @@ export class AgentResourceService {
   async installPlugin(input: unknown) {
     const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
     const root = text(value.path, 4_096, 'Agent Plugin path')
-    return this.installLoadedPlugin(await loadAgentPlugin(root, this.pluginDataRoot))
+    return this.installLoadedPlugin(await loadAgentPlugin(root, this.pluginDataRoot, this.pluginTrustedRoots))
   }
 
   async reloadPlugin(id: string) {
     const plugin = this.read().plugins.find((candidate) => candidate.id === id)
     if (!plugin) throw new Error('Agent Plugin not found')
-    return this.installLoadedPlugin(await loadAgentPlugin(plugin.root, this.pluginDataRoot))
+    return this.installLoadedPlugin(await loadAgentPlugin(plugin.root, this.pluginDataRoot, this.pluginTrustedRoots))
   }
 
   removePlugin(id: string) {

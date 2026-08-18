@@ -52,7 +52,8 @@ export function useThreadPanelInputActions(jobId: number | null, job: JobLog | n
 
 function checkboxValues(selections: string[], custom: string | undefined): string[] {
   const customAnswer = custom?.trim()
-  return customAnswer ? [...selections, customAnswer] : selections
+  const selected = selections.filter((value) => value !== '__other__')
+  return customAnswer ? [...selected, customAnswer] : selected
 }
 
 function answerValue(questionId: string, answers: Record<string, string>, custom: Record<string, string>) {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { MAX_REQUEST_BODY_BYTES } from '@vertexade/platform-server/http'
 import { createAgentResourceRoutes } from './resource-routes.ts'
+import { McpGatewayPool } from './mcp-gateway.ts'
 
 function service() {
   const plugin = { id: 'agent-plugin-one', name: 'plugin', mcpServerIds: ['mcp-one'] }
@@ -44,6 +45,7 @@ describe('agent resource HTTP boundaries', () => {
     const installed = await routes(
       new Request('http://localhost/api/agent-resources/plugins', {
         method: 'POST',
+        headers: { 'x-vertexade-transport-client-ip': '127.0.0.1' },
         body: JSON.stringify({ path: '/srv/plugins/example' }),
       }),
     )
@@ -56,5 +58,40 @@ describe('agent resource HTTP boundaries', () => {
     expect(resources.reloadPlugin).toHaveBeenCalledWith('agent-plugin-one')
     expect(removed?.status).toBe(200)
     expect(resources.removePlugin).toHaveBeenCalledWith('agent-plugin-one')
+  })
+
+  it('rejects plugin installation that does not arrive through the local authenticated gateway', async () => {
+    const resources = service()
+    const routes = createAgentResourceRoutes(resources as never)
+    const response = await routes(
+      new Request('http://localhost/api/agent-resources/plugins', {
+        method: 'POST',
+        headers: { 'x-vertexade-transport-client-ip': '203.0.113.10' },
+        body: JSON.stringify({ path: '/srv/plugins/example' }),
+      }),
+    )
+
+    expect(response?.status).toBe(403)
+    expect(resources.installPlugin).not.toHaveBeenCalled()
+  })
+
+  it('invalidates both removed and current MCP gateways when reinstalling a plugin', async () => {
+    const resources = service()
+    resources.catalog.mockReturnValue({
+      plugins: [{ id: 'agent-plugin-one', name: 'plugin', mcpServerIds: ['mcp-removed', 'mcp-one'] }],
+    })
+    const invalidate = vi.spyOn(McpGatewayPool.prototype, 'invalidate')
+    const routes = createAgentResourceRoutes(resources as never)
+    const response = await routes(
+      new Request('http://localhost/api/agent-resources/plugins', {
+        method: 'POST',
+        headers: { 'x-vertexade-transport-client-ip': '::1' },
+        body: JSON.stringify({ path: '/srv/plugins/example' }),
+      }),
+    )
+
+    expect(response?.status).toBe(201)
+    expect(invalidate).toHaveBeenCalledWith('mcp-removed')
+    expect(invalidate).toHaveBeenCalledWith('mcp-one')
   })
 })

@@ -434,11 +434,11 @@ function CompletedThreadActions({ job, onChanged }: { job: Job; onChanged(): voi
   const returnToOverview = () => void (settled ? setThreadSettled(job, false, onChanged) : setThreadSnoozed(job, null, onChanged))
   return (
     <span className="relative flex h-6 min-w-20 items-center justify-end text-[11px]">
-      <span className="flex items-center gap-1.5 text-success transition-opacity group-hover/actions:pointer-events-none group-hover/actions:opacity-0">
+      <span className="flex items-center gap-1.5 text-success transition-opacity group-hover/actions:pointer-events-none group-hover/actions:opacity-0 group-focus-within/actions:pointer-events-none group-focus-within/actions:opacity-0">
         {settled ? <CheckCheck className="size-3.5" /> : snoozed ? <TimerReset className="size-3.5" /> : <CircleCheck className="size-4" />}
         {settled ? 'Settled' : snoozed ? 'Snoozed' : 'Done'}
       </span>
-      <span className="pointer-events-none absolute right-0 flex items-center gap-1 opacity-0 transition-opacity group-hover/actions:pointer-events-auto group-hover/actions:opacity-100">
+      <span className="pointer-events-none absolute right-0 flex items-center gap-1 opacity-0 transition-opacity group-hover/actions:pointer-events-auto group-hover/actions:opacity-100 group-focus-within/actions:pointer-events-auto group-focus-within/actions:opacity-100">
         {settled || snoozed ? (
           <Tooltip>
             <TooltipTrigger asChild>

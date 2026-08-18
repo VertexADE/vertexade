@@ -69,6 +69,33 @@ describe('agent activity timeline', () => {
     })
   })
 
+  it('preserves plain assistant presentation when both userMessage lifecycle records contain data', () => {
+    const timeline = buildAgentTimeline([
+      event({
+        kind: 'action',
+        title: 'userMessage',
+        action_kind: 'userMessage',
+        action_id: 'message-two',
+        status: 'running',
+        data: { source: 'start' },
+      }),
+      event({
+        kind: 'action',
+        title: 'userMessage',
+        text: 'Still a plain assistant response',
+        action_kind: 'userMessage',
+        action_id: 'message-two',
+        status: 'completed',
+        data: { source: 'finish' },
+      }),
+    ])
+
+    expect(timeline[0]).toMatchObject({
+      kind: 'message',
+      data: { presentation: 'plain_assistant_message' },
+    })
+  })
+
   it('collapses cumulative streaming messages without dropping distinct messages', () => {
     const timeline = buildAgentTimeline([
       event({ kind: 'message', title: 'ACP', text: 'Hello ', data: { streaming: true } }),

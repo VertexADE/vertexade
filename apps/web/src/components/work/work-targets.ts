@@ -27,7 +27,19 @@ export function mergeWorkRepositories(current: Repository[], added: Repository[]
 }
 
 function backendForRepository(repository: Repository, backends: BackendDescriptor[]) {
-  if (repository.backend_id) return backends.find((backend) => backend.id === repository.backend_id) || null
+  if (repository.backend_id)
+    return (
+      backends.find((backend) => backend.id === repository.backend_id) || {
+        id: repository.backend_id,
+        label: repository.backend_name || repository.backend_id,
+        namespace: 0,
+        isDefault: false,
+        connected: false,
+        lastConnectedAt: null,
+        error: 'Owning server is unavailable',
+        apiPath: `/api/backends/${encodeURIComponent(repository.backend_id)}`,
+      }
+    )
   return backends.find((backend) => backend.isDefault) || backends[0] || null
 }
 
@@ -35,9 +47,19 @@ function serverSpecificRepository(repository: Repository) {
   return repository.source_kind === 'directory' || repository.source_kind === 'workspace'
 }
 
+function repositoryOrigin(repository: Repository, backendId: string) {
+  const cloneUrl = repository.clone_url?.trim() || ''
+  if (!cloneUrl) return `backend:${backendId}`
+  try {
+    return new URL(cloneUrl).host.toLowerCase()
+  } catch {
+    return cloneUrl.match(/^[^@]+@([^:]+):/)?.[1]?.toLowerCase() || `backend:${backendId}`
+  }
+}
+
 function repositoryIdentity(repository: Repository, backendId: string) {
   if (serverSpecificRepository(repository)) return `server:${backendId}:${repository.id}`
-  return `scm:${repository.full_name.trim().toLowerCase()}`
+  return `scm:${repositoryOrigin(repository, backendId)}:${repository.full_name.trim().toLowerCase()}`
 }
 
 export function unifiedWorkRepositories(repositories: Repository[], backends: BackendDescriptor[]): UnifiedWorkRepository[] {
@@ -64,7 +86,10 @@ export function unifiedWorkRepositories(repositories: Repository[], backends: Ba
         })),
       }
     })
-    .sort((left, right) => left.full_name.localeCompare(right.full_name))
+    .sort(
+      (left, right) =>
+        left.full_name.toLowerCase().localeCompare(right.full_name.toLowerCase()) || left.identity.localeCompare(right.identity),
+    )
 }
 
 export function withDiscoveredWorkCapabilities(

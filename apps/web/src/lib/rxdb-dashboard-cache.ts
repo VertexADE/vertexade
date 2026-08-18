@@ -38,11 +38,16 @@ let retryDelay = 1_000
 let pairedServerPoll: ReturnType<typeof setInterval> | undefined
 let pairedServerListenerInstalled = false
 
-const deferredDashboardEvents = new Set(['action_started', 'action_updated', 'action_completed', 'thread_context_updated'])
-const summaryDashboardEvents = new Set(['agent_message', 'diff'])
+const summaryDashboardEvents = new Set([
+  'action_started',
+  'action_updated',
+  'action_completed',
+  'thread_context_updated',
+  'agent_message',
+  'diff',
+])
 
 export function dashboardEventSyncLane(reason: string): 'immediate' | 'summary' | null {
-  if (deferredDashboardEvents.has(reason)) return null
   return summaryDashboardEvents.has(reason) ? 'summary' : 'immediate'
 }
 

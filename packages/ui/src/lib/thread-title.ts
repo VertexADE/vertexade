@@ -18,7 +18,8 @@ export function threadTitle(job: Job): string {
   if (job.kind === 'work_review') return 'Worktree code review'
   if (job.kind === 'stack_analysis') return 'Pull request stack analysis'
   if (job.kind === 'review') return job.pr_number ? `Review PR #${job.pr_number}` : 'Code review'
-  if (job.kind === 'planning') return `Planning · ${job.full_name}`
-  if (job.pr_number) return `${job.full_name} · PR #${job.pr_number}`
+  const repository = usableThreadTitle(job.full_name)
+  if (job.kind === 'planning') return repository ? `Planning · ${repository}` : `Planning #${id}`
+  if (job.pr_number) return repository ? `${repository} · PR #${job.pr_number}` : `PR #${job.pr_number}`
   return fallback || `Run #${id}`
 }

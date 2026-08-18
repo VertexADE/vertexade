@@ -40,9 +40,8 @@ function requestCredentialIdentity(request: Request) {
 
 function backendRuntimeIdentity(backend: ApiBackend, paired: BrowserPairedServer | undefined, requestCredential: string) {
   const credential = paired
-    ? paired.credentialId ||
-      createHash('sha256')
-        .update(paired.sessionToken || '')
+    ? createHash('sha256')
+        .update(JSON.stringify([paired.credentialId || '', paired.sessionToken || requestCredential]))
         .digest('base64url')
     : requestCredential
   return createHash('sha256')

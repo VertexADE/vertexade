@@ -13,6 +13,7 @@ import { Textarea } from '@vertexade/ui/components/ui/textarea'
 import { CustomAgentSettings, type CustomAgentProfile } from '@vertexade/ui/components/custom-agent-settings'
 import { useConfirm } from '@vertexade/ui/components/confirm-provider'
 import { McpAppFrame, type McpAppCallResult, type McpAppFrameDescriptor } from '@vertexade/ui/components/mcp-app-frame'
+import { mcpResourceDescription, safeAgentPluginLink } from '@vertexade/ui/lib/agent-resource-presentation'
 
 type Skill = {
   id: string
@@ -153,6 +154,7 @@ export function AgentResourceSettings({ section = 'all', backendId }: { section?
               mcpServers={catalog.mcpServers}
               reload={load}
               request={request}
+              backendId={backendId}
             />
           </div>
         )}
@@ -330,7 +332,7 @@ function PluginIdentity({ plugin }: { plugin: AgentPlugin }) {
 }
 
 function PluginSourceLink({ plugin }: { plugin: AgentPlugin }) {
-  const link = safePluginLink(plugin.repository || plugin.homepage)
+  const link = safeAgentPluginLink(plugin.repository || plugin.homepage)
   if (!link) return null
   return (
     <Button type="button" size="icon-xs" variant="ghost" asChild>
@@ -756,7 +758,7 @@ function ResourceList({ items, kind, onDefault, onRemove }: { items: Array<Skill
 }
 
 function ResourceRow({ item, kind, onDefault, onRemove }: { item: Skill | Mcp; kind: 'skill' | 'mcp' } & ResourceActions) {
-  const detail = 'transport' in item ? mcpDescription(item) : `${item.source}@${item.skill}`
+  const detail = 'transport' in item ? mcpResourceDescription(item) : `${item.source}@${item.skill}`
   const defaultAction = item.defaultEnabled ? 'Disable default' : 'Default on'
   return (
     <div className="flex min-h-11 items-center gap-2 rounded-lg border p-2.5">
@@ -783,19 +785,6 @@ function ResourceRow({ item, kind, onDefault, onRemove }: { item: Skill | Mcp; k
       )}
     </div>
   )
-}
-
-function safePluginLink(value: string) {
-  try {
-    const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : ''
-  } catch {
-    return ''
-  }
-}
-
-function mcpDescription(item: Mcp) {
-  return item.transport === 'stdio' ? `${item.command} ${(item.args || []).join(' ')}` : item.url
 }
 
 function DefaultBadge({ enabled }: { enabled: boolean }) {

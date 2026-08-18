@@ -49,7 +49,7 @@ export function ExtensionCard({
           {backend ? (
             <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
-              {backend.label}
+              {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
             </span>
           ) : null}
         </div>

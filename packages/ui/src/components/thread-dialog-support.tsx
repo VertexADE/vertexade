@@ -645,7 +645,7 @@ function ThreadWorkflowPlan({ job }: { job: JobLog }) {
   const state = agentThreadState(job)
   const running = agentIsWorking(state)
   const waiting = state === 'waiting'
-  const reportedPlan = timelinePlan(buildAgentTimeline(threadActivityEvents(job), state))
+  const reportedPlan = timelinePlan(buildAgentTimeline(threadActivityEvents(job), state), state === 'completed')
   const stages = reportedPlan.steps.length
     ? reportedPlan.steps.map(
         (step): ProgressStage => ({

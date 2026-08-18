@@ -4,6 +4,7 @@ import type { BackendAttributed, BackendDescriptor } from './backend-registry'
 export type Repository = BackendAttributed & {
   id: number
   full_name: string
+  clone_url?: string
   local_path: string
   source_kind: 'git' | 'directory' | 'workspace'
   workspace_strategy: 'worktree' | 'direct' | 'copy' | 'move'
@@ -11,6 +12,7 @@ export type Repository = BackendAttributed & {
 }
 
 export type PullRequest = BackendAttributed & {
+  backend_aliases?: string[]
   id: number
   repo_id: number
   full_name: string
@@ -231,7 +233,8 @@ export type WorkItem = BackendAttributed & {
 export type WorkBoardData = {
   items: WorkItem[]
   repositories: Array<
-    Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'> & Partial<Pick<Repository, 'source_kind' | 'workspace_strategy'>>
+    Pick<Repository, 'id' | 'full_name' | 'backend_id' | 'backend_name'> &
+      Partial<Pick<Repository, 'clone_url' | 'source_kind' | 'workspace_strategy'>>
   >
 }
 

@@ -296,6 +296,7 @@ export function useNewWorkDialog({
   async function generateTitle() {
     setGeneratingTitle(true)
     try {
+      if (!primaryBackendId) throw new Error('Connect a server before generating a Work title')
       const generatedTitle = await requestGeneratedWorkTitle(description, kind, primaryBackendId)
       form.setFieldValue('title', generatedTitle)
       toast.success('Outcome generated from your context')
@@ -315,6 +316,10 @@ export function useNewWorkDialog({
   }
 
   async function addRepositoryInput(input: Record<string, unknown>) {
+    if (!primaryBackendId) {
+      toast.error('Connect a server before adding a repository')
+      return null
+    }
     const result = await backendApi<{ repo: WorkBoardData['repositories'][number] }>(primaryBackendId, '/api/repositories', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -422,6 +427,7 @@ export function useNewWorkDialog({
     targetBackendIds,
     primaryBackendId,
     toggleTargetBackend: (backendId: string, selected: boolean) => {
+      if (!selected && targetBackendIds.length === 1 && targetBackendIds[0] === backendId) return
       setTargetBackendIds((current) => {
         const next = selected ? [...new Set([...current, backendId])] : current.filter((candidate) => candidate !== backendId)
         return next.length ? next : current

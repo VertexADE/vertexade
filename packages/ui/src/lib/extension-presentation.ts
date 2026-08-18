@@ -44,6 +44,7 @@ function BrandAsset({ source }: { source: string }) {
   useEffect(() => {
     let mounted = true
     let objectUrl = ''
+    setAssetSource(null)
     void iconAsset(source).then((asset) => {
       if (!mounted || !asset) return
       objectUrl = URL.createObjectURL(asset)

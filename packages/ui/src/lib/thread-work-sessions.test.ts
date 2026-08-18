@@ -79,4 +79,22 @@ describe('thread work sessions', () => {
     expect(sessions[0]).toMatchObject({ complete: false, finalMessage: undefined })
     expect(sessions[0].activity.map(({ key }) => key)).toEqual(['m1', 'a1'])
   })
+
+  it('preserves a completed session persisted final message when an assistant update remains in activity', () => {
+    const update: TimelineEvent = {
+      ...event('u2', 'message', 'Earlier streamed update', '2026-08-13T10:00:20Z'),
+      data: { presentation: 'plain_assistant_message' },
+    }
+    const sessions = buildThreadWorkSessions(
+      [
+        event('u1', 'user_message', 'Investigate it', '2026-08-13T10:00:00Z'),
+        update,
+        event('m1', 'message', 'Persisted final answer', '2026-08-13T10:00:25Z'),
+        event('c1', 'completed', '', '2026-08-13T10:00:30Z'),
+      ],
+      true,
+    )
+
+    expect(sessions[0]).toMatchObject({ complete: true, finalMessage: { key: 'm1', text: 'Persisted final answer' } })
+  })
 })

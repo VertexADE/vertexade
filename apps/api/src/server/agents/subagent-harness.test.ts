@@ -234,4 +234,13 @@ describe('SubagentHarness', () => {
     })
     expect(startChild).not.toHaveBeenCalled()
   })
+
+  it('requires a model before accepting a reasoning level', async () => {
+    const { harness, parent } = fixture()
+
+    await expect(harness.spawn(parent, { task: 'Choose reasoning', reasoning_effort: 'high' })).rejects.toMatchObject({
+      message: 'Choose a model before selecting a reasoning effort',
+      status: 400,
+    })
+  })
 })

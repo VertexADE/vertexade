@@ -79,7 +79,7 @@ function ExtensionInstalledSummary({
         {backend ? (
           <span className="inline-flex items-center gap-1">
             <span className={cn('size-1.5 rounded-full', backend.connected ? 'bg-success' : 'bg-warning')} />
-            {backend.label}
+            {backend.label} · {backend.connected ? 'Connected' : 'Offline'}
           </span>
         ) : null}
         <span>v{module.version}</span>
@@ -133,7 +133,7 @@ function ExtensionInstalledActions({
 }) {
   const pinLabel = extensionPinLabel(module, pinned)
   const cacheDisabled = extensionCacheDisabled(cache, busy)
-  const workspaceRoute = extensionWorkspaceRoute(module)
+  const workspaceRoute = extensionWorkspaceRoute(module, backendId)
   const primaryAction =
     workspaceRoute || !module.enabled ? (
       <ExtensionPrimaryAction module={module} busy={busy} onToggle={onToggle} backendId={backendId} />

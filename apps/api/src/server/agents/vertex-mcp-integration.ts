@@ -227,8 +227,11 @@ export class VertexMcpIntegration {
       throw new VertexMcpIntegrationError('Invalid sub-agent capability', 401)
     }
     if (!activeStatuses.includes(parent.status)) throw new VertexMcpIntegrationError('The parent run is no longer active', 409)
-    if (parent.subagent_token_expires_at && Date.parse(`${parent.subagent_token_expires_at}Z`) <= Date.now()) {
-      throw new VertexMcpIntegrationError('The sub-agent capability expired', 401)
+    if (parent.subagent_token_expires_at) {
+      const expiresAt = Date.parse(`${parent.subagent_token_expires_at.replace(' ', 'T')}Z`)
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        throw new VertexMcpIntegrationError('The sub-agent capability expired', 401)
+      }
     }
     return parent
   }

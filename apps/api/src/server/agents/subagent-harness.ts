@@ -195,7 +195,8 @@ export class SubagentHarness {
     const selectedModel = agent.models.find((candidate) => candidate?.id === model)
     if (model && !selectedModel) throw new SubagentHarnessError(`Model is not available for ${agent.name}`)
     const reasoningEffort = optionalText(input.reasoning_effort, 100, 'Reasoning effort')
-    if (reasoningEffort && !selectedModel?.reasoning_efforts.some((effort) => effort.id === reasoningEffort)) {
+    if (reasoningEffort && !selectedModel) throw new SubagentHarnessError('Choose a model before selecting a reasoning effort')
+    if (reasoningEffort && !selectedModel.reasoning_efforts.some((effort) => effort.id === reasoningEffort)) {
       throw new SubagentHarnessError(`Reasoning effort is not available for ${model}`)
     }
     return { task, title, agentId, model, reasoningEffort }

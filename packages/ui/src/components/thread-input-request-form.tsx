@@ -1,4 +1,4 @@
-import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import { useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
 import { Send, X } from 'lucide-react'
 import { Button } from '@vertexade/ui/components/ui/button'
 import { Input } from '@vertexade/ui/components/ui/input'
@@ -12,14 +12,74 @@ import type { InputQuestion, JobLog } from '@vertexade/ui/lib/dashboard-types'
 import { cn } from '@vertexade/ui/lib/utils'
 
 type Answers = Record<string, string>
+type Selections = Record<string, string[]>
 type QuestionControlProps = {
   question: InputQuestion
   answers: Answers
   custom: Answers
   setAnswers: Dispatch<SetStateAction<Answers>>
   setCustom: Dispatch<SetStateAction<Answers>>
-  selections: Record<string, string[]>
-  setSelections: Dispatch<SetStateAction<Record<string, string[]>>>
+  selections: Selections
+  setSelections: Dispatch<SetStateAction<Selections>>
+}
+
+export function inputQuestionValidationErrors(questions: InputQuestion[], answers: Answers, custom: Answers, selections: Selections) {
+  return Object.fromEntries(
+    questions.flatMap((question) => {
+      if (question.type === 'checkbox') {
+        const selected = selections[question.id] || []
+        const error = requiredAnswerError(
+          question.required,
+          selected.length > 0,
+          selected.includes('__other__'),
+          custom[question.id],
+          'Choose at least one answer',
+        )
+        return error ? [[question.id, error]] : []
+      }
+      if (question.type === 'select' || question.options?.length) {
+        const selected = answers[question.id]
+        const error = requiredAnswerError(
+          question.required,
+          Boolean(selected),
+          selected === '__other__',
+          custom[question.id],
+          'Choose an answer',
+        )
+        return error ? [[question.id, error]] : []
+      }
+      return []
+    }),
+  )
+}
+
+function requiredAnswerError(
+  required: boolean | undefined,
+  hasSelection: boolean,
+  needsOther: boolean,
+  customAnswer: string | undefined,
+  missingSelection: string,
+) {
+  if (required && !hasSelection) return missingSelection
+  return needsOther && !customAnswer?.trim() ? 'Enter the other answer' : null
+}
+
+export function submitInputQuestionForm(
+  event: FormEvent<HTMLFormElement>,
+  questions: InputQuestion[],
+  answers: Answers,
+  custom: Answers,
+  selections: Selections,
+  setValidationErrors: Dispatch<SetStateAction<Record<string, string>>>,
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void,
+) {
+  const errors = inputQuestionValidationErrors(questions, answers, custom, selections)
+  setValidationErrors(errors)
+  if (Object.keys(errors).length) {
+    event.preventDefault()
+    return
+  }
+  onSubmit(event)
 }
 
 export function ThreadInputRequestForm({
@@ -41,15 +101,18 @@ export function ThreadInputRequestForm({
   custom: Answers
   setAnswers: Dispatch<SetStateAction<Answers>>
   setCustom: Dispatch<SetStateAction<Answers>>
-  selections: Record<string, string[]>
-  setSelections: Dispatch<SetStateAction<Record<string, string[]>>>
+  selections: Selections
+  setSelections: Dispatch<SetStateAction<Selections>>
   onSubmit(event: FormEvent<HTMLFormElement>): void
   onCancel?(): void
   className?: string
 }) {
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   return (
     <form
-      onSubmit={onSubmit}
+      onSubmit={(event) => {
+        submitInputQuestionForm(event, questions, answers, custom, selections, setValidationErrors, onSubmit)
+      }}
       className={cn(
         'mx-3 mt-3 max-h-[40dvh] shrink-0 space-y-3 overflow-y-auto rounded-lg border border-amber-500/50 bg-amber-500/5 p-3 sm:mx-4',
         className,
@@ -70,6 +133,7 @@ export function ThreadInputRequestForm({
           setCustom={setCustom}
           selections={selections}
           setSelections={setSelections}
+          validationError={validationErrors[question.id]}
         />
       ))}
       <div className="flex justify-end gap-2">
@@ -87,16 +151,21 @@ export function ThreadInputRequestForm({
   )
 }
 
-function ThreadQuestion(props: QuestionControlProps) {
-  const { question } = props
+function ThreadQuestion(props: QuestionControlProps & { validationError?: string }) {
+  const { question, validationError } = props
   return (
-    <fieldset className="space-y-2">
+    <fieldset className="space-y-2" aria-invalid={validationError ? true : undefined}>
       {question.header && !question.formTitle ? (
         <legend className="font-mono text-xs uppercase text-muted-foreground">{question.header}</legend>
       ) : null}
       <p className="text-sm">{question.question}</p>
       {question.description ? <p className="text-xs text-muted-foreground">{question.description}</p> : null}
       <QuestionControl {...props} />
+      {validationError ? (
+        <p className="text-xs text-destructive" role="alert">
+          {validationError}
+        </p>
+      ) : null}
     </fieldset>
   )
 }
@@ -135,8 +204,19 @@ function CheckboxQuestion({ question, custom, setCustom, selections, setSelectio
             </Label>
           )
         })}
+        <Label className="grid grid-cols-[auto_1fr] gap-x-2 rounded-md border bg-background p-2">
+          <Checkbox
+            checked={selections[question.id]?.includes('__other__') || false}
+            onCheckedChange={(next) => toggle('__other__', Boolean(next))}
+            className="row-span-2 mt-0.5"
+          />
+          <span className="text-xs">Other</span>
+          <small className="text-xs text-muted-foreground">Enter your own answer</small>
+        </Label>
       </div>
-      <OtherAnswer question={question} custom={custom} setCustom={setCustom} placeholder="Other — enter your own answer" />
+      {selections[question.id]?.includes('__other__') ? (
+        <OtherAnswer question={question} custom={custom} setCustom={setCustom} required placeholder="Other — enter your own answer" />
+      ) : null}
     </>
   )
 }

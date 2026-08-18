@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { vertexDataDirectory, vertexWorkItemDirectory, vertexWorktreeDirectory } from './configuration.ts'
+import { vertexAgentPluginRoots, vertexDataDirectory, vertexWorkItemDirectory, vertexWorktreeDirectory } from './configuration.ts'
 
 describe('VertexADE storage locations', () => {
   it('uses the XDG data home when configured and a private home directory otherwise', () => {
@@ -20,5 +20,13 @@ describe('VertexADE storage locations', () => {
     expect(vertexWorkItemDirectory({ VERTEXADE_DATA_DIR: '/custom/data', VERTEXADE_WORKTREE_ROOT: '/managed' })).toBe(
       '/custom/data/work-items',
     )
+  })
+
+  it('confines Agent Plugins to configured roots and defaults to the operator home', () => {
+    expect(vertexAgentPluginRoots({ VERTEXADE_AGENT_PLUGIN_ROOTS: '/srv/plugins, ./plugins' })).toEqual([
+      '/srv/plugins',
+      resolve('./plugins'),
+    ])
+    expect(vertexAgentPluginRoots({})).toEqual([homedir()])
   })
 })

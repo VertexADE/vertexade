@@ -8,6 +8,7 @@ export type ThreadWorkSession = SharedThreadWorkSession<TimelineEvent>
 
 export function buildThreadWorkSessions(events: TimelineEvent[], threadComplete: boolean): ThreadWorkSession[] {
   return buildSharedThreadWorkSessions(events, threadComplete).map((session) => {
+    if (session.complete || session.finalMessage) return session
     const finalMessageIndex = session.activity.findLastIndex(
       (event) => event.data?.presentation === 'plain_assistant_message' && event.text.trim().length > 0,
     )

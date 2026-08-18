@@ -66,11 +66,12 @@ export function StartThreadDialog({
             onSelectedChange={setSelected}
           />
           <section className="rounded-lg border bg-muted/[.06] p-3" aria-label="Quick agent setup">
-            <AgentOptionsPicker fields="essentials" />
+            <AgentOptionsPicker backendId={item.backend_id} fields="essentials" />
           </section>
           <AdvancedThreadSettings
             contributorReview={contributorReview}
             workItemId={item.id}
+            backendId={item.backend_id}
             resourceSelection={resourceSelection}
             onResourceSelectionChange={setResourceSelection}
             references={references}
@@ -147,6 +148,7 @@ function ImplementationStartFields({
 function AdvancedThreadSettings({
   contributorReview,
   workItemId,
+  backendId,
   resourceSelection,
   onResourceSelectionChange,
   references,
@@ -158,6 +160,7 @@ function AdvancedThreadSettings({
 }: {
   contributorReview: boolean
   workItemId: number
+  backendId?: string
   resourceSelection: Parameters<typeof AgentResourcePicker>[0]['value'] | null
   onResourceSelectionChange: Parameters<typeof AgentResourcePicker>[0]['onChange']
   references: Parameters<typeof WorkReferencePicker>[0]['selected']
@@ -176,13 +179,14 @@ function AdvancedThreadSettings({
         <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="space-y-4 border-t p-3">
-        <AgentOptionsPicker fields="advanced" />
+        <AgentOptionsPicker backendId={backendId} fields="advanced" />
         <AgentResourcePicker
+          backendId={backendId}
           workItemId={workItemId}
           value={resourceSelection ?? emptyAgentResourceSelection}
           onChange={onResourceSelectionChange}
         />
-        {!contributorReview && <WorkReferencePicker selected={references} onChange={onReferencesChange} />}
+        {!contributorReview && <WorkReferencePicker backendId={backendId} selected={references} onChange={onReferencesChange} />}
         <ImplementationDeliveryOptions
           hidden={contributorReview}
           splitWorkItem={splitWorkItem}

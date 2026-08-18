@@ -313,8 +313,8 @@ export function createJobProcessMonitor({
       if (processErrored) return
       processLine(stdoutBuffer)
       activeJobs.delete(jobId)
-      cancelDetachedForm(jobId, 'The agent connection closed before the form was answered')
       if (cancellingJobs.delete(jobId)) {
+        cancelDetachedForm(jobId, 'The run was stopped before the form was answered')
         jobLifecycle.markCancelled(jobId)
         work.finishContextTransfers(jobId, false, null, 'Stopped by user')
         if (jobFollowUps.finishRunning(jobId, false, 'Stopped by user')) notifyClients('job_follow_up_cancelled', jobId)
@@ -336,6 +336,7 @@ export function createJobProcessMonitor({
         log.end()
         return
       }
+      cancelDetachedForm(jobId, 'The agent connection closed before the form was answered')
       let exitCode = code ?? 1
       let failure = lastError || `${runtimeAgent.name} process failed${signal ? ` (${signal})` : ''}`
       const storedClosingJob = db.select().from(jobs).where(eq(jobs.id, jobId)).get()
