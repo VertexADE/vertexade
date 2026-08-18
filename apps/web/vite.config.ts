@@ -29,29 +29,14 @@ export default defineConfig({
               priority: 20,
             },
             {
-              // The navigation shell changes independently from the router/runtime
-              // entry and is shared by every authenticated workspace route.
-              name: 'app-navigation-shell',
-              test: (moduleId: string) =>
-                moduleId.endsWith('/packages/ui/src/components/app-nav.tsx') ||
-                moduleId.endsWith('/packages/ui/src/components/app-nav-items.tsx'),
+              // Keep the stable renderer runtime cacheable without forcing
+              // application modules across chunk boundaries. Forced app-level
+              // groups can create circular ESM chunks and capture undefined
+              // component exports while the entry is still initializing.
+              name: 'react-dom-runtime',
+              test: (moduleId: string) => moduleId.includes('/node_modules/react-dom/') || moduleId.includes('/node_modules/scheduler/'),
               includeDependenciesRecursively: false,
-              entriesAware: true,
               priority: 15,
-            },
-            {
-              name: 'thread-ui-runtime',
-              test: (moduleId: string) => {
-                const isThreadComponent =
-                  moduleId.includes('/packages/ui/src/components/thread-') &&
-                  !moduleId.endsWith('/packages/ui/src/components/thread-panel.tsx')
-                const isThreadHook = moduleId.includes('/packages/ui/src/hooks/use-thread-')
-                return isThreadComponent || isThreadHook
-              },
-              includeDependenciesRecursively: false,
-              entriesAware: true,
-              maxSize: 200 * 1024,
-              priority: 10,
             },
           ],
         },
