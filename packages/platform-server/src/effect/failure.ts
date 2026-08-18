@@ -33,6 +33,13 @@ function httpFailureKind(status: number, fallback: ApiFailureKind) {
   return fallback
 }
 
+function httpErrorDetails(error: unknown) {
+  if (!(error instanceof Error) || error.name !== 'HttpError') return null
+  const status = (error as Error & { status?: unknown }).status
+  if (!Number.isInteger(status) || Number(status) < 400 || Number(status) > 599) return null
+  return { message: error.message, status: Number(status) }
+}
+
 export function apiFailure(fallback: ApiFailureFallback, cause?: unknown) {
   const { causeMessage = 'append', ...failure } = fallback
   const causeText = errorMessage(cause)
@@ -50,11 +57,12 @@ export function apiFailure(fallback: ApiFailureFallback, cause?: unknown) {
 
 export function apiFailureFromUnknown(error: unknown, fallback: ApiFailureFallback) {
   if (error instanceof ApiFailure) return error
-  if (error instanceof HttpError) {
+  const httpError = error instanceof HttpError ? { message: error.message, status: error.status } : httpErrorDetails(error)
+  if (httpError) {
     return new ApiFailure({
-      kind: httpFailureKind(error.status, fallback.kind),
-      message: error.message,
-      status: error.status,
+      kind: httpFailureKind(httpError.status, fallback.kind),
+      message: httpError.message,
+      status: httpError.status,
       ...(fallback.code ? { code: fallback.code } : {}),
       cause: error,
     })

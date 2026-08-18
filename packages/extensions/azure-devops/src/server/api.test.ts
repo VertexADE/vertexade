@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { azurePortableGroupOrder, parseAzureStoryManifest, selectAzureIterationItems } from './api.ts'
+import { loadAzureBoardData } from './board.ts'
+import { AzureDevOpsClient, azureConfig } from './client.ts'
 
 describe('Azure planning manifests', () => {
   it('orders story, subtask, state, and board axes using Azure metadata', () => {
@@ -99,5 +101,50 @@ describe('Azure planning manifests', () => {
       items: [],
     })
     expect(sprintItems).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads a Basic-process board without querying unsupported Agile, Scrum, or Feature types', async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/_apis/work/teamsettings/iterations')) {
+        return Response.json({
+          value: [
+            {
+              id: 'sprint-1',
+              name: 'Sprint 1',
+              path: 'Milence\\Sprint 1',
+              attributes: { timeFrame: 'current' },
+            },
+          ],
+        })
+      }
+      if (url.pathname.endsWith('/_apis/wit/workitemtypes')) {
+        return Response.json({ value: [{ name: 'Issue' }, { name: 'Task' }] })
+      }
+      if (/\/_apis\/wit\/workitemtypes\/(Issue|Task)\/states$/.test(url.pathname)) {
+        return Response.json({ value: [{ name: 'To Do' }, { name: 'Doing' }, { name: 'Done' }] })
+      }
+      if (url.pathname.endsWith('/_apis/wit/wiql')) {
+        const query = JSON.parse(String(init?.body)).query
+        expect(query).toContain("[System.WorkItemType] IN ('Issue', 'Task')")
+        expect(query).not.toContain('User Story')
+        expect(query).not.toContain('Product Backlog Item')
+        expect(query).not.toContain("[System.WorkItemType] = 'Feature'")
+        return Response.json({ workItems: [] })
+      }
+      if (url.pathname.endsWith('/_apis/projects/Milence/teams')) return Response.json({ value: [] })
+      throw new Error(`Unexpected Azure request: ${url.pathname}`)
+    })
+    const config = azureConfig({ url: 'https://dev.azure.com/acme', project: 'Milence', pat: 'secret' })
+    const provider = {
+      id: 'azure-devops',
+      name: 'Azure DevOps',
+      normalizeConfig: azureConfig,
+      createClient: () => new AzureDevOpsClient(config, fetchMock),
+    }
+
+    const board = await loadAzureBoardData(provider, config, '')
+
+    expect(board).toMatchObject({ configured: true, story_type: 'Issue', items: [], features: [] })
   })
 })

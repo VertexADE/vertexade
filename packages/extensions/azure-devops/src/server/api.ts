@@ -6,7 +6,13 @@ import { HttpError, readJsonObject } from '@vertexade/platform-server/http'
 import { agentSafetyBoundary } from '@vertexade/platform-server/prompts'
 import type { AzureExtensionHostServices } from './host-contract.ts'
 import type { CacheRefreshTrigger } from '@vertexade/platform-server/cache-trigger'
-import { AzureDevOpsClient, type AzureConfig, type WorkItemCreateInput } from './client.ts'
+import {
+  AzureDevOpsClient,
+  isAzureBacklogWorkItemType,
+  isAzureBoardWorkItemType,
+  type AzureConfig,
+  type WorkItemCreateInput,
+} from './client.ts'
 import { AZURE_WEBHOOK_USERNAME, handleAzureWebhook } from './webhook.ts'
 import { extensionWebhookDependencies } from '@vertexade/platform-server/webhooks'
 import { azureRequestEffect } from './effect.ts'
@@ -241,7 +247,7 @@ function workItemTags(value: unknown) {
 }
 
 function draftWorkItem(draft: any, input: Record<string, unknown>, iterationPath: string): WorkItemCreateInput {
-  const storyType = input.story_type === 'Product Backlog Item' ? input.story_type : 'User Story'
+  const storyType = isAzureBacklogWorkItemType(input.story_type) ? input.story_type : 'User Story'
   return {
     type: storyType,
     title: String(draft.title).trim(),
@@ -321,8 +327,8 @@ async function createAzureDrafts(request: Request, context: AzureApiContext) {
 
 function supportedWorkItemType(value: unknown) {
   const type = text(value)
-  if (!['User Story', 'Product Backlog Item', 'Task'].includes(type)) {
-    throw new HttpError('Choose a supported story or task type', 400)
+  if (!isAzureBoardWorkItemType(type)) {
+    throw new HttpError('Choose a supported backlog item or task type', 400)
   }
   return type
 }
@@ -404,11 +410,11 @@ async function prepareAzureSubtasks(request: Request, itemId: string, context: A
   const instruction = checkedPrompt(input.prompt)
   const client = context.provider.createClient(config)
   const item = await client.workItem(Number(itemId))
-  if (!['User Story', 'Product Backlog Item'].includes(item.type)) {
-    throw new HttpError('Choose a story', 400)
+  if (!isAzureBacklogWorkItemType(item.type)) {
+    throw new HttpError('Choose a backlog item', 400)
   }
   const repositories = selectedRepositories(repositoryIds(input.repository_ids), context)
-  const prompt = `Suggest only implementation subtasks for Azure ${item.type} #${item.id}: ${item.title}.\n\nStory description:\n${item.description || 'No description provided.'}\n\nAcceptance criteria:\n${item.acceptance_criteria || 'No acceptance criteria provided.'}\n\nAdditional request:\n${instruction}\n\nReturn exactly one story entry representing this story, with the suggestions in its subtasks array. Do not propose unrelated stories.`
+  const prompt = `Suggest only implementation subtasks for Azure ${item.type} #${item.id}: ${item.title}.\n\nWork-item description:\n${item.description || 'No description provided.'}\n\nAcceptance criteria:\n${item.acceptance_criteria || 'No acceptance criteria provided.'}\n\nAdditional request:\n${instruction}\n\nReturn exactly one story entry representing this backlog item, with the suggestions in its subtasks array. Do not propose unrelated work items.`
   const job = await context.host.tasks.plan(planningRequest(repositories, prompt, item.iteration_path, config))
   return Response.json(job, { status: 202 })
 }
@@ -443,8 +449,8 @@ async function changeAzureItemState(request: Request, itemId: string, context: A
   const state = String(input.state || '').trim()
   const client = context.provider.createClient(config)
   const current = await client.workItem(Number(itemId))
-  if (!['User Story', 'Product Backlog Item', 'Task'].includes(current.type)) {
-    throw new HttpError('Only stories and subtasks can change state here', 400)
+  if (!isAzureBoardWorkItemType(current.type)) {
+    throw new HttpError('Only backlog items and tasks can change state here', 400)
   }
   if (!(await client.workItemStates(current.type)).includes(state)) {
     throw new HttpError('Choose a valid state for this work item type', 400)
@@ -470,8 +476,8 @@ async function launchAzureItemTask(request: Request, itemId: string, context: Az
   if (!repository) throw new HttpError('Choose a repository', 404)
 
   const [item] = await context.provider.createClient(config).workItems([Number(itemId)])
-  if (!item || !['User Story', 'Product Backlog Item', 'Task'].includes(item.type)) {
-    throw new HttpError('Story or task not found', 404)
+  if (!item || !isAzureBoardWorkItemType(item.type)) {
+    throw new HttpError('Backlog item or task not found', 404)
   }
 
   const title = `${item.type} ${item.id}: ${item.title}`.slice(0, 100)

@@ -34,6 +34,19 @@ describe('Effect API boundary', () => {
     })
   })
 
+  it('preserves HTTP failures created inside an independently loaded extension', () => {
+    const error = Object.assign(new Error('Azure DevOps work-item-types failed'), {
+      name: 'HttpError',
+      status: 502,
+    })
+
+    expect(apiFailureFromUnknown(error, unavailable)).toMatchObject({
+      kind: 'upstream',
+      message: 'Azure DevOps work-item-types failed',
+      status: 502,
+    })
+  })
+
   it('maps unexpected Promise failures to readable API failures', async () => {
     const program = tryApiPromise(
       async () => {

@@ -6,6 +6,22 @@ import { azureRequestEffect } from './effect.ts'
 
 const API_VERSION = '7.1'
 
+export const AZURE_BACKLOG_WORK_ITEM_TYPES = ['User Story', 'Product Backlog Item', 'Requirement', 'Issue'] as const
+export const AZURE_BOARD_WORK_ITEM_TYPES = [...AZURE_BACKLOG_WORK_ITEM_TYPES, 'Task'] as const
+
+export function azureBoardWorkItemTypes(availableTypes: readonly string[]) {
+  const available = new Set(availableTypes)
+  return AZURE_BOARD_WORK_ITEM_TYPES.filter((type) => available.has(type))
+}
+
+export function isAzureBacklogWorkItemType(value: unknown): value is (typeof AZURE_BACKLOG_WORK_ITEM_TYPES)[number] {
+  return AZURE_BACKLOG_WORK_ITEM_TYPES.includes(value as (typeof AZURE_BACKLOG_WORK_ITEM_TYPES)[number])
+}
+
+export function isAzureBoardWorkItemType(value: unknown): value is (typeof AZURE_BOARD_WORK_ITEM_TYPES)[number] {
+  return AZURE_BOARD_WORK_ITEM_TYPES.includes(value as (typeof AZURE_BOARD_WORK_ITEM_TYPES)[number])
+}
+
 type JsonObject = Record<string, any>
 export type AzureConfig = {
   configured: boolean
@@ -251,16 +267,20 @@ export class AzureDevOpsClient {
     return normalizeWorkItem(item)
   }
 
-  async sprintItems(iterationPath: string, signal?: AbortSignal) {
+  async sprintItems(iterationPath: string, signal?: AbortSignal, availableTypes: readonly string[] = AZURE_BOARD_WORK_ITEM_TYPES) {
+    const types = azureBoardWorkItemTypes(availableTypes)
+    if (!types.length) return []
     const safePath = String(iterationPath).replaceAll("'", "''")
+    const typeList = types.map((type) => `'${type.replaceAll("'", "''")}'`).join(', ')
     const ids = await this.query(
-      `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.IterationPath] UNDER '${safePath}' AND [System.WorkItemType] IN ('User Story', 'Product Backlog Item', 'Task') ORDER BY [System.ChangedDate] DESC`,
+      `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.IterationPath] UNDER '${safePath}' AND [System.WorkItemType] IN (${typeList}) ORDER BY [System.ChangedDate] DESC`,
       signal,
     )
     return this.workItems(ids, signal)
   }
 
-  async features(signal?: AbortSignal) {
+  async features(signal?: AbortSignal, availableTypes?: readonly string[]) {
+    if (availableTypes && !availableTypes.includes('Feature')) return []
     const ids = await this.query(
       "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.WorkItemType] = 'Feature' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC",
       signal,

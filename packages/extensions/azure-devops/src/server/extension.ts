@@ -1,4 +1,4 @@
-import { AzureDevOpsClient, azureConfig, type AzureConfig } from './client.ts'
+import { AzureDevOpsClient, azureBoardWorkItemTypes, azureConfig, type AzureConfig } from './client.ts'
 import {
   PLATFORM_API_VERSION,
   type DashboardExtension,
@@ -34,9 +34,14 @@ function currentIteration(iterations: Value[]) {
   return iterations.find((item) => item.timeframe === 'current') ?? iterations[0]
 }
 
-async function iterationItems(client: AzureDevOpsClient, iteration: Value | undefined, signal?: AbortSignal) {
+async function iterationItems(
+  client: AzureDevOpsClient,
+  iteration: Value | undefined,
+  workItemTypes: readonly string[],
+  signal?: AbortSignal,
+) {
   if (!iteration?.path) return []
-  return client.sprintItems(iteration.path, signal)
+  return client.sprintItems(iteration.path, signal, workItemTypes)
 }
 
 function azureReference(item: Value, config: Value) {
@@ -85,17 +90,26 @@ export function createExtension({ host }: { host: AzureExtensionHostServices }):
       if (!config.configured) return []
       const loader = async () => {
         const client = provider.createClient(config)
-        const [iterations, features] = await runApiEffect(
+        const [iterations, workItemTypes] = await runApiEffect(
           Effect.all(
             [
               azureRequestEffect('reference-iterations', (signal) => client.iterations(signal)),
-              azureRequestEffect('reference-features', (signal) => client.features(signal)),
+              azureRequestEffect('reference-work-item-types', (signal) => client.workItemTypes(signal)),
             ],
             { concurrency: 'unbounded' },
           ),
         )
-        const items = await runApiEffect(
-          azureRequestEffect('reference-items', (signal) => iterationItems(client, currentIteration(iterations), signal)),
+        const supportedTypes = azureBoardWorkItemTypes(workItemTypes)
+        const [features, items] = await runApiEffect(
+          Effect.all(
+            [
+              azureRequestEffect('reference-features', (signal) => client.features(signal, workItemTypes)),
+              azureRequestEffect('reference-items', (signal) =>
+                iterationItems(client, currentIteration(iterations), supportedTypes, signal),
+              ),
+            ],
+            { concurrency: 'unbounded' },
+          ),
         )
         refreshTrigger.emitRefresh({
           force: Boolean(context?.forceRefresh),
